@@ -147,6 +147,7 @@ CANCEL_BUTTON_MAPPINGS = (
 )
 
 AOL_LKAS_MIGRATION_KEY = "AOLLKASMigratedToButtonControl"
+AOL_SAFE_DEFAULTS_MIGRATION_KEY = "AOLSafeDefaultsMigrated"
 
 DEVELOPER_SIDEBAR_METRICS = {
   "NONE": 0,
@@ -328,6 +329,7 @@ def process_starpilot_toggles(toggles):
   return StarPilotVariables().starpilot_toggles
 
 def update_starpilot_toggles():
+  migrate_aol_safe_defaults()
   migrate_cancel_button_controls()
 
   if not hasattr(update_starpilot_toggles, "_params_memory"):
@@ -347,6 +349,21 @@ def migrate_cancel_button_controls(params: Params | None = None) -> bool:
   return True
 
 
+def migrate_aol_safe_defaults(params: Params | None = None) -> bool:
+  params = params or Params(return_defaults=True)
+  if params.get_bool(AOL_SAFE_DEFAULTS_MIGRATION_KEY):
+    return False
+
+  migrated = False
+  if params.get_bool("AlwaysOnLateral") and params.get_int("MainCruiseButtonControl") == BUTTON_FUNCTIONS["AOL_TOGGLE"]:
+    params.put_bool("AlwaysOnLateral", False)
+    params.put_int("MainCruiseButtonControl", BUTTON_FUNCTIONS["NOTHING"])
+    migrated = True
+
+  params.put_bool(AOL_SAFE_DEFAULTS_MIGRATION_KEY, True)
+  return migrated
+
+
 def migrate_aol_lkas_to_button_control(params: Params | None = None) -> bool:
   params = params or Params(return_defaults=True)
   if params.get_bool(AOL_LKAS_MIGRATION_KEY):
@@ -364,6 +381,7 @@ class StarPilotVariables:
     self.params = Params(return_defaults=True)
     self.params_raw = Params()
     self.params_memory = Params(memory=True)
+    migrate_aol_safe_defaults(self.params)
     migrate_cancel_button_controls(self.params)
     migrate_aol_lkas_to_button_control(self.params)
 

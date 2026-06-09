@@ -91,3 +91,34 @@ def test_cancel_button_migration_copies_distance_actions_once():
 
   assert spv.migrate_cancel_button_controls(params) is False
   assert params.get_int("CancelButtonControl") == 3
+
+
+def test_aol_safe_defaults_migration_disables_legacy_default_combo():
+  params = _FakeParams(
+    ints={"MainCruiseButtonControl": spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]},
+    bools={"AlwaysOnLateral": True},
+  )
+
+  assert spv.migrate_aol_safe_defaults(params) is True
+  assert params.get_bool("AlwaysOnLateral") is False
+  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
+  assert params.get_bool(spv.AOL_SAFE_DEFAULTS_MIGRATION_KEY) is True
+
+  params.put_bool("AlwaysOnLateral", True)
+  params.put_int("MainCruiseButtonControl", spv.BUTTON_FUNCTIONS["AOL_TOGGLE"])
+
+  assert spv.migrate_aol_safe_defaults(params) is False
+  assert params.get_bool("AlwaysOnLateral") is True
+  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]
+
+
+def test_aol_safe_defaults_migration_preserves_non_default_aol_setup():
+  params = _FakeParams(
+    ints={"MainCruiseButtonControl": spv.BUTTON_FUNCTIONS["NOTHING"]},
+    bools={"AlwaysOnLateral": True},
+  )
+
+  assert spv.migrate_aol_safe_defaults(params) is False
+  assert params.get_bool("AlwaysOnLateral") is True
+  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
+  assert params.get_bool(spv.AOL_SAFE_DEFAULTS_MIGRATION_KEY) is True

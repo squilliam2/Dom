@@ -25,6 +25,7 @@ class StarPilotCard:
 
     self.accel_pressed = False
     self.always_on_lateral_allowed = False
+    self.hyundai_aol_seen_engagement = False
     self.prev_active = False
     self.prev_cruise_enabled = False
     self.decel_pressed = False
@@ -94,14 +95,17 @@ class StarPilotCard:
   def update(self, carState, starpilotCarState, sm, starpilot_toggles):
     self.switchback_mode_enabled = self.params_memory.get_bool("SwitchbackModeEnabled")
 
+    aol_button_pressed = False
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
       for be in carState.buttonEvents:
         if be.type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
+          aol_button_pressed = True
           self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           if carState.cruiseState.enabled or self.pause_lateral:
             self.pause_lateral = not self.always_on_lateral_allowed
         elif be.type == ButtonType.mainCruise and be.pressed:
           if starpilot_toggles.main_cruise_aol_toggle:
+            aol_button_pressed = True
             self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           elif starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:
             self.params_memory.put_bool("SLCAdoptSpeedLimit", True)
@@ -118,13 +122,23 @@ class StarPilotCard:
 
     # On rising edge of engagement (SET press enabling lat+long), auto-enable AOL
     # so that lateral persists when braking disengages longitudinal
-    if sm["selfdriveState"].active and not self.prev_active and self.always_on_lateral_set and starpilot_toggles.always_on_lateral_lkas:
+    if sm["selfdriveState"].active and not self.prev_active and self.always_on_lateral_set and starpilot_toggles.always_on_lateral_lkas and not aol_button_pressed:
       self.always_on_lateral_allowed = True
+
+    if self.CP.brand == "hyundai" and (sm["selfdriveState"].active or carState.cruiseState.enabled):
+      self.hyundai_aol_seen_engagement = True
+
+    if self.CP.brand == "hyundai" and not carState.cruiseState.available and not carState.cruiseState.enabled:
+      self.always_on_lateral_allowed = False
+      self.hyundai_aol_seen_engagement = False
 
     self.prev_active = sm["selfdriveState"].active
     self.prev_cruise_enabled = carState.cruiseState.enabled
 
     self.always_on_lateral_enabled = self.always_on_lateral_allowed and self.always_on_lateral_set
+    if self.CP.brand == "hyundai":
+      self.always_on_lateral_enabled &= self.hyundai_aol_seen_engagement
+      self.always_on_lateral_enabled &= carState.cruiseState.available or carState.cruiseState.enabled or sm["selfdriveState"].active
     self.always_on_lateral_enabled &= carState.gearShifter not in NON_DRIVING_GEARS
     self.always_on_lateral_enabled &= sm["starpilotPlan"].lateralCheck
     self.always_on_lateral_enabled &= sm["liveCalibration"].calPerc >= 1

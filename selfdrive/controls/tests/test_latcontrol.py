@@ -239,11 +239,20 @@ class TestLatControl:
 
   def test_sonata_hybrid_ff_scale_curve(self):
     assert get_sonata_hybrid_ff_scale(0.0, 0.0, 20.0) == 1.0
-    assert get_sonata_hybrid_ff_scale(0.6, 0.0, 20.0) > get_sonata_hybrid_ff_scale(-0.6, 0.0, 20.0)
+    steady_left = get_sonata_hybrid_ff_scale(0.45, 0.0, 20.0)
+    steady_right = get_sonata_hybrid_ff_scale(-0.45, 0.0, 20.0)
+    turn_in_left = get_sonata_hybrid_ff_scale(0.45, 0.7, 6.0)
+    turn_in_right = get_sonata_hybrid_ff_scale(-0.45, -0.7, 6.0)
+    unwind_left = get_sonata_hybrid_ff_scale(0.45, -0.7, 6.0)
+    unwind_right = get_sonata_hybrid_ff_scale(-0.45, 0.7, 6.0)
+    assert steady_left < 1.0
+    assert steady_right < steady_left
     assert get_sonata_hybrid_ff_scale(0.30, 0.0, 20.0) < 1.0
     assert get_sonata_hybrid_ff_scale(0.30, 0.0, 20.0) < get_sonata_hybrid_ff_scale(0.10, 0.0, 20.0)
-    assert get_sonata_hybrid_ff_scale(0.4, 0.7, 6.0) > get_sonata_hybrid_ff_scale(0.4, 0.0, 6.0)
-    assert get_sonata_hybrid_ff_scale(-0.4, 0.7, 6.0) < get_sonata_hybrid_ff_scale(-0.4, 0.0, 6.0)
+    assert turn_in_left > steady_left
+    assert turn_in_right > steady_right
+    assert unwind_left < steady_left
+    assert unwind_right < steady_right
 
   def test_sonata_hybrid_center_taper_curve(self):
     assert get_sonata_hybrid_center_taper_scale(0.0, 30.0) < get_sonata_hybrid_center_taper_scale(0.0, 15.0)

@@ -4,10 +4,14 @@
 #include <QPainter>
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <string>
 
 #include "common/params.h"
 #include "common/swaglog.h"
 #include "selfdrive/ui/qt/util.h"
+
+constexpr int CAMERA_VIEW_NONE = 4;
 
 // Window that shows camera view and variety of info drawn on top
 AnnotatedCameraWidget::AnnotatedCameraWidget(VisionStreamType type, QWidget *parent)
@@ -139,9 +143,22 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
   const double start_draw_t = millis_since_boot();
 
   QPainter painter(this);
+  static Params params;
+  const std::string camera_view_param = params.get("CameraView");
+  int camera_view = starpilot_toggles.value("camera_view").toInt();
+  if (!camera_view_param.empty()) {
+    try {
+      camera_view = std::stoi(camera_view_param);
+    } catch (const std::exception &) {
+      LOGW("invalid CameraView param: %s", camera_view_param.c_str());
+    }
+  }
+  const bool camera_view_none = camera_view == CAMERA_VIEW_NONE;
 
   // draw camera frame
-  {
+  if (camera_view_none) {
+    painter.fillRect(rect(), Qt::black);
+  } else {
     std::lock_guard lk(frame_lock);
 
     if (frames.empty()) {
@@ -166,9 +183,8 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
       } else if (v_ego > 15) {
         wide_cam_requested = false;
       }
-      wide_cam_requested = wide_cam_requested && sm["selfdriveState"].getSelfdriveState().getExperimentalMode() && starpilot_toggles.value("camera_view").toInt() == 0;
+      wide_cam_requested = wide_cam_requested && sm["selfdriveState"].getSelfdriveState().getExperimentalMode() && camera_view == 0;
     }
-    int camera_view = starpilot_toggles.value("camera_view").toInt();
     CameraWidget::setStreamType(camera_view == 1 ? VISION_STREAM_DRIVER :
                                 ((camera_view == 3 && has_wide_cam) || wide_cam_requested) ? VISION_STREAM_WIDE_ROAD :
                                 VISION_STREAM_ROAD);
@@ -194,12 +210,14 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
   hud.starpilot_toggles = starpilot_toggles;
   model.starpilot_toggles = starpilot_toggles;
 
-  model.draw(painter, rect());
+  if (!camera_view_none) {
+    model.draw(painter, rect());
+  }
   dmon.draw(painter, rect());
   hud.updateState(*s);
   hud.draw(painter, rect());
 
-  starpilot_nvg->paintStarPilotWidgets(painter, *s);
+  starpilot_nvg->paintStarPilotWidgets(painter, *s, camera_view_none);
 
   double cur_draw_t = millis_since_boot();
   double dt = cur_draw_t - prev_draw_t;

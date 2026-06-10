@@ -40,6 +40,7 @@ CAMERA_VIEW_AUTO = 0
 CAMERA_VIEW_DRIVER = 1
 CAMERA_VIEW_STANDARD = 2
 CAMERA_VIEW_WIDE = 3
+CAMERA_VIEW_NONE = 4
 
 
 class BookmarkState(IntEnum):
@@ -420,7 +421,9 @@ class AugmentedRoadView(CameraView):
 
   def _render(self, _):
     start_draw = time.monotonic()
-    self._switch_stream_if_needed(ui_state.sm)
+    camera_view = self._camera_view()
+    camera_view_none = camera_view == CAMERA_VIEW_NONE
+    self._switch_stream_if_needed(ui_state.sm, camera_view)
 
     # Update calibration before rendering
     self._update_calibration()
@@ -443,7 +446,10 @@ class AugmentedRoadView(CameraView):
     )
 
     # Render the base camera view
-    super()._render(self._content_rect)
+    if camera_view_none:
+      rl.draw_rectangle_rec(self._content_rect, rl.BLACK)
+    else:
+      super()._render(self._content_rect)
 
     waiting_for_controls = ui_state.started and not self._controls_ready()
     if waiting_for_controls:
@@ -462,39 +468,41 @@ class AugmentedRoadView(CameraView):
 
     in_reverse = self._is_in_reverse()
     is_driver_stream = self.stream_type == DRIVER_CAM
+    draw_road_overlays = not in_reverse and not is_driver_stream and not camera_view_none
+    draw_hud_controls = camera_view_none or (not in_reverse and not is_driver_stream)
     self._hud_renderer.prepare(self._content_rect)
 
     # Draw all UI overlays
-    if not in_reverse and not is_driver_stream:
+    if draw_road_overlays:
       self._model_renderer.render(self._content_rect)
 
     # Fade out bottom of overlays for looks
     rl.draw_texture_ex(self._fade_texture, rl.Vector2(self._content_rect.x, self._content_rect.y), 0.0, 1.0, rl.WHITE)
-    if not in_reverse and not is_driver_stream:
+    if draw_hud_controls:
       self._hud_renderer.render_background()
 
     alert_to_render, not_animating_out = self._alert_renderer.will_render()
 
     should_draw_dmoji = ui_state.is_onroad() and (
-      is_driver_stream or ((not in_reverse) and (not self._hud_renderer.drawing_top_icons()))
+      is_driver_stream or camera_view_none or ((not in_reverse) and (not self._hud_renderer.drawing_top_icons()))
     )
     self._driver_state_renderer.set_should_draw(should_draw_dmoji)
     self._driver_state_renderer.set_position(self._rect.x + 16, self._rect.y + 10)
-    if is_driver_stream or not in_reverse:
+    if camera_view_none or is_driver_stream or not in_reverse:
       self._driver_state_renderer.render()
 
-    self._hud_renderer.set_can_draw_top_icons((not in_reverse) and (not is_driver_stream) and (alert_to_render is None))
-    self._hud_renderer.set_wheel_critical_icon((not in_reverse) and (not is_driver_stream) and alert_to_render is not None and not not_animating_out and
+    self._hud_renderer.set_can_draw_top_icons(draw_hud_controls and (alert_to_render is None))
+    self._hud_renderer.set_wheel_critical_icon(draw_hud_controls and alert_to_render is not None and not not_animating_out and
                                                alert_to_render.visual_alert == car.CarControl.HUDControl.VisualAlert.steerRequired)
     # TODO: have alert renderer draw offroad mici label below
     if ui_state.started:
       self._alert_renderer.render(self._content_rect)
-    if not in_reverse and not is_driver_stream:
+    if draw_hud_controls:
       self._hud_renderer.render_foreground()
     rendered_standstill_timer = False
-    if not in_reverse and not is_driver_stream:
+    if draw_hud_controls:
       rendered_standstill_timer = self._standstill_timer.render(self._content_rect, in_reverse)
-    if not in_reverse and not is_driver_stream and not rendered_standstill_timer:
+    if draw_hud_controls and not rendered_standstill_timer:
       self._min_steer_speed_banner.render(self._content_rect)
 
     # End clipping region
@@ -502,9 +510,9 @@ class AugmentedRoadView(CameraView):
 
     # Custom UI extension point - add custom overlays here
     # Use self._content_rect for positioning within camera bounds
-    if not in_reverse and not is_driver_stream:
+    if draw_road_overlays:
       self._confidence_ball.render(self.rect)
-    if is_driver_stream or not in_reverse:
+    if camera_view_none or is_driver_stream or not in_reverse:
       self._draw_border()
 
     self._bookmark_icon.render(self.rect)
@@ -555,16 +563,24 @@ class AugmentedRoadView(CameraView):
   def is_in_reverse(self) -> bool:
     return self._is_in_reverse()
 
-  def _switch_stream_if_needed(self, sm):
+  @staticmethod
+  def _camera_view() -> int:
+    camera_view = ui_state.params.get_int("CameraView", return_default=True, default=CAMERA_VIEW_WIDE)
+    if camera_view not in (CAMERA_VIEW_AUTO, CAMERA_VIEW_DRIVER, CAMERA_VIEW_STANDARD, CAMERA_VIEW_WIDE, CAMERA_VIEW_NONE):
+      return CAMERA_VIEW_WIDE
+    return camera_view
+
+  def _switch_stream_if_needed(self, sm, camera_view: int):
+    if camera_view == CAMERA_VIEW_NONE:
+      self._reverse_driver_camera_frames = 0
+      self._reverse_driver_camera_active = False
+      return
+
     if self._update_reverse_driver_camera_state():
       target = DRIVER_CAM
       if self.stream_type != target:
         self.switch_stream(target)
       return
-
-    camera_view = ui_state.params.get_int("CameraView", return_default=True, default=CAMERA_VIEW_WIDE)
-    if camera_view not in (CAMERA_VIEW_AUTO, CAMERA_VIEW_DRIVER, CAMERA_VIEW_STANDARD, CAMERA_VIEW_WIDE):
-      camera_view = CAMERA_VIEW_WIDE
 
     if camera_view == CAMERA_VIEW_DRIVER:
       target = DRIVER_CAM

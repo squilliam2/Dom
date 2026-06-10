@@ -15,7 +15,6 @@ import pyray as rl
 from openpilot.system.hardware import HARDWARE
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr, tr_noop
-from openpilot.system.ui.lib.scroll_panel2 import GuiScrollPanel2
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import DialogResult, Widget
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
@@ -29,16 +28,13 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.scribble import draw_cust
 from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   AETHER_LIST_METRICS,
   AetherAdjustorRow,
-  AetherInteractiveMixin,
-  AetherScrollbar,
   AetherSegmentedControl,
   AetherListColors,
+  DEFAULT_PANEL_STYLE,
+  PanelManagerView,
   TileGrid,
   ToggleTile,
-  DEFAULT_PANEL_STYLE,
-  init_list_panel,
   draw_list_group_shell,
-  draw_list_scroll_fades,
   draw_section_header,
   draw_selection_list_row,
   draw_settings_panel_header,
@@ -103,25 +99,20 @@ SYSTEM_PANEL_METRICS = replace(
 )
 
 
-class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
+class SystemSettingsManagerView(PanelManagerView):
   HEADER_SUBTITLE_HEIGHT = 24
   HEADER_SUMMARY_GAP = 6
   HEADER_CARD_HEIGHT = 140
   TAB_HEIGHT = 68
   TAB_GAP = 10
   TAB_BOTTOM_GAP = 18
-  COLUMN_GAP = 22
-  TWO_COLUMN_BREAKPOINT = 1180
   ACTION_PILL_WIDTH = 132
   DANGER_PILL_WIDTH = 112
+  METRICS = SYSTEM_PANEL_METRICS
 
   def __init__(self, controller: StarPilotSystemLayout):
     super().__init__()
     self._controller = controller
-    self._scroll_panel = GuiScrollPanel2(horizontal=False)
-    self._scrollbar = AetherScrollbar()
-    self._content_height = 0.0
-    self._scroll_offset = 0.0
     self._adjustor_rows: dict[str, AetherAdjustorRow] = {}
     self._display_slider_keys = ["ScreenBrightness", "ScreenBrightnessOnroad", "ScreenTimeout", "ScreenTimeoutOnroad"]
     self._power_slider_keys = ["DeviceShutdown", "LowVoltageShutdown"]
@@ -152,13 +143,13 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
         "subtitle": tr("Screen brightness while driving."),
         "unit": "%",
         "labels": brightness_labels,
-        "min": 1,
+        "min": 0,
         "max": 101,
         "step": 1,
         "live": True,
-        "presets": [1, 35, 60, 80, 101],
-        "get": lambda: float(max(1, self._controller._params.get_int("ScreenBrightnessOnroad"))),
-        "set": lambda v: self._controller._set_brightness("ScreenBrightnessOnroad", max(1, int(v))),
+        "presets": [0, 35, 60, 80, 101],
+        "get": lambda: float(self._controller._params.get_int("ScreenBrightnessOnroad")),
+        "set": lambda v: self._controller._set_brightness("ScreenBrightnessOnroad", int(v)),
       },
       "ScreenTimeout": {
         "title": tr("Offroad Screen Timeout"),
@@ -319,6 +310,8 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
       self._connectivity_tile_grid.add_tile(tile)
     self._connectivity_tile_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
     self._child(self._connectivity_tile_grid)
+    self._page_grid = self._connectivity_tile_grid
+    self._set_toggle_pages([self._toggle_defs[i:i+4] for i in range(0, len(self._toggle_defs), 4)])
 
     self._drive_mode_control = self._child(
       AetherSegmentedControl(
@@ -329,22 +322,6 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
         style=PANEL_STYLE,
       )
     )
-
-    self._scroll_rect = rl.Rectangle(0, 0, 0, 0)
-
-  def _section_height(self, count: int, row_height: float) -> float:
-    return 0.0 if count <= 0 else count * row_height
-
-  def _stacked_section_height(self, sections: list[float]) -> float:
-    if not sections:
-      return 0.0
-    return sum(sections) + SECTION_GAP * (len(sections) - 1)
-
-  def _uses_two_columns(self, width: float) -> bool:
-    return width >= self.TWO_COLUMN_BREAKPOINT
-
-  def _column_width(self, width: float) -> float:
-    return (width - self.COLUMN_GAP) / 2 if self._uses_two_columns(width) else width
 
   def _tab_subtitle(self, tab_id: str) -> str:
     if tab_id == "basics":
@@ -456,29 +433,8 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
     if target_id == "static:first_aid":
       gui_app.push_widget(AetherBackupsCareDialog(self._controller))
 
-
-  def _render(self, rect: rl.Rectangle):
-    self._interactive_rects.clear()
-    self.set_rect(rect)
-
-    frame, scroll_rect, content_width = init_list_panel(rect, PANEL_STYLE, metrics=SYSTEM_PANEL_METRICS)
-    self._scroll_rect = scroll_rect
-
+  def _on_frame_created(self, frame) -> None:
     self._drive_mode_control.set_parent_rect(frame.header)
-
-    self._draw_header(frame.header)
-    self._content_height = self._measure_content_height(content_width)
-    self._scroll_panel.set_enabled(self.is_visible)
-    self._scroll_offset = self._scroll_panel.update(scroll_rect, max(self._content_height, scroll_rect.height))
-
-    rl.begin_scissor_mode(int(scroll_rect.x), int(scroll_rect.y), int(scroll_rect.width), int(scroll_rect.height))
-    self._draw_scroll_content(scroll_rect, content_width)
-    rl.end_scissor_mode()
-
-    if self._content_height > scroll_rect.height:
-      self._scrollbar.render(scroll_rect, self._content_height, self._scroll_offset)
-
-    draw_list_scroll_fades(scroll_rect, self._content_height, self._scroll_offset, AetherListColors.PANEL_BG, fade_height=FADE_HEIGHT)
 
   def _draw_header(self, rect: rl.Rectangle):
     draw_settings_panel_header(rect, tr("System Settings"),
@@ -562,9 +518,6 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
     else:
       return self._stacked_section_height([display_h, power_h, tiles_content_h + 24])
 
-  def _section_block_height(self, content_height: float) -> float:
-    return SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP + content_height
-
   def _slider_section_height(self, keys: list[str], width: float) -> float:
     total = 0.0
     for key in keys:
@@ -603,8 +556,7 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
 
   def _draw_connectivity_tiles_column(self, y: float, x: float, width: float, height: float):
     draw_list_group_shell(rl.Rectangle(x, y, width, height), style=PANEL_STYLE)
-    self._connectivity_tile_grid.set_parent_rect(self._scroll_rect)
-    self._connectivity_tile_grid.render(rl.Rectangle(x + 12, y + 12, width - 24, height - 24))
+    self._render_page_grid(self._connectivity_tile_grid, rl.Rectangle(x + 12, y + 12, width - 24, height - 24))
 
   def _draw_connectivity_tiles_section(self, y: float, x: float, width: float):
     tile_rows = self._connectivity_tile_grid.get_row_count(len(self._connectivity_tile_grid.tiles), available_width=width)
@@ -612,8 +564,7 @@ class SystemSettingsManagerView(AetherInteractiveMixin, Widget):
     tiles_content_h = tile_rows * 130 + tile_gaps
 
     draw_list_group_shell(rl.Rectangle(x, y, width, tiles_content_h + 24), style=PANEL_STYLE)
-    self._connectivity_tile_grid.set_parent_rect(self._scroll_rect)
-    self._connectivity_tile_grid.render(rl.Rectangle(x + 12, y + 12, width - 24, tiles_content_h))
+    self._render_page_grid(self._connectivity_tile_grid, rl.Rectangle(x + 12, y + 12, width - 24, tiles_content_h))
 
   def _draw_slider_section(self, y: float, x: float, width: float, title: str, keys: list[str]) -> float:
     draw_section_header(rl.Rectangle(x, y, width, SECTION_HEADER_HEIGHT), title, style=PANEL_STYLE)
@@ -968,8 +919,10 @@ class StarPilotSystemLayout(_SettingsPage):
 
   def _set_brightness(self, key, val):
     self._params.put_int(key, int(val))
+    if key == "ScreenBrightnessOnroad" and not ui_state.started:
+      return
     if key in ("ScreenBrightnessOnroad", "ScreenBrightness") and hasattr(HARDWARE, 'set_brightness'):
-        HARDWARE.set_brightness(int(val))
+      HARDWARE.set_brightness(int(val))
 
   def _get_konik_state(self):
     if Path("/data/not_vetted").exists():

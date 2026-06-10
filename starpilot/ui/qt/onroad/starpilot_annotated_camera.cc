@@ -297,7 +297,7 @@ void StarPilotAnnotatedCameraWidget::mousePressEvent(QMouseEvent *mouseEvent) {
   mouseEvent->ignore();
 }
 
-void StarPilotAnnotatedCameraWidget::paintStarPilotWidgets(QPainter &p, UIState &s) {
+void StarPilotAnnotatedCameraWidget::paintStarPilotWidgets(QPainter &p, UIState &s, bool hideCameraOverlays) {
   if (cachedSimpleMode) {
     cemStatusPosition = QPoint(0, 0);
     compassPosition = QPoint(0, 0);
@@ -345,7 +345,7 @@ void StarPilotAnnotatedCameraWidget::paintStarPilotWidgets(QPainter &p, UIState 
     paintPedalIcons(p);
   }
 
-  if (cachedRadarTracks) {
+  if (!hideCameraOverlays && cachedRadarTracks) {
     paintRadarTracks(p);
   }
 
@@ -368,7 +368,7 @@ void StarPilotAnnotatedCameraWidget::paintStarPilotWidgets(QPainter &p, UIState 
     paintStandstillTimer(p);
   }
 
-  if (track_vertices.length() >= 1 && redLight && cachedShowStoppingPoint) {
+  if (!hideCameraOverlays && track_vertices.length() >= 1 && redLight && cachedShowStoppingPoint) {
     paintStoppingPoint(p);
   }
 

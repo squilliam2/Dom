@@ -135,7 +135,7 @@ StarPilotVisualsPanel::StarPilotVisualsPanel(StarPilotSettingsWindow *parent, bo
       });
       visualToggle = qolToggle;
     } else if (param == "CameraView") {
-      std::vector<QString> cameraOptions{tr("Auto"), tr("Driver"), tr("Standard"), tr("Wide")};
+      std::vector<QString> cameraOptions{tr("Auto"), tr("Driver"), tr("Standard"), tr("Wide"), tr("None")};
       ButtonParamControl *cameraSelection = new ButtonParamControl(param, title, desc, icon, cameraOptions);
       visualToggle = cameraSelection;
 

@@ -2,6 +2,7 @@ import pytest
 from types import SimpleNamespace
 from parameterized import parameterized
 
+from cereal import custom
 from opendbc.can import CANPacker, CANParser
 from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.car_helpers import interfaces
@@ -244,6 +245,24 @@ class TestGMInterface:
     assert sascm_params.openpilotLongitudinalControl
     assert not sascm_params.pcmCruise
     assert sascm_params.safetyConfigs[0].safetyParam & GMSafetyFlags.HW_CAM_LONG.value
+
+  def test_cadillac_xt4_uses_nonlinear_torque_curve_with_center_boost(self):
+    CarInterface = interfaces[CAR.CADILLAC_XT4]
+    car_params = CarInterface.get_non_essential_params(CAR.CADILLAC_XT4)
+    ci = CarInterface(car_params, custom.StarPilotCarParams.new_message())
+    torque_from_lataccel = ci.torque_from_lateral_accel()
+
+    low_lataccel = 0.2
+    high_lataccel = 1.0
+    low_torque = torque_from_lataccel(low_lataccel, car_params.lateralTuning.torque)
+    high_torque = torque_from_lataccel(high_lataccel, car_params.lateralTuning.torque)
+
+    linear_low_torque = low_lataccel / car_params.lateralTuning.torque.latAccelFactor
+    linear_high_torque = high_lataccel / car_params.lateralTuning.torque.latAccelFactor
+
+    assert low_torque > linear_low_torque * 1.35
+    assert high_torque == pytest.approx(linear_high_torque, rel=0.02)
+    assert torque_from_lataccel(-low_lataccel, car_params.lateralTuning.torque) == pytest.approx(-low_torque, rel=1e-6)
 
 
 class TestGMCarController:

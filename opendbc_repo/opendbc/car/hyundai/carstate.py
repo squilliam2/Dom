@@ -76,6 +76,7 @@ class CarState(CarStateBase):
     self.main_buttons: deque = deque([Buttons.NONE] * PREV_BUTTON_SAMPLES, maxlen=PREV_BUTTON_SAMPLES)
     self.lda_button = 0
     self.lda_button_raw = 0
+    self.lda_button_raw_initialized = False
     self.lda_button_last_raw_rise_ts_nanos = 0
     self.left_paddle = 0
     self.mode_button = 0
@@ -174,14 +175,19 @@ class CarState(CarStateBase):
 
     return False
 
-  def create_alt_bus_lda_button_events(self, cp_source: CANParser) -> list[structs.CarState.ButtonEvent]:
+  def get_alt_bus_lda_button_raw_state(self, cp_source: CANParser) -> tuple[int, int]:
     if self.CP.carFingerprint in ALT_BUS_LDA_BUTTON_SWL_STAT_CARS:
-      raw_lda_button = int(cp_source.vl["CLU13"]["CF_Clu_SWL_Stat"] == 4)
-      raw_lda_button_ts_nanos = cp_source.ts_nanos["CLU13"]["CF_Clu_SWL_Stat"]
-    else:
-      raw_lda_button = int(cp_source.vl["CLU13"]["CF_Clu_LdwsLkasSW"])
-      raw_lda_button_ts_nanos = cp_source.ts_nanos["CLU13"]["CF_Clu_LdwsLkasSW"]
+      return int(cp_source.vl["CLU13"]["CF_Clu_SWL_Stat"] == 4), cp_source.ts_nanos["CLU13"]["CF_Clu_SWL_Stat"]
+    return int(cp_source.vl["CLU13"]["CF_Clu_LdwsLkasSW"]), cp_source.ts_nanos["CLU13"]["CF_Clu_LdwsLkasSW"]
+
+  def create_alt_bus_lda_button_events(self, cp_source: CANParser) -> list[structs.CarState.ButtonEvent]:
+    raw_lda_button, raw_lda_button_ts_nanos = self.get_alt_bus_lda_button_raw_state(cp_source)
     button_events: list[structs.CarState.ButtonEvent] = []
+
+    if not self.lda_button_raw_initialized:
+      self.lda_button_raw_initialized = True
+      self.lda_button_raw = raw_lda_button
+      return button_events
 
     # Some alt-bus LKAS button layouts pulse several times per physical press burst.
     # Collapse each burst into a single synthetic press/release pair.
@@ -348,7 +354,7 @@ class CarState(CarStateBase):
     lkas_button_events = []
     self.cruise_buttons.extend(cp.vl_all["CLU11"]["CF_Clu_CruiseSwState"])
     self.main_buttons.extend(cp.vl_all["CLU11"]["CF_Clu_CruiseSwMain"])
-    if self.CP.carFingerprint in ALT_BUS_LDA_BUTTON_CARS and cp_alt is not None and cp_alt.ts_nanos["CLU13"]["CF_Clu_LdwsLkasSW"] > 0:
+    if self.CP.carFingerprint in ALT_BUS_LDA_BUTTON_CARS and cp_alt is not None and self.get_alt_bus_lda_button_raw_state(cp_alt)[1] > 0:
       lkas_button_events = self.create_alt_bus_lda_button_events(cp_alt)
     else:
       lkas_button_events = self.create_lkas_button_events(cp, prev_lda_button)

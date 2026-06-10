@@ -3543,6 +3543,8 @@ def setup(app):
   @app.route("/api/navigation", methods=["DELETE"])
   def clear_navigation():
     params.remove("NavDestination")
+    params_memory.remove("NavInstructionState")
+    params_memory.remove("NavInstructionCollapsed")
     return {"message": "Destination cleared"}
 
   @app.route("/api/navigation", methods=["GET"])

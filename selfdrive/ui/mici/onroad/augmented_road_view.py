@@ -565,15 +565,10 @@ class AugmentedRoadView(CameraView):
 
   @staticmethod
   def _camera_view() -> int:
-    camera_view = ui_state.params.get_int("CameraView", return_default=True, default=CAMERA_VIEW_AUTO)
+    camera_view = ui_state.params.get_int("CameraView", return_default=True, default=CAMERA_VIEW_WIDE)
     if camera_view not in (CAMERA_VIEW_AUTO, CAMERA_VIEW_DRIVER, CAMERA_VIEW_STANDARD, CAMERA_VIEW_WIDE, CAMERA_VIEW_NONE):
-      return CAMERA_VIEW_AUTO
+      return CAMERA_VIEW_WIDE
     return camera_view
-
-  @staticmethod
-  def _wide_preview_allowed() -> bool:
-    # User testing shows the C4 wide preview can render with bad chroma on the stock-long path.
-    return ui_state.params.get_bool("AlphaLongitudinalEnabled")
 
   def _switch_stream_if_needed(self, sm, camera_view: int):
     if camera_view == CAMERA_VIEW_NONE:
@@ -587,7 +582,7 @@ class AugmentedRoadView(CameraView):
         self.switch_stream(target)
       return
 
-    wide_available = WIDE_CAM in self.available_streams and self._wide_preview_allowed()
+    wide_available = WIDE_CAM in self.available_streams
     if camera_view == CAMERA_VIEW_DRIVER:
       target = DRIVER_CAM
     elif camera_view == CAMERA_VIEW_STANDARD:

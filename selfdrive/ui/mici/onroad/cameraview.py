@@ -51,9 +51,12 @@ FRAME_FRAGMENT_SHADER_EXTERNAL = """
 
   void main() {
     vec4 color = texture(texture0, fragTexCoord);
-    // Keep the onroad camera feed full-color in every driving state.
-    if (engaged == 1) {
-      color.rgb = color.rgb;
+    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    color.rgb = mix(vec3(gray), color.rgb, 0.2);
+    color.rgb = clamp((color.rgb - 0.5) * 1.2 + 0.5, 0.0, 1.0);
+    color.rgb = pow(color.rgb, vec3(1.0/1.28));
+    if (engaged != 1) {
+      color.rgb *= 0.85;
     }
     if (enhance_driver == 1) {
       float brightness = 1.1;
@@ -78,9 +81,11 @@ FRAME_FRAGMENT_SHADER_YUV = VERSION + """
     float y = texture(texture0, fragTexCoord).r;
     vec2 uv = texture(texture1, fragTexCoord).ra - 0.5;
     vec3 rgb = vec3(y + 1.402*uv.y, y - 0.344*uv.x - 0.714*uv.y, y + 1.772*uv.x);
-    // Keep the onroad camera feed full-color in every driving state.
-    if (engaged == 1) {
-      rgb = rgb;
+    float gray = dot(rgb, vec3(0.299, 0.587, 0.114));
+    rgb = mix(vec3(gray), rgb, 0.2);
+    rgb = clamp((rgb - 0.5) * 1.2 + 0.5, 0.0, 1.0);
+    if (engaged != 1) {
+      rgb *= 0.85;
     }
     // TODO: the images out of camerad need some more correction and
     // the ui should apply a gamma curve for the device display

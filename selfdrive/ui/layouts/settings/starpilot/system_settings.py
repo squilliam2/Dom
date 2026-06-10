@@ -468,39 +468,10 @@ class SystemSettingsManagerView(PanelManagerView):
     draw_custom_icon("first_aid", icon_x, icon_y, s, icon_color)
 
     content_width = rect.width - AETHER_LIST_METRICS.content_right_gutter
-    column_w = (content_width - self.COLUMN_GAP) / 2
     summary_y = rect.y + 92
 
-    # Left Column: Auto/Onroad/Offroad
-    control_rect = rl.Rectangle(rect.x, summary_y, column_w, 108)
+    control_rect = rl.Rectangle(rect.x, summary_y, content_width, 108)
     self._drive_mode_control.render(control_rect)
-
-    # Right Column: System Status Card
-    status_rect = rl.Rectangle(rect.x + column_w + self.COLUMN_GAP, summary_y, column_w, 108)
-    draw_soft_card(status_rect, rl.Color(255, 255, 255, 4), rl.Color(255, 255, 255, 14))
-
-    header_y = status_rect.y + 12
-    gui_label(rl.Rectangle(status_rect.x + 20, header_y, status_rect.width - 40, 20),
-              tr("System Status"), 16, AetherListColors.MUTED, FontWeight.SEMI_BOLD)
-
-    metric_rows = [
-      (tr("Storage"), self._controller.storage_summary()),
-      (tr("System Backups"), self._controller.backup_count_text()),
-      (tr("Toggle Snapshots"), self._controller.toggle_backup_count_text()),
-    ]
-    metric_row_h = 16
-    metric_row_gap = 4
-    metric_start_y = status_rect.y + 40
-
-    label_font = gui_app.font(FontWeight.MEDIUM)
-    label_w = 180.0
-    for i, (label, value) in enumerate(metric_rows):
-      row_y = metric_start_y + i * (metric_row_h + metric_row_gap)
-      gui_label(rl.Rectangle(status_rect.x + 20, row_y, label_w, metric_row_h + 2),
-                label, 16, AetherListColors.MUTED, FontWeight.MEDIUM)
-      value_x = status_rect.x + 20 + label_w
-      gui_label(rl.Rectangle(value_x, row_y, status_rect.x + status_rect.width - 20 - value_x, metric_row_h + 2),
-                value, 16, AetherListColors.HEADER, FontWeight.MEDIUM)
 
   def _measure_content_height(self, width: float) -> float:
     display_h = self._section_block_height(self._slider_section_height(self._display_slider_keys, width))
@@ -660,10 +631,16 @@ class AetherBackupsCareDialog(Widget):
   def _render(self, rect: rl.Rectangle):
     rl.draw_rectangle(0, 0, gui_app.width, gui_app.height, rl.Color(0, 0, 0, 160))
 
-    dialog_w = 880
-    dialog_h = 600
+    dialog_w = 960
+    dialog_h = 660
     dx = rect.x + (rect.width - dialog_w) / 2
     dy = rect.y + (rect.height - dialog_h) / 2
+
+    MARGIN = 40
+    COL_GAP = 24
+    content_w = dialog_w - MARGIN * 2
+    btn_pad = 12.0
+    col_w = (content_w - btn_pad * 2 - COL_GAP) / 2
 
     d_rect = _snap_rect(rl.Rectangle(dx, dy, dialog_w, dialog_h))
     _draw_rounded_fill(d_rect, rl.Color(10, 12, 16, 255), radius_px=24)
@@ -673,18 +650,48 @@ class AetherBackupsCareDialog(Widget):
     title_text = tr("Maintenance")
     title_size = 32
     ts = measure_text_cached(self._font_title, title_text, title_size)
-    rl.draw_text_ex(self._font_title, title_text, rl.Vector2(round(dx + (dialog_w - ts.x) / 2), round(dy + 32)), title_size, 0, rl.WHITE)
+    rl.draw_text_ex(self._font_title, title_text, rl.Vector2(round(dx + (dialog_w - ts.x) / 2), round(dy + (84 - title_size) / 2)), title_size, 0, rl.WHITE)
+
+    status_rect = _snap_rect(rl.Rectangle(dx + MARGIN, dy + 84, content_w, 90))
+    draw_list_group_shell(status_rect, style=PANEL_STYLE)
+
+    gui_label(rl.Rectangle(status_rect.x + 16, status_rect.y + 8, status_rect.width - 32, 18),
+              tr("System Status"), 14, AetherListColors.MUTED, FontWeight.SEMI_BOLD)
+
+    metric_rows = [
+      (tr("Storage"), self._controller.storage_summary()),
+      (tr("System Backups"), self._controller.backup_count_text()),
+      (tr("Toggle Snapshots"), self._controller.toggle_backup_count_text()),
+    ]
+    metric_label_w = 160.0
+    for i, (label, value) in enumerate(metric_rows):
+      row_y = status_rect.y + 32 + i * 16
+      gui_label(rl.Rectangle(status_rect.x + 16, row_y, metric_label_w, 16),
+                label, 14, AetherListColors.MUTED, FontWeight.MEDIUM)
+      gui_label(rl.Rectangle(status_rect.x + 16 + metric_label_w, row_y, status_rect.width - 32 - metric_label_w, 16),
+                value, 14, AetherListColors.HEADER, FontWeight.MEDIUM)
 
     mouse_pos = gui_app.last_mouse_event.pos
+
+    btn_fill = rl.Color(22, 24, 32, 255)
+    btn_border = rl.Color(255, 255, 255, 40)
+    btn_fill_hover = rl.Color(30, 32, 42, 255)
+    btn_fill_pressed = _mix_colors(self._color, rl.Color(0, 0, 0, 255), 0.15)
+    btn_radius = 14.0
+
+    btn_group_y = dy + 192
+    btn_group_h = 4 * 68 + 3 * 14 + btn_pad * 2
+    btn_group_rect = _snap_rect(rl.Rectangle(dx + MARGIN, btn_group_y, content_w, btn_group_h))
+    draw_list_group_shell(btn_group_rect, style=PANEL_STYLE)
 
     self._button_rects.clear()
     for i, btn in enumerate(self._buttons):
       btn_id = btn["id"]
       row = i % 4
       col = i // 4
-      bx = dx + 48 + col * (368 + 48)
-      by = dy + 104 + row * (68 + 16)
-      btn_rect = _snap_rect(rl.Rectangle(bx, by, 368, 68))
+      bx = btn_group_rect.x + btn_pad + col * (col_w + COL_GAP)
+      by = btn_group_rect.y + btn_pad + row * (68 + 14)
+      btn_rect = _snap_rect(rl.Rectangle(bx, by, col_w, 68))
       self._button_rects[btn_id] = btn_rect
 
       hovered = rl.check_collision_point_rec(mouse_pos, btn_rect)
@@ -703,18 +710,18 @@ class AetherBackupsCareDialog(Widget):
         text_color = PANEL_STYLE.danger_text
       else:
         if pressed:
-          fill = rl.Color(255, 255, 255, 30)
+          fill = btn_fill_pressed
           border = self._color
         elif hovered:
-          fill = rl.Color(255, 255, 255, 18)
+          fill = btn_fill_hover
           border = self._color
         else:
-          fill = rl.Color(255, 255, 255, 8)
-          border = rl.Color(255, 255, 255, 20)
+          fill = btn_fill
+          border = btn_border
         text_color = AetherListColors.HEADER
 
-      _draw_rounded_fill(btn_rect, fill, radius_px=14)
-      _draw_rounded_stroke(btn_rect, border, radius_px=14)
+      _draw_rounded_fill(btn_rect, fill, radius_px=btn_radius)
+      _draw_rounded_stroke(btn_rect, border, thickness=2, radius_px=btn_radius)
 
       font_size = 20
       _draw_text_fit_common(
@@ -728,7 +735,7 @@ class AetherBackupsCareDialog(Widget):
       )
 
     cx = dx + (dialog_w - 320) / 2
-    cy = dy + 464
+    cy = d_rect.y + d_rect.height - 36 - 72
     self._close_rect = _snap_rect(rl.Rectangle(cx, cy, 320, 72))
 
     close_hovered = rl.check_collision_point_rec(mouse_pos, self._close_rect)
@@ -744,8 +751,7 @@ class AetherBackupsCareDialog(Widget):
       close_fill = rl.Color(255, 255, 255, 14)
       close_border = rl.Color(255, 255, 255, 28)
 
-    _draw_rounded_fill(self._close_rect, close_fill, radius_px=16)
-    _draw_rounded_stroke(self._close_rect, close_border, radius_px=16)
+    draw_soft_card(self._close_rect, close_fill, close_border)
 
     close_text = tr("Close")
     close_size = 22

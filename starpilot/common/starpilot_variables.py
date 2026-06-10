@@ -337,6 +337,11 @@ def update_starpilot_toggles():
 
   update_starpilot_toggles._params_memory.put_bool("StarPilotTogglesUpdated", True)
 
+
+def set_speed_limit_available(openpilot_longitudinal: bool, has_cc_long: bool, pcm_cruise_speed: bool) -> bool:
+  return openpilot_longitudinal or has_cc_long or not pcm_cruise_speed
+
+
 def migrate_cancel_button_controls(params: Params | None = None) -> bool:
   params = params or Params(return_defaults=True)
   if params.get_bool(CANCEL_BUTTON_MIGRATION_KEY) or not params.get_bool("RemapCancelToDistance"):
@@ -1211,10 +1216,11 @@ class StarPilotVariables:
     toggle.toyota_auto_hold = self.get_value("ToyotaAutoHold", condition=toggle.car_make == "toyota")
 
     toggle.speed_limit_controller = toggle.openpilot_longitudinal and self.get_value("SpeedLimitController")
+    set_speed_limit_on_engage = set_speed_limit_available(toggle.openpilot_longitudinal, toggle.has_cc_long, FPCP.pcmCruiseSpeed)
     speed_limit_display = toggle.show_speed_limits or toggle.speed_limit_controller
     toggle.map_speed_lookahead_higher = self.get_value("SLCLookaheadHigher", cast=float, condition=speed_limit_display)
     toggle.map_speed_lookahead_lower = self.get_value("SLCLookaheadLower", cast=float, condition=speed_limit_display)
-    toggle.set_speed_limit = self.get_value("SetSpeedLimit", condition=toggle.speed_limit_controller)
+    toggle.set_speed_limit = self.get_value("SetSpeedLimit", condition=set_speed_limit_on_engage)
     toggle.show_speed_limit_offset = self.get_value("ShowSLCOffset", condition=toggle.speed_limit_controller) or toggle.debug_mode
     slc_fallback_method = self.get_value("SLCFallback", cast=float, condition=toggle.speed_limit_controller)
     toggle.slc_fallback_experimental_mode = slc_fallback_method == 1

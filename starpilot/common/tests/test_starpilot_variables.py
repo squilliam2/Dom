@@ -122,3 +122,19 @@ def test_aol_safe_defaults_migration_preserves_non_default_aol_setup():
   assert params.get_bool("AlwaysOnLateral") is True
   assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
   assert params.get_bool(spv.AOL_SAFE_DEFAULTS_MIGRATION_KEY) is True
+
+
+def test_set_speed_limit_available_on_openpilot_longitudinal():
+  assert spv.set_speed_limit_available(openpilot_longitudinal=True, has_cc_long=False, pcm_cruise_speed=True) is True
+
+
+def test_set_speed_limit_available_on_gm_helper_path():
+  assert spv.set_speed_limit_available(openpilot_longitudinal=False, has_cc_long=True, pcm_cruise_speed=True) is True
+
+
+def test_set_speed_limit_available_on_redneck_helper_path():
+  assert spv.set_speed_limit_available(openpilot_longitudinal=False, has_cc_long=False, pcm_cruise_speed=False) is True
+
+
+def test_set_speed_limit_unavailable_on_stock_pcm_without_helper():
+  assert spv.set_speed_limit_available(openpilot_longitudinal=False, has_cc_long=False, pcm_cruise_speed=True) is False

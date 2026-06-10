@@ -565,10 +565,15 @@ class AugmentedRoadView(CameraView):
 
   @staticmethod
   def _camera_view() -> int:
-    camera_view = ui_state.params.get_int("CameraView", return_default=True, default=CAMERA_VIEW_WIDE)
+    camera_view = ui_state.params.get_int("CameraView", return_default=True, default=CAMERA_VIEW_AUTO)
     if camera_view not in (CAMERA_VIEW_AUTO, CAMERA_VIEW_DRIVER, CAMERA_VIEW_STANDARD, CAMERA_VIEW_WIDE, CAMERA_VIEW_NONE):
-      return CAMERA_VIEW_WIDE
+      return CAMERA_VIEW_AUTO
     return camera_view
+
+  @staticmethod
+  def _wide_preview_allowed() -> bool:
+    # User testing shows the C4 wide preview can render with bad chroma on the stock-long path.
+    return ui_state.params.get_bool("AlphaLongitudinalEnabled")
 
   def _switch_stream_if_needed(self, sm, camera_view: int):
     if camera_view == CAMERA_VIEW_NONE:
@@ -582,13 +587,14 @@ class AugmentedRoadView(CameraView):
         self.switch_stream(target)
       return
 
+    wide_available = WIDE_CAM in self.available_streams and self._wide_preview_allowed()
     if camera_view == CAMERA_VIEW_DRIVER:
       target = DRIVER_CAM
     elif camera_view == CAMERA_VIEW_STANDARD:
       target = ROAD_CAM
     elif camera_view == CAMERA_VIEW_WIDE:
-      target = WIDE_CAM if WIDE_CAM in self.available_streams else ROAD_CAM
-    elif sm['selfdriveState'].experimentalMode and WIDE_CAM in self.available_streams:
+      target = WIDE_CAM if wide_available else ROAD_CAM
+    elif sm['selfdriveState'].experimentalMode and wide_available:
       v_ego = sm['carState'].vEgo
       if v_ego < WIDE_CAM_MAX_SPEED:
         target = WIDE_CAM
@@ -596,7 +602,7 @@ class AugmentedRoadView(CameraView):
         target = ROAD_CAM
       else:
         # Hysteresis zone - keep the current road camera selection.
-        target = WIDE_CAM if self.stream_type == WIDE_CAM else ROAD_CAM
+        target = WIDE_CAM if self.stream_type == WIDE_CAM and wide_available else ROAD_CAM
     else:
       target = ROAD_CAM
 

@@ -113,18 +113,16 @@ class StarPilotCard:
 
     # Hyundai CAN cars need a normal engagement before AOL can output steering,
     # but the LKAS/main button should still arm the driver's AOL intent.
-    can_toggle_aol = True
-
     aol_button_pressed = False
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
       for be in carState.buttonEvents:
-        if be.type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas and can_toggle_aol:
+        if be.type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
           aol_button_pressed = True
           self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           if carState.cruiseState.enabled or self.pause_lateral:
             self.pause_lateral = not self.always_on_lateral_allowed
         elif be.type == ButtonType.mainCruise and be.pressed:
-          if starpilot_toggles.main_cruise_aol_toggle and can_toggle_aol:
+          if starpilot_toggles.main_cruise_aol_toggle:
             aol_button_pressed = True
             self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           elif starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:

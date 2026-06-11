@@ -93,33 +93,43 @@ def test_cancel_button_migration_copies_distance_actions_once():
   assert params.get_int("CancelButtonControl") == 3
 
 
-def test_aol_safe_defaults_migration_disables_legacy_default_combo():
+def test_aol_safe_defaults_migration_sets_user_button_defaults_without_disabling_aol():
   params = _FakeParams(
-    ints={"MainCruiseButtonControl": spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]},
+    ints={
+      "LKASButtonControl": spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"],
+      "MainCruiseButtonControl": spv.BUTTON_FUNCTIONS["NOTHING"],
+    },
     bools={"AlwaysOnLateral": True},
   )
 
   assert spv.migrate_aol_safe_defaults(params) is True
-  assert params.get_bool("AlwaysOnLateral") is False
-  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
+  assert params.get_bool("AlwaysOnLateral") is True
+  assert params.get_int("LKASButtonControl") == spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]
+  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]
+  assert params.get_bool(spv.AOL_BUTTON_DEFAULTS_MIGRATION_KEY) is True
 
-  params.put_bool("AlwaysOnLateral", True)
-  params.put_int("MainCruiseButtonControl", spv.BUTTON_FUNCTIONS["AOL_TOGGLE"])
+  params.put_int("LKASButtonControl", spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"])
+  params.put_int("MainCruiseButtonControl", spv.BUTTON_FUNCTIONS["NOTHING"])
 
-  assert spv.migrate_aol_safe_defaults(params) is True
-  assert params.get_bool("AlwaysOnLateral") is False
+  assert spv.migrate_aol_safe_defaults(params) is False
+  assert params.get_int("LKASButtonControl") == spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
   assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
 
 
 def test_aol_safe_defaults_migration_preserves_non_default_aol_setup():
   params = _FakeParams(
-    ints={"MainCruiseButtonControl": spv.BUTTON_FUNCTIONS["NOTHING"]},
+    ints={
+      "LKASButtonControl": spv.BUTTON_FUNCTIONS["BOOKMARK"],
+      "MainCruiseButtonControl": spv.BUTTON_FUNCTIONS["SLC_ADOPT"],
+    },
     bools={"AlwaysOnLateral": True},
   )
 
   assert spv.migrate_aol_safe_defaults(params) is False
   assert params.get_bool("AlwaysOnLateral") is True
-  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
+  assert params.get_int("LKASButtonControl") == spv.BUTTON_FUNCTIONS["BOOKMARK"]
+  assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["SLC_ADOPT"]
+  assert params.get_bool(spv.AOL_BUTTON_DEFAULTS_MIGRATION_KEY) is True
 
 
 def test_set_speed_limit_available_on_openpilot_longitudinal():

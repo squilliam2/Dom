@@ -108,8 +108,6 @@ class StarPilotCard:
         self.always_on_lateral_allowed = False
       elif carState.cruiseState.enabled:
         self.hyundai_aol_ready = True
-      elif not carState.cruiseState.available:
-        self.hyundai_aol_ready = False
 
     # Hyundai CAN cars need a normal engagement before AOL can output steering,
     # but the LKAS/main button should still arm the driver's AOL intent.

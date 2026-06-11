@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from opendbc.car.chrysler.values import pacifica_hybrid_aol_requires_set_press
-from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR, HyundaiFlags
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from openpilot.common.params import Params
 from openpilot.selfdrive.car.cruise import CRUISE_LONG_PRESS, ButtonType
@@ -26,7 +26,12 @@ class StarPilotCard:
 
     self.accel_pressed = False
     self.always_on_lateral_allowed = False
-    self.hyundai_aol_needs_engagement = self.CP.brand == "hyundai" and not (getattr(self.CP, "flags", 0) & HyundaiFlags.CANFD)
+    hyundai_flags = getattr(self.CP, "flags", 0)
+    kia_forte_non_scc = (
+      getattr(self.CP, "carFingerprint", None) in (HYUNDAI_CAR.KIA_FORTE_2019_NON_SCC, HYUNDAI_CAR.KIA_FORTE_2021_NON_SCC) and
+      bool(hyundai_flags & HyundaiFlags.NON_SCC)
+    )
+    self.hyundai_aol_needs_engagement = self.CP.brand == "hyundai" and not (hyundai_flags & HyundaiFlags.CANFD) and not kia_forte_non_scc
     self.hyundai_aol_ready = False
     self.prev_active = False
     self.prev_cruise_enabled = False

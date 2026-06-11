@@ -157,6 +157,31 @@ def test_hyundai_canfd_lkas_button_can_toggle_aol_before_engagement(monkeypatch,
   assert ret.alwaysOnLateralEnabled is True
 
 
+def test_kia_forte_non_scc_main_cruise_button_can_toggle_aol_before_engagement(monkeypatch, tmp_path):
+  monkeypatch.setattr(spc, "Params", FakeParams)
+  monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
+  monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
+
+  card = spc.StarPilotCard(
+    SimpleNamespace(
+      brand="hyundai",
+      carFingerprint=spc.HYUNDAI_CAR.KIA_FORTE_2021_NON_SCC,
+      flags=spc.HyundaiFlags.NON_SCC,
+    ),
+    SimpleNamespace(alternativeExperience=spc.ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL),
+  )
+
+  car_state = make_car_state(available=True, button_events=[SimpleNamespace(type=spc.ButtonType.mainCruise, pressed=True)])
+  starpilot_car_state = SimpleNamespace(distancePressed=False)
+  sm = make_sm()
+  toggles = make_toggles(always_on_lateral=True, main_cruise_aol_toggle=True)
+
+  ret = card.update(car_state, starpilot_car_state, sm, toggles)
+
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is True
+
+
 def test_hyundai_main_cruise_button_toggles_aol_when_assigned_to_aol(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)

@@ -103,13 +103,17 @@ class StarPilotCard:
     self.switchback_mode_enabled = self.params_memory.get_bool("SwitchbackModeEnabled")
 
     if self.hyundai_aol_needs_engagement:
-      if carState.gearShifter in NON_DRIVING_GEARS or not carState.cruiseState.available:
+      if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
         self.always_on_lateral_allowed = False
       elif carState.cruiseState.enabled:
         self.hyundai_aol_ready = True
+      elif not carState.cruiseState.available:
+        self.hyundai_aol_ready = False
 
-    can_toggle_aol = not self.hyundai_aol_needs_engagement or self.hyundai_aol_ready
+    # Hyundai CAN cars need a normal engagement before AOL can output steering,
+    # but the LKAS/main button should still arm the driver's AOL intent.
+    can_toggle_aol = True
 
     aol_button_pressed = False
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
@@ -136,13 +140,14 @@ class StarPilotCard:
       else:
         self.always_on_lateral_allowed = carState.cruiseState.available
 
-    # On rising edge of engagement (SET press enabling lat+long), auto-enable AOL
-    # so that lateral persists when braking disengages longitudinal
+    # On rising edge of engagement, non-Hyundai platforms can auto-arm AOL.
+    # Hyundai CAN only marks AOL ready here; button intent stays explicit.
     engaged_for_aol = sm["selfdriveState"].active and (not self.hyundai_aol_needs_engagement or carState.cruiseState.enabled)
     if engaged_for_aol and not self.prev_active and self.always_on_lateral_set and starpilot_toggles.always_on_lateral_lkas and not aol_button_pressed:
       if self.hyundai_aol_needs_engagement:
         self.hyundai_aol_ready = True
-      self.always_on_lateral_allowed = True
+      else:
+        self.always_on_lateral_allowed = True
 
     self.prev_active = sm["selfdriveState"].active
     self.prev_cruise_enabled = carState.cruiseState.enabled

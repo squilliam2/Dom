@@ -147,7 +147,6 @@ CANCEL_BUTTON_MAPPINGS = (
 )
 
 AOL_LKAS_MIGRATION_KEY = "AOLLKASMigratedToButtonControl"
-AOL_SAFE_DEFAULTS_MIGRATION_KEY = "AOLSafeDefaultsMigrated"
 
 DEVELOPER_SIDEBAR_METRICS = {
   "NONE": 0,
@@ -356,17 +355,11 @@ def migrate_cancel_button_controls(params: Params | None = None) -> bool:
 
 def migrate_aol_safe_defaults(params: Params | None = None) -> bool:
   params = params or Params(return_defaults=True)
-  if params.get_bool(AOL_SAFE_DEFAULTS_MIGRATION_KEY):
-    return False
-
-  migrated = False
   if params.get_bool("AlwaysOnLateral") and params.get_int("MainCruiseButtonControl") == BUTTON_FUNCTIONS["AOL_TOGGLE"]:
     params.put_bool("AlwaysOnLateral", False)
     params.put_int("MainCruiseButtonControl", BUTTON_FUNCTIONS["NOTHING"])
-    migrated = True
-
-  params.put_bool(AOL_SAFE_DEFAULTS_MIGRATION_KEY, True)
-  return migrated
+    return True
+  return False
 
 
 def migrate_aol_lkas_to_button_control(params: Params | None = None) -> bool:

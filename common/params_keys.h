@@ -233,7 +233,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"CancelButtonControl", {PERSISTENT, INT, "1", "0", 2}},
     {"CancelButtonControlsMigrated", {PERSISTENT, BOOL, "0", "0"}},
     {"AOLLKASMigratedToButtonControl", {PERSISTENT, BOOL, "0", "0"}},
-    {"AOLSafeDefaultsMigrated", {PERSISTENT, BOOL, "0", "0"}},
     {"TrafficPersonalityProfile", {PERSISTENT, BOOL, "1", "1", 2}},
     {"AggressivePersonalityProfile", {PERSISTENT, BOOL, "1", "1", 2}},
     {"StandardPersonalityProfile", {PERSISTENT, BOOL, "1", "1", 2}},

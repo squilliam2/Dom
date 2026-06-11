@@ -97,7 +97,7 @@ def test_honda_lkas_button_can_toggle_always_on_lateral(monkeypatch, tmp_path):
   assert ret.pauseLateral is False
 
 
-def test_hyundai_lkas_button_arms_before_normal_engagement(monkeypatch, tmp_path):
+def test_hyundai_lkas_button_can_toggle_aol_before_normal_engagement(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -118,7 +118,7 @@ def test_hyundai_lkas_button_arms_before_normal_engagement(monkeypatch, tmp_path
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
 
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   sm["selfdriveState"].active = True
   car_state.cruiseState.enabled = True
@@ -128,10 +128,13 @@ def test_hyundai_lkas_button_arms_before_normal_engagement(monkeypatch, tmp_path
   assert ret.alwaysOnLateralAllowed is True
   assert ret.alwaysOnLateralEnabled is True
 
+  sm["selfdriveState"].active = False
+  car_state.cruiseState.enabled = False
   car_state.buttonEvents = [SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)]
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
 
   assert ret.alwaysOnLateralAllowed is False
+  assert ret.alwaysOnLateralEnabled is False
   assert ret.pauseLateral is False
 
 
@@ -215,7 +218,7 @@ def test_hyundai_main_cruise_button_can_start_aol_before_normal_engagement(monke
 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   sm["selfdriveState"].active = True
   car_state.cruiseState.enabled = True
@@ -233,7 +236,7 @@ def test_hyundai_main_cruise_button_can_start_aol_before_normal_engagement(monke
   assert ret.alwaysOnLateralAllowed is False
 
 
-def test_hyundai_aol_waits_for_normal_engagement_before_enabling(monkeypatch, tmp_path):
+def test_hyundai_lkas_button_marks_aol_ready_before_normal_engagement(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -251,7 +254,7 @@ def test_hyundai_aol_waits_for_normal_engagement_before_enabling(monkeypatch, tm
 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   car_state.buttonEvents = []
   sm["selfdriveState"].active = True
@@ -279,19 +282,19 @@ def test_hyundai_aol_user_intent_survives_low_speed_cruise_unavailable(monkeypat
 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   car_state.buttonEvents = []
   sm["selfdriveState"].active = True
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   car_state.cruiseState.available = True
   sm["selfdriveState"].active = False
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   sm["selfdriveState"].active = True
   car_state.cruiseState.enabled = True
@@ -318,7 +321,7 @@ def test_hyundai_aol_ready_survives_cruise_availability_flicker_and_lkas_disable
 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
+  assert ret.alwaysOnLateralEnabled is True
 
   car_state.buttonEvents = []
   car_state.cruiseState.enabled = True

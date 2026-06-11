@@ -109,19 +109,23 @@ class StarPilotCard:
       elif carState.cruiseState.enabled:
         self.hyundai_aol_ready = True
 
-    # Hyundai CAN cars need a normal engagement before AOL can output steering,
-    # but the LKAS/main button should still arm the driver's AOL intent.
+    # Hyundai CAN cars should keep driver button intent stable even when cruise
+    # availability flickers at low speed.
     aol_button_pressed = False
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
       for be in carState.buttonEvents:
         if be.type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
           aol_button_pressed = True
+          if self.hyundai_aol_needs_engagement:
+            self.hyundai_aol_ready = True
           self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           if carState.cruiseState.enabled or self.pause_lateral:
             self.pause_lateral = not self.always_on_lateral_allowed
         elif be.type == ButtonType.mainCruise and be.pressed:
           if starpilot_toggles.main_cruise_aol_toggle:
             aol_button_pressed = True
+            if self.hyundai_aol_needs_engagement:
+              self.hyundai_aol_ready = True
             self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           elif starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:
             self.params_memory.put_bool("SLCAdoptSpeedLimit", True)
@@ -137,7 +141,7 @@ class StarPilotCard:
         self.always_on_lateral_allowed = carState.cruiseState.available
 
     # On rising edge of engagement, non-Hyundai platforms can auto-arm AOL.
-    # Hyundai CAN only marks AOL ready here; button intent stays explicit.
+    # Hyundai CAN only marks AOL ready here; LKAS/main remain explicit toggles.
     engaged_for_aol = sm["selfdriveState"].active and (not self.hyundai_aol_needs_engagement or carState.cruiseState.enabled)
     if engaged_for_aol and not self.prev_active and self.always_on_lateral_set and starpilot_toggles.always_on_lateral_lkas and not aol_button_pressed:
       if self.hyundai_aol_needs_engagement:

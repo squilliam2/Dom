@@ -6,13 +6,13 @@ import pyray as rl
 from msgq.visionipc import VisionIpcClient, VisionStreamType, VisionBuf
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware import TICI
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.application import DEVICE_TYPE, gui_app
 from openpilot.system.ui.lib.egl import init_egl, create_egl_image, destroy_egl_image, bind_egl_image_to_texture, EGLImage
 from openpilot.system.ui.widgets import Widget
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 
 CONNECTION_RETRY_INTERVAL = 0.2  # seconds between connection attempts
-MICI_FORCE_TEXTURE_CAMERA = os.getenv("MICI_FORCE_TEXTURE_CAMERA", "0") == "1"
+MICI_FORCE_TEXTURE_CAMERA = os.getenv("MICI_FORCE_TEXTURE_CAMERA", "1" if DEVICE_TYPE == "mici" else "0") == "1"
 
 VERSION = """
 #version 300 es
@@ -51,13 +51,6 @@ FRAME_FRAGMENT_SHADER_EXTERNAL = """
 
   void main() {
     vec4 color = texture(texture0, fragTexCoord);
-    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-    color.rgb = mix(vec3(gray), color.rgb, 0.2);
-    color.rgb = clamp((color.rgb - 0.5) * 1.2 + 0.5, 0.0, 1.0);
-    color.rgb = pow(color.rgb, vec3(1.0/1.28));
-    if (engaged != 1) {
-      color.rgb *= 0.85;
-    }
     if (enhance_driver == 1) {
       float brightness = 1.1;
       color.rgb = color.rgb + 0.15;
@@ -81,14 +74,6 @@ FRAME_FRAGMENT_SHADER_YUV = VERSION + """
     float y = texture(texture0, fragTexCoord).r;
     vec2 uv = texture(texture1, fragTexCoord).ra - 0.5;
     vec3 rgb = vec3(y + 1.402*uv.y, y - 0.344*uv.x - 0.714*uv.y, y + 1.772*uv.x);
-    float gray = dot(rgb, vec3(0.299, 0.587, 0.114));
-    rgb = mix(vec3(gray), rgb, 0.2);
-    rgb = clamp((rgb - 0.5) * 1.2 + 0.5, 0.0, 1.0);
-    if (engaged != 1) {
-      rgb *= 0.85;
-    }
-    // TODO: the images out of camerad need some more correction and
-    // the ui should apply a gamma curve for the device display
     if (enhance_driver == 1) {
       float brightness = 1.1;
       rgb = rgb + 0.15;

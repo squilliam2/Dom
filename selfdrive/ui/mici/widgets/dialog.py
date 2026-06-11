@@ -13,7 +13,7 @@ from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.system.ui.widgets.slider import RedBigSlider, BigSlider
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.ui.mici.widgets.button import BigCircleButton, BigButton, GreyBigButton
-from openpilot.selfdrive.ui.mici.widgets.side_button import SideButton
+from openpilot.selfdrive.ui.mici.widgets.side_button import SideButton, WIDTH as SIDE_BUTTON_WIDTH
 
 DEBUG = False
 
@@ -244,17 +244,20 @@ class BigConfirmationCircleButton(BigCircleButton):
 
 
 class BigDialogOptionButton(Widget):
-  HEIGHT = 64
-  SELECTED_HEIGHT = 74
+  HEIGHT = 48
+  SELECTED_HEIGHT = 58
+  FONT_SIZE = 42
+  SELECTED_FONT_SIZE = 48
+  HORIZONTAL_PADDING = 12
 
-  def __init__(self, option: str):
+  def __init__(self, option: str, width: int):
     super().__init__()
     self.option = option
-    self.set_rect(rl.Rectangle(0, 0, int(gui_app.width / 2 + 220), self.HEIGHT))
+    self.set_rect(rl.Rectangle(0, 0, width, self.HEIGHT))
     self._selected = False
     self._label = UnifiedLabel(
       option,
-      font_size=70,
+      font_size=self.FONT_SIZE,
       text_color=rl.Color(255, 255, 255, int(255 * 0.58)),
       font_weight=FontWeight.DISPLAY_REGULAR,
       alignment_vertical=rl.GuiTextAlignmentVertical.TEXT_ALIGN_MIDDLE,
@@ -271,19 +274,22 @@ class BigDialogOptionButton(Widget):
 
   def _render(self, _):
     if self._selected:
-      self._label.set_font_size(self.SELECTED_HEIGHT)
+      self._label.set_font_size(self.SELECTED_FONT_SIZE)
       self._label.set_color(rl.Color(255, 255, 255, int(255 * 0.9)))
       self._label.set_font_weight(FontWeight.DISPLAY)
     else:
-      self._label.set_font_size(self.HEIGHT)
+      self._label.set_font_size(self.FONT_SIZE)
       self._label.set_color(rl.Color(255, 255, 255, int(255 * 0.58)))
       self._label.set_font_weight(FontWeight.DISPLAY_REGULAR)
 
-    self._label.render(self._rect)
+    label_rect = rl.Rectangle(self._rect.x + self.HORIZONTAL_PADDING, self._rect.y,
+                              self._rect.width - self.HORIZONTAL_PADDING * 2, self._rect.height)
+    self._label.render(label_rect)
 
 
 class BigMultiOptionDialog(NavWidget):
   BACK_TOUCH_AREA_PERCENTAGE = 0.25
+  CONTENT_MARGIN = 12
 
   def __init__(self, options: list[str], default: str | None,
                right_btn: str | None = "check", right_btn_callback: Callable[[], None] | None = None):
@@ -298,7 +304,7 @@ class BigMultiOptionDialog(NavWidget):
     self._last_selected_option: str = self._selected_option
     self._can_click = True
 
-    self._scroller = self._child(Scroller(horizontal=False, pad=100, spacing=0, snap_items=True,
+    self._scroller = self._child(Scroller(horizontal=False, pad=92, spacing=0, snap_items=True,
                                           scroll_indicator=False, edge_shadows=False))
     self._scroll_inner = self._scroller._scroller
 
@@ -309,8 +315,19 @@ class BigMultiOptionDialog(NavWidget):
     else:
       self._scroller.set_enabled(lambda: self.enabled and not self.is_dismissing)
 
+    option_width = self._option_width()
     for option in options:
-      self._scroll_inner.add_widget(BigDialogOptionButton(option))
+      self._scroll_inner.add_widget(BigDialogOptionButton(option, option_width))
+
+  def _content_rect(self) -> rl.Rectangle:
+    right_width = SIDE_BUTTON_WIDTH if self._right_btn is not None else 0
+    return rl.Rectangle(self._rect.x, self._rect.y,
+                        max(0, self._rect.width - right_width - self.CONTENT_MARGIN),
+                        self._rect.height)
+
+  def _option_width(self) -> int:
+    right_width = SIDE_BUTTON_WIDTH if self._right_btn is not None else 0
+    return int(max(280, gui_app.width - right_width - self.CONTENT_MARGIN * 2))
 
   def show_event(self):
     super().show_event()
@@ -324,11 +341,12 @@ class BigMultiOptionDialog(NavWidget):
     self.dismiss(self._right_btn_callback)
 
   def _on_option_selected(self, option: str):
+    content_rect = self._content_rect()
     y_pos = 0.0
     for btn in self._scroll_inner.items:
       btn = cast(BigDialogOptionButton, btn)
       if btn.option == option:
-        rect_center_y = self._rect.y + self._rect.height / 2
+        rect_center_y = content_rect.y + content_rect.height / 2
         if btn._selected:
           height = btn.rect.height
         else:
@@ -369,7 +387,8 @@ class BigMultiOptionDialog(NavWidget):
     if not self.is_dismissing:
       self._nav_bar.set_alpha(1.0)
 
-    center_y = self._rect.y + self._rect.height / 2
+    content_rect = self._content_rect()
+    center_y = content_rect.y + content_rect.height / 2
     closest_btn = (None, float("inf"))
     for btn in self._scroll_inner.items:
       dist_y = abs((btn.rect.y + btn.rect.height / 2) - center_y)
@@ -389,4 +408,4 @@ class BigMultiOptionDialog(NavWidget):
     if self._right_btn is not None:
       self._right_btn.set_position(self._rect.x + self._rect.width - self._right_btn.rect.width, self._rect.y)
       self._right_btn.render()
-    self._scroller.render(self._rect)
+    self._scroller.render(self._content_rect())

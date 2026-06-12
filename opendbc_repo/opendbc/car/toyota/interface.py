@@ -139,6 +139,8 @@ class CarInterface(CarInterfaceBase):
 
     ret.autoResumeSng = ret.openpilotLongitudinalControl and candidate in NO_STOP_TIMER_CAR
     ret.enableGasInterceptorDEPRECATED = 0x201 in fingerprint[0] and ret.openpilotLongitudinalControl
+    if ret.enableGasInterceptorDEPRECATED:
+      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.GAS_INTERCEPTOR.value
 
     toyota_auto_hold = Params(return_defaults=True).get_bool("ToyotaAutoHold")
     if toyota_auto_hold and candidate in (TSS2_CAR - RADAR_ACC_CAR - SECOC_CAR):

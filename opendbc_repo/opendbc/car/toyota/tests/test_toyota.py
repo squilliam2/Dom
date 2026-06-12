@@ -14,7 +14,7 @@ from opendbc.car.toyota.fingerprints import FW_VERSIONS
 from opendbc.car.toyota.interface import CarInterface
 from opendbc.car.toyota.values import CAR, DBC, TSS2_CAR, ANGLE_CONTROL_CAR, RADAR_ACC_CAR, SECOC_CAR, \
                                                   FW_QUERY_CONFIG, PLATFORM_CODE_ECUS, FUZZY_EXCLUDED_PLATFORMS, \
-                                                  ToyotaFlags, get_platform_codes
+                                                  ToyotaFlags, ToyotaSafetyFlags, get_platform_codes
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from openpilot.common.params import Params
 
@@ -371,6 +371,20 @@ class TestToyotaCarController:
 
     assert 0.0 < gas_cmd <= 0.5
 
+  def test_interceptor_corolla_scales_with_accel_request_when_pedal_enables_sng(self):
+    controller = self._make_controller()
+    controller.CP.enableGasInterceptorDEPRECATED = True
+    controller.CP.carFingerprint = CAR.TOYOTA_COROLLA
+    controller.CP.minEnableSpeed = -1.0
+    controller.accel = 0.8
+
+    gas_cmd = controller._compute_interceptor_gas_cmd(
+      SimpleNamespace(longActive=True),
+      SimpleNamespace(out=SimpleNamespace(standstill=False, vEgo=8.0)),
+    )
+
+    assert 0.0 < gas_cmd <= 0.5
+
   def test_interceptor_disabled_returns_zero(self):
     controller = self._make_controller()
     controller.accel = 1.0
@@ -449,6 +463,7 @@ class TestToyotaCarController:
     )
 
     assert CP.enableGasInterceptorDEPRECATED
+    assert CP.safetyConfigs[0].safetyParam & ToyotaSafetyFlags.GAS_INTERCEPTOR
     assert abs(CP.longitudinalActuatorDelay - 0.2) < 1e-6
     assert CP.stopAccel == -1.5
 

@@ -28,10 +28,11 @@ import time
 import traceback
 from urllib.parse import quote
 
-from cereal import car, log, messaging
+from cereal import car, custom, log, messaging
 from opendbc.can.parser import CANParser
 from opendbc.car.gm.values import GMFlags
 from opendbc.car.toyota.carcontroller import LOCK_CMD, UNLOCK_CMD
+from opendbc.car.toyota.values import ToyotaStarPilotFlags
 from openpilot.common.constants import CV
 from openpilot.common.params import ParamKeyType, Params
 from openpilot.common.realtime import DT_HW
@@ -2686,6 +2687,9 @@ def _get_hardware_snapshot_items():
   if fpcp_bytes:
     try:
       fpcp = messaging.log_from_bytes(fpcp_bytes, custom.StarPilotCarParams)
+      fpcp_flags = int(getattr(fpcp, "flags", 0))
+      has_sdsu = bool(fpcp_flags & ToyotaStarPilotFlags.SMART_DSU.value)
+      has_zss = bool(fpcp_flags & ToyotaStarPilotFlags.ZSS.value)
       can_use_pedal = bool(getattr(fpcp, "canUsePedal", can_use_pedal))
       can_use_sdsu = bool(getattr(fpcp, "canUseSDSU", can_use_sdsu))
     except Exception:

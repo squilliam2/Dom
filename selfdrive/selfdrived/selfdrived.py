@@ -79,6 +79,20 @@ def should_loud_blindspot_alert_without_lateral(CS, sm, starpilot_toggles) -> bo
   )
 
 
+def get_starpilot_alert_filters(current_alert_types: list[str], clear_event_types: set[str], starpilot_events: Events) -> tuple[list[str], set[str]]:
+  starpilot_alert_types = list(current_alert_types)
+  starpilot_clear_event_types = set(clear_event_types)
+
+  # This alert is explicitly allowed while lateral is paused/off. The state
+  # machine only exposes WARNING while active/AOL, so let this warning through.
+  if StarPilotEventName.laneChangeBlockedLoud in starpilot_events.names:
+    if ET.WARNING not in starpilot_alert_types:
+      starpilot_alert_types.append(ET.WARNING)
+    starpilot_clear_event_types.discard(ET.WARNING)
+
+  return starpilot_alert_types, starpilot_clear_event_types
+
+
 class SelfdriveD:
   def __init__(self, CP=None):
     self.params = Params()
@@ -691,11 +705,14 @@ class SelfdriveD:
     self.AM.add_many(self.sm.frame, alerts)
     self.AM.process_alerts(self.sm.frame, clear_event_types)
 
-    starpilot_alerts = self.starpilot_events.create_alerts(self.state_machine.current_alert_types, [self.CP, CS, self.sm, self.is_metric,
+    starpilot_alert_types, starpilot_clear_event_types = get_starpilot_alert_filters(
+      self.state_machine.current_alert_types, clear_event_types, self.starpilot_events
+    )
+    starpilot_alerts = self.starpilot_events.create_alerts(starpilot_alert_types, [self.CP, CS, self.sm, self.is_metric,
                                                                                                     self.state_machine.soft_disable_timer, pers,
                                                                                                     self.starpilot_toggles])
     self.starpilot_AM.add_many(self.sm.frame, starpilot_alerts)
-    self.starpilot_AM.process_alerts(self.sm.frame, clear_event_types)
+    self.starpilot_AM.process_alerts(self.sm.frame, starpilot_clear_event_types)
 
   def publish_selfdriveState(self, CS):
     # selfdriveState

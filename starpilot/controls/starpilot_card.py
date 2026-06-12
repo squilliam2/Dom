@@ -18,6 +18,11 @@ from openpilot.starpilot.common.starpilot_utilities import is_FrogsGoMoo
 from openpilot.starpilot.common.starpilot_variables import ERROR_LOGS_PATH, GearShifter, NON_DRIVING_GEARS
 
 class StarPilotCard:
+  @staticmethod
+  def _button_type_raw(button_event) -> int:
+    button_type = getattr(button_event, "type", button_event)
+    return int(getattr(button_type, "raw", button_type))
+
   def __init__(self, CP, FPCP):
     self.CP = CP
 
@@ -101,6 +106,7 @@ class StarPilotCard:
 
   def update(self, carState, starpilotCarState, sm, starpilot_toggles):
     self.switchback_mode_enabled = self.params_memory.get_bool("SwitchbackModeEnabled")
+    button_event_types = [self._button_type_raw(be) for be in carState.buttonEvents]
 
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
@@ -113,15 +119,15 @@ class StarPilotCard:
     # availability flickers at low speed.
     aol_button_pressed = False
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
-      for be in carState.buttonEvents:
-        if be.type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
+      for be, be_type in zip(carState.buttonEvents, button_event_types, strict=False):
+        if be_type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
           aol_button_pressed = True
           if self.hyundai_aol_needs_engagement:
             self.hyundai_aol_ready = True
           self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           if carState.cruiseState.enabled or self.pause_lateral:
             self.pause_lateral = not self.always_on_lateral_allowed
-        elif be.type == ButtonType.mainCruise and be.pressed:
+        elif be_type == ButtonType.mainCruise and be.pressed:
           if starpilot_toggles.main_cruise_aol_toggle:
             aol_button_pressed = True
             if self.hyundai_aol_needs_engagement:
@@ -161,11 +167,11 @@ class StarPilotCard:
     self.always_on_lateral_enabled &= not (carState.brakePressed and carState.vEgo < starpilot_toggles.always_on_lateral_pause_speed) or carState.standstill
     self.always_on_lateral_enabled &= not self.error_log.is_file() or self.frogs_go_moo
 
-    if sm.updated["starpilotPlan"] or any(be.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be in carState.buttonEvents):
-      self.accel_pressed = any(be.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be in carState.buttonEvents)
+    if sm.updated["starpilotPlan"] or any(be_type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be_type in button_event_types):
+      self.accel_pressed = any(be_type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be_type in button_event_types)
 
-    if sm.updated["starpilotPlan"] or any(be.type == ButtonType.decelCruise for be in carState.buttonEvents):
-      self.decel_pressed = any(be.type == ButtonType.decelCruise for be in carState.buttonEvents)
+    if sm.updated["starpilotPlan"] or any(be_type == ButtonType.decelCruise for be_type in button_event_types):
+      self.decel_pressed = any(be_type == ButtonType.decelCruise for be_type in button_event_types)
 
     self._distance_poll_counter += 1
     if self._distance_poll_counter >= 10:
@@ -204,7 +210,7 @@ class StarPilotCard:
       self.handle_button_event("cancel_long", sm, starpilot_toggles)
       self.handle_button_event("cancel_very_long", sm, starpilot_toggles)
 
-    if any(be.pressed and be.type == ButtonType.lkas for be in carState.buttonEvents):
+    if any(be.pressed and be_type == ButtonType.lkas for be, be_type in zip(carState.buttonEvents, button_event_types, strict=False)):
       self.handle_button_event("lkas", sm, starpilot_toggles)
 
     if getattr(starpilot_toggles, "has_canfd_media_buttons", False):

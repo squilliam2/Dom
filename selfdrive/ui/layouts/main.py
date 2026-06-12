@@ -115,9 +115,14 @@ class MainLayout(Widget):
       self._dev_sidebar.update()
 
     self._update_layout_rects()
+    mode_before_sidebar = self._current_mode
+    sidebar_visible_before = self._sidebar.is_visible
 
     if self._sidebar.is_visible:
       self._sidebar.render(self._sidebar_rect)
+
+    if self._current_mode != mode_before_sidebar or self._sidebar.is_visible != sidebar_visible_before:
+      return
 
     has_dev = self._current_mode == MainState.ONROAD and self._dev_sidebar.visible
     content_rect = self._content_rect if (self._sidebar.is_visible or has_dev) else self._rect

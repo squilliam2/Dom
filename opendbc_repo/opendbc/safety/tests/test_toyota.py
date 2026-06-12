@@ -17,6 +17,8 @@ TOYOTA_COMMON_LONG_TX_MSGS = [[0x283, 0], [0x2E6, 0], [0x2E7, 0], [0x33E, 0], [0
                               [0x128, 1], [0x141, 1], [0x160, 1], [0x161, 1], [0x470, 1],  # DSU bus 1
                               [0x411, 0],  # PCS_HUD
                               [0x750, 0]]  # radar diagnostic address
+TOYOTA_COMMON_LONG_TX_MSGS_FILTER = TOYOTA_COMMON_LONG_TX_MSGS[:-1]
+GAS_INTERCEPTOR_TX_MSGS = [[0x200, 0]]
 
 
 class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyTest):
@@ -296,6 +298,47 @@ class TestToyotaAltBrakeSafety(TestToyotaSafetyTorque):
     pass
 
 
+class TestToyotaSafetyGasInterceptorBase(common.GasInterceptorSafetyTest, TestToyotaSafetyBase):
+
+  TX_MSGS = TOYOTA_COMMON_TX_MSGS + TOYOTA_COMMON_LONG_TX_MSGS + GAS_INTERCEPTOR_TX_MSGS
+  INTERCEPTOR_THRESHOLD = 805
+  DBC = "toyota_nodsu_pt_generated"
+  SAFETY_PARAM = TestToyotaSafetyBase.EPS_SCALE | ToyotaSafetyFlags.GAS_INTERCEPTOR
+
+  def setUp(self):
+    self.packer = CANPackerSafety(self.DBC)
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.toyota, self.SAFETY_PARAM)
+    self.safety.init_tests()
+
+  def _user_gas_msg(self, gas):
+    return self._interceptor_user_gas(self.INTERCEPTOR_THRESHOLD + 1 if gas else 0)
+
+  def test_stock_longitudinal_disables_interceptor(self):
+    self.safety.set_safety_hooks(CarParams.SafetyModel.toyota,
+                                 self.SAFETY_PARAM | ToyotaSafetyFlags.STOCK_LONGITUDINAL)
+    self.safety.init_tests()
+    self.safety.set_controls_allowed(True)
+    self.assertFalse(self._tx(self._interceptor_gas_cmd(100)))
+
+
+class TestToyotaSafetyTorqueGasInterceptor(TestToyotaSafetyGasInterceptorBase, TestToyotaSafetyTorque):
+  pass
+
+
+class TestToyotaAltBrakeLongFilterGasInterceptor(TestToyotaSafetyGasInterceptorBase, TestToyotaAltBrakeSafety):
+
+  TX_MSGS = TOYOTA_COMMON_TX_MSGS + TOYOTA_COMMON_LONG_TX_MSGS_FILTER + GAS_INTERCEPTOR_TX_MSGS
+  RELAY_MALFUNCTION_ADDRS = {0: (0x2E4, 0x191, 0x412)}
+  FWD_BLACKLISTED_ADDRS = {2: [0x2E4, 0x412, 0x191]}
+  DBC = "toyota_new_mc_pt_generated"
+  SAFETY_PARAM = (TestToyotaSafetyBase.EPS_SCALE | ToyotaSafetyFlags.ALT_BRAKE |
+                  ToyotaSafetyFlags.LONG_FILTER | ToyotaSafetyFlags.GAS_INTERCEPTOR)
+
+  def test_diagnostics(self):
+    super().test_diagnostics(ecu_disabled=False)
+
+
 class TestToyotaStockLongitudinalBase(TestToyotaSafetyBase):
 
   TX_MSGS = TOYOTA_COMMON_TX_MSGS
@@ -422,8 +465,6 @@ class TestToyotaSecOcSafety(TestToyotaSecOcSafetyBase):
         should_tx = np.isclose(accel, self.INACTIVE_ACCEL, atol=0.0001)
         self.assertEqual(should_tx, self._tx(self._accel_msg_343(accel)))
         self.assertEqual(should_tx, self._tx(self._accel_msg_343(accel, cancel_req=1)))
-
-
 
 if __name__ == "__main__":
   unittest.main()

@@ -33,6 +33,11 @@ MIN_ALLOW_THROTTLE_SPEED = 5.0
 RAW_LEAD_SAFETY_MIN_CLOSING_SPEED = 0.5
 RAW_LEAD_SAFETY_TTC = 7.0
 RAW_LEAD_SAFETY_DISTANCE = 40.0
+RAW_LEAD_LOW_SPEED_HOLD_MAX_EGO_SPEED = 4.5
+RAW_LEAD_LOW_SPEED_HOLD_MAX_LEAD_SPEED = 3.5
+RAW_LEAD_LOW_SPEED_HOLD_MAX_DISTANCE = 10.0
+RAW_LEAD_LOW_SPEED_HOLD_MAX_LATERAL_OFFSET = 1.75
+RAW_LEAD_LOW_SPEED_HOLD_MIN_CLOSING_SPEED = 0.15
 STANDSTILL_LEAD_NUDGE_ACCEL = 0.05
 STANDSTILL_LEAD_NUDGE_MIN_SPEED = 0.0
 STANDSTILL_LEAD_DEPART_MIN_ACCEL = 0.35
@@ -75,6 +80,23 @@ LEAD_DEPART_ACCEL_HOLD_MIN_MODEL_ACCEL = 0.12
 LEAD_DEPART_ACCEL_HOLD_MAX_LEAD_BRAKE = 0.2
 LEAD_DEPART_ACCEL_HOLD_MIN_ACCEL = 0.25
 LEAD_DEPART_ACCEL_HOLD_MAX_ACCEL = 0.45
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_EGO_SPEED = 4.5
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_DISTANCE = 4.0
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_DISTANCE = 18.0
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_SPEED = 4.0
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LATERAL_OFFSET = 1.75
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_MODEL_PROB = 0.9
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_LEAD_DELTA = -0.5
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_DELTA = 0.75
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_LEAD_ACCEL = -0.4
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_ACCEL = 0.25
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_ACCEL = 0.08
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_ACCEL = 0.22
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MAX_EGO_SPEED = 1.25
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_GAP = 4.0
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_LEAD_SPEED = 1.2
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_LEAD_DELTA = 0.8
+LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_LEAD_ACCEL = 0.5
 CLOSE_LEAD_BRAKE_CAP_MAX_TTC = 25.0
 VISION_LEAD_APPROACH_MIN_CLOSING_SPEED = 2.0
 VISION_LEAD_APPROACH_TRIGGER_TIME = 4.5
@@ -1118,6 +1140,59 @@ class LongitudinalPlanner:
       0.55 * lead_factor + 0.45 * gap_factor, 0.0, 1.0)
     return min(accel_cap, max(float(model_desired_accel), LEAD_DEPART_ACCEL_HOLD_MIN_ACCEL))
 
+  def get_low_speed_weak_lead_accel_cap(self, lead, v_ego):
+    if lead is None or not lead.status:
+      return None
+
+    lead_radar = bool(getattr(lead, "radar", False))
+    lead_prob = float(getattr(lead, "modelProb", 1.0 if lead_radar else 0.0))
+    if not lead_radar and lead_prob < LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_MODEL_PROB:
+      return None
+
+    d_rel = float(getattr(lead, "dRel", 0.0))
+    lead_speed = max(float(getattr(lead, "vLead", 0.0)), 0.0)
+    lead_delta = lead_speed - float(v_ego)
+    lead_accel = float(getattr(lead, "aLeadK", 0.0))
+    lead_lateral = abs(float(getattr(lead, "yRel", 0.0)))
+    if (
+      float(v_ego) > LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_EGO_SPEED or
+      d_rel > LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_DISTANCE or
+      lead_speed > LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_SPEED or
+      lead_lateral > LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LATERAL_OFFSET or
+      lead_delta > LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_DELTA or
+      lead_accel > LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_ACCEL
+    ):
+      return None
+
+    if (
+      float(v_ego) <= LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MAX_EGO_SPEED and
+      d_rel >= LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_GAP and
+      lead_speed >= LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_LEAD_SPEED and
+      lead_delta >= LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_LEAD_DELTA and
+      lead_accel >= LOW_SPEED_WEAK_LEAD_ACCEL_CAP_STRONG_DEPART_MIN_LEAD_ACCEL
+    ):
+      return None
+
+    distance_factor = float(np.clip(
+      (d_rel - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_DISTANCE) /
+      max(LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_DISTANCE - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_DISTANCE, 0.1),
+      0.0, 1.0,
+    ))
+    delta_factor = float(np.clip(
+      (lead_delta - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_LEAD_DELTA) /
+      max(LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_DELTA - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_LEAD_DELTA, 0.1),
+      0.0, 1.0,
+    ))
+    accel_factor = float(np.clip(
+      (lead_accel - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_LEAD_ACCEL) /
+      max(LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_LEAD_ACCEL - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_LEAD_ACCEL, 0.1),
+      0.0, 1.0,
+    ))
+    cap_strength = float(np.clip(0.5 * distance_factor + 0.3 * delta_factor + 0.2 * accel_factor, 0.0, 1.0))
+    return LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_ACCEL + (
+      LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MAX_ACCEL - LOW_SPEED_WEAK_LEAD_ACCEL_CAP_MIN_ACCEL
+    ) * cap_strength
+
   def get_standstill_stopped_lead_guard_cap(self, lead, v_ego, accel_min, stop_distance,
                                             release_ready, confident_depart_ready):
     if lead is None or not lead.status or release_ready or confident_depart_ready:
@@ -1777,12 +1852,23 @@ class LongitudinalPlanner:
     if lead is None or not lead.status:
       return False
 
+    d_rel = max(float(lead.dRel), 0.0)
+    lead_speed = max(float(getattr(lead, "vLead", 0.0)), 0.0)
     closing_speed = float(v_ego - lead.vLead)
     lead_braking = float(lead.aLeadK) < -0.5
+    centered_lead = abs(float(getattr(lead, "yRel", 0.0))) <= RAW_LEAD_LOW_SPEED_HOLD_MAX_LATERAL_OFFSET
+    if (
+      centered_lead and
+      float(v_ego) <= RAW_LEAD_LOW_SPEED_HOLD_MAX_EGO_SPEED and
+      lead_speed <= RAW_LEAD_LOW_SPEED_HOLD_MAX_LEAD_SPEED and
+      d_rel <= RAW_LEAD_LOW_SPEED_HOLD_MAX_DISTANCE and
+      closing_speed >= RAW_LEAD_LOW_SPEED_HOLD_MIN_CLOSING_SPEED
+    ):
+      return True
+
     if closing_speed <= RAW_LEAD_SAFETY_MIN_CLOSING_SPEED and not lead_braking:
       return False
 
-    d_rel = max(float(lead.dRel), 0.0)
     dynamic_distance = max(RAW_LEAD_SAFETY_DISTANCE, 3.0 * float(v_ego))
     ttc = d_rel / max(closing_speed, 0.1) if closing_speed > 0.1 else float("inf")
     return d_rel < dynamic_distance and (ttc < RAW_LEAD_SAFETY_TTC or lead_braking)
@@ -2317,6 +2403,17 @@ class LongitudinalPlanner:
       float(sm['carState'].vEgo) <= LEAD_DEPART_ACCEL_HOLD_MAX_EGO_SPEED
     )
 
+    low_speed_weak_lead_accel_cap = None
+    if not output_should_stop:
+      low_speed_weak_lead_accel_caps = [
+        cap for cap in (
+          self.get_low_speed_weak_lead_accel_cap(self.lead_one, scene_v_ego),
+          self.get_low_speed_weak_lead_accel_cap(self.lead_two, scene_v_ego),
+        ) if cap is not None
+      ]
+      if low_speed_weak_lead_accel_caps:
+        low_speed_weak_lead_accel_cap = min(low_speed_weak_lead_accel_caps)
+
     close_stop_active = bool(output_should_stop or vision_low_speed_stop_active)
 
     close_stop_hold_cap = None
@@ -2539,6 +2636,10 @@ class LongitudinalPlanner:
 
     if lead_depart_accel_hold_active:
       output_a_target = max(output_a_target, lead_depart_accel_floor)
+
+    if low_speed_weak_lead_accel_cap is not None:
+      self.a_desired = min(self.a_desired, low_speed_weak_lead_accel_cap)
+      output_a_target = min(output_a_target, low_speed_weak_lead_accel_cap)
 
     force_stop_handoff = bool(
       getattr(sm['starpilotPlan'], 'forcingStop', False) and

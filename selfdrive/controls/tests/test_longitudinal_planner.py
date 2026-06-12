@@ -568,6 +568,60 @@ def test_acc_mode_pretracking_vision_slow_lead_blocks_positive_catchup(model_ver
 
 
 @pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
+def test_acc_mode_keeps_close_slow_radar_lead_active_when_tracking_flaps(model_version):
+  v_ego = 0.96
+
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner_no_lead = LongitudinalPlanner(CP, init_v=v_ego)
+  planner_with_lead = LongitudinalPlanner(CP, init_v=v_ego)
+  sm_no_lead = make_sm(
+    v_ego,
+    desired_accel=0.45,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=False,
+  )
+  sm_with_lead = make_sm(
+    v_ego,
+    desired_accel=0.45,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=False,
+    lead_one=make_lead(status=True, d_rel=8.15, v_lead=0.09, a_lead=-0.36, radar=True, model_prob=1.0, y_rel=0.1),
+  )
+  sm_no_lead["starpilotPlan"].vCruise = v_ego + 8.0
+  sm_with_lead["starpilotPlan"].vCruise = v_ego + 8.0
+
+  planner_no_lead.update(sm_no_lead, make_toggles(model_version))
+  planner_with_lead.update(sm_with_lead, make_toggles(model_version))
+
+  assert planner_with_lead.raw_close_lead_needs_control(sm_with_lead["radarState"].leadOne, v_ego)
+  assert planner_with_lead.output_a_target < planner_no_lead.output_a_target - 0.15
+  assert planner_with_lead.output_a_target <= 0.22
+
+
+@pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
+def test_low_speed_weak_departure_accel_cap_softens_voacc_follow_pulse(model_version):
+  v_ego = 2.8
+
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  sm = make_sm(
+    v_ego,
+    desired_accel=0.45,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=True,
+    lead_one=make_lead(status=True, d_rel=16.6, v_lead=2.85, a_lead=0.05, radar=False, model_prob=0.99, y_rel=0.0),
+  )
+  sm["starpilotPlan"].vCruise = v_ego + 10.0
+
+  planner.update(sm, make_toggles(model_version))
+
+  assert planner.output_a_target <= 0.22
+
+
+@pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
 def test_acc_mode_pretracking_vision_far_slower_lead_starts_braking_before_tracking(model_version):
   v_ego = 21.48
 

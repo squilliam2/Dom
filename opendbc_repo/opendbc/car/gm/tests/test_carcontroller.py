@@ -147,7 +147,7 @@ def test_volt_auto_hold_requires_toggle_supported_non_cc_only_volt_and_stock_saf
   stock_safety = [SimpleNamespace(safetyParam=0x8000)]
   no_safety = [SimpleNamespace(safetyParam=0)]
 
-  assert supports_volt_auto_hold(
+  assert not supports_volt_auto_hold(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
       openpilotLongitudinalControl=True,
@@ -162,6 +162,15 @@ def test_volt_auto_hold_requires_toggle_supported_non_cc_only_volt_and_stock_saf
       openpilotLongitudinalControl=True,
       networkLocation=CarParams.NetworkLocation.fwdCamera,
       safetyConfigs=no_safety,
+    ),
+    True,
+  )
+  assert supports_volt_auto_hold(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      openpilotLongitudinalControl=True,
+      networkLocation=CarParams.NetworkLocation.fwdCamera,
+      safetyConfigs=stock_safety,
     ),
     True,
   )

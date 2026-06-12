@@ -134,7 +134,7 @@ def get_testing_ground_1_brake_switch_bias(v_ego: float) -> int:
 def supports_volt_auto_hold(CP, auto_hold_enabled: bool):
   safety_cfg = getattr(CP, "safetyConfigs", ())
   safety_param = safety_cfg[0].safetyParam if safety_cfg else 0
-  stock_hold_safety_ready = CP.openpilotLongitudinalControl or bool(safety_param & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value)
+  stock_hold_safety_ready = bool(safety_param & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value)
   return (
     auto_hold_enabled and
     stock_hold_safety_ready and

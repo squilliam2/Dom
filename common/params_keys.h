@@ -181,6 +181,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"BorderWidth", {PERSISTENT, FLOAT, "100.0", "100.0", 2}},
     {"CalibratedLateralAcceleration", {PERSISTENT, FLOAT, "2.0", "2.0", 2}},
     {"CalibrationProgress", {PERSISTENT, FLOAT, "0.0", "0.0", 3}},
+    {"CameraOffset", {PERSISTENT, FLOAT, "0.0", "0.0", 3}},
     {"CameraView", {PERSISTENT, INT, "3", "0", 2}},
     {"CancelDownloadMaps", {CLEAR_ON_MANAGER_START, BOOL, "0", "0"}},
     {"DisableWideRoad", {PERSISTENT, BOOL, "0", "0", 3}},

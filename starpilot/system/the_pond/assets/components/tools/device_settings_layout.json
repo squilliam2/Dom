@@ -3395,6 +3395,17 @@
         "ui_type": "toggle"
       },
       {
+        "key": "CameraOffset",
+        "label": "Camera Offset",
+        "description": "Virtually shift the camera perspective used by the driving model. Positive values bias the model center left; negative values bias it right. Use only for development.",
+        "data_type": "float",
+        "ui_type": "numeric",
+        "min": -0.35,
+        "max": 0.35,
+        "step": 0.01,
+        "precision": 2
+      },
+      {
         "key": "AllowImpossibleAcceleration",
         "label": "Allow Impossible Acceleration",
         "description": "WARNING: This suppresses openpilot's excessive longitudinal actuation diagnostic when measured acceleration looks impossible for the requested gas/brake command.\n\nLeave this OFF unless you are intentionally testing edge cases like shifting to neutral and understand that it can hide a real actuation problem.",

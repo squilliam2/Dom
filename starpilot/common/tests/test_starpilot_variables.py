@@ -41,6 +41,15 @@ class _FakeParams:
   def get_int(self, key):
     return int(self.ints.get(key, 0))
 
+  def get(self, key):
+    if key in self.ints:
+      return str(self.ints[key])
+    if key in self.floats:
+      return str(self.floats[key])
+    if key in self.bools:
+      return "1" if self.bools[key] else "0"
+    return None
+
   def get_bool(self, key):
     return bool(self.bools.get(key, False))
 
@@ -129,6 +138,18 @@ def test_aol_safe_defaults_migration_does_not_enable_aol_or_add_marker_params():
   assert params.get_int("LKASButtonControl") == spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
   assert params.get_int("MainCruiseButtonControl") == spv.BUTTON_FUNCTIONS["NOTHING"]
   assert set(params.bools) == {"AlwaysOnLateral"}
+
+
+def test_button_function_ignores_tuning_level_gate():
+  params = _FakeParams(ints={"LKASButtonControl": spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]})
+  variables = object.__new__(spv.StarPilotVariables)
+  variables.params = params
+  variables.starpilot_toggles = SimpleNamespace(tuning_level=spv.TUNING_LEVELS["STANDARD"])
+  variables.tuning_levels = {"LKASButtonControl": spv.TUNING_LEVELS["ADVANCED"]}
+  variables.default_values = {"LKASButtonControl": str(spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"])}
+
+  assert variables.get_value("LKASButtonControl", cast=int) == spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
+  assert variables.get_button_function("LKASButtonControl") == spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]
 
 
 def test_set_speed_limit_available_on_openpilot_longitudinal():

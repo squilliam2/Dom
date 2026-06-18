@@ -67,6 +67,7 @@ from openpilot.starpilot.common.model_versions import (
   uses_split_off_policy_artifacts,
 )
 from openpilot.starpilot.common.experimental_state import sync_persist_chill_state, sync_persist_experimental_state
+from openpilot.starpilot.common.favorite_slots import FAVORITE_SLOTS_PARAM, normalize_favorite_slots
 from openpilot.starpilot.common.starpilot_utilities import delete_file, get_lock_status, run_cmd
 from openpilot.starpilot.common.starpilot_variables import ACTIVE_THEME_PATH, ERROR_LOGS_PATH, EXCLUDED_KEYS, LEGACY_STARPILOT_PARAM_RENAMES, MAPS_PATH, MODELS_PATH, RESOURCES_REPO, SCREEN_RECORDINGS_PATH, STOCK_THEME_PATH, THEME_SAVE_PATH,\
                                                            default_ev_tuning_enabled, migrate_cancel_button_controls, update_starpilot_toggles
@@ -312,6 +313,20 @@ class ParamsCompat:
         typed_value = ""
       else:
         typed_value = str(value)
+    elif expected_type == ParamKeyType.JSON:
+      if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+
+      if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+          typed_value = self._params.get_default_value(key)
+        else:
+          typed_value = json.loads(stripped)
+      elif isinstance(value, tuple):
+        typed_value = list(value)
+      else:
+        typed_value = value
 
     self._params.put(key, typed_value)
 
@@ -443,6 +458,11 @@ starpilot_default_params = _build_default_params()
 
 params = ParamsCompat(_params_raw)
 params_memory = ParamsCompat(_params_memory_raw)
+STATS_RESPONSE_CACHE_SECONDS = 2.0
+_STATS_RESPONSE_CACHE = {
+  "updated_at": 0.0,
+  "payload": None,
+}
 
 try:
   FOOTAGE_PATHS = [
@@ -465,7 +485,8 @@ KEYS = {
 }
 
 NAVIGATION_MEMORY_LOCATION_STALE_SECONDS = 10.0
-NAVIGATION_PERSISTED_LOCATION_BOOT_SKEW_SECONDS = 5.0
+NAVIGATION_PERSISTED_LOCATION_FUTURE_SKEW_SECONDS = 60.0
+NAVIGATION_PERSISTED_LOCATION_MAX_AGE_SECONDS = 24 * 60 * 60
 
 TMUX_LOGS_PATH = Path("/data/tmux_logs")
 
@@ -523,7 +544,7 @@ def _last_gps_position_is_live(payload):
   return (time.monotonic() - updated_at_monotonic) <= NAVIGATION_MEMORY_LOCATION_STALE_SECONDS
 
 
-def _last_gps_position_is_current_boot(payload):
+def _last_gps_position_is_recent(payload):
   if not isinstance(payload, dict):
     return False
 
@@ -536,11 +557,14 @@ def _last_gps_position_is_current_boot(payload):
     return False
 
   now_sec = time.time()
-  boot_started_at_sec = now_sec - time.monotonic()
-  if updated_at_sec > (now_sec + 60.0):
+  if updated_at_sec > (now_sec + NAVIGATION_PERSISTED_LOCATION_FUTURE_SKEW_SECONDS):
     return False
 
-  return updated_at_sec >= (boot_started_at_sec - NAVIGATION_PERSISTED_LOCATION_BOOT_SKEW_SECONDS)
+  if not system_time_valid():
+    return True
+
+  age_sec = now_sec - updated_at_sec
+  return 0.0 <= age_sec <= NAVIGATION_PERSISTED_LOCATION_MAX_AGE_SECONDS
 
 
 def _get_navigation_last_position():
@@ -549,7 +573,7 @@ def _get_navigation_last_position():
     return memory_position
 
   persisted_position = _parse_last_gps_position(params.get("LastGPSPosition", encoding="utf8") or "")
-  if _last_gps_position_is_current_boot(persisted_position):
+  if _last_gps_position_is_recent(persisted_position):
     return persisted_position
 
   return None
@@ -1985,6 +2009,7 @@ def write_legacy_param_file(key, value):
 
 _layout_type_overrides = None
 _layout_param_metadata = None
+_favorite_slot_options = None
 
 def _get_layout_param_metadata():
   global _layout_param_metadata
@@ -2013,6 +2038,51 @@ def _get_layout_type_overrides():
       if param_data.get("data_type")
     }
   return _layout_type_overrides
+
+def _get_favorite_slot_options():
+  global _favorite_slot_options
+  if _favorite_slot_options is not None:
+    return _favorite_slot_options
+
+  allowed_keys, value_types = _get_param_type_info()
+  options = []
+  try:
+    layout_path = os.path.join(os.path.dirname(__file__), "assets", "components", "tools", "device_settings_layout.json")
+    with open(layout_path) as f:
+      layout_data = json.load(f)
+
+    seen = set()
+    for section in layout_data:
+      section_name = section.get("name", "")
+      for param_data in section.get("params", []):
+        key = str(param_data.get("key") or "").strip()
+        if not key or key in seen:
+          continue
+        if key not in allowed_keys or value_types.get(key) is not bool:
+          continue
+        if param_data.get("ui_type") != "toggle" or param_data.get("data_type") != "bool":
+          continue
+
+        seen.add(key)
+        options.append({
+          "key": key,
+          "label": str(param_data.get("label") or key),
+          "description": str(param_data.get("description") or ""),
+          "section": section_name,
+        })
+  except Exception:
+    options = []
+
+  options.sort(key=lambda option: (str(option.get("label") or option.get("key") or "").casefold(), str(option.get("key") or "").casefold()))
+  _favorite_slot_options = options
+  return _favorite_slot_options
+
+def _favorite_slot_values(options):
+  return {
+    option["key"]: _safe_params_get_bool(option["key"])
+    for option in options
+    if option.get("key")
+  }
 
 _cached_allowed_keys = None
 _cached_param_types = None
@@ -3433,6 +3503,19 @@ def setup(app):
     "last_empty_catalog_log_time": 0.0,
   }
 
+  @app.after_request
+  def disable_device_settings_asset_cache(response):
+    if request.path in {
+      "/assets/components/router.js",
+      "/assets/components/tools/device_settings.js",
+      "/assets/components/tools/device_settings.css",
+      "/assets/components/tools/device_settings_layout.json",
+    }:
+      response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+      response.headers["Pragma"] = "no-cache"
+      response.headers["Expires"] = "0"
+    return response
+
   @app.errorhandler(404)
   def not_found(_):
     response = make_response(render_template("index.html"))
@@ -3580,7 +3663,7 @@ def setup(app):
       destination,
     )
     params.put("NavDestination", json.dumps(destination))
-    params.put("ApiCache_NavDestinations", json.dumps(recent_destinations))
+    params.put("ApiCache_NavDestinations", recent_destinations)
     return {"message": "Destination set"}
 
   @app.route("/api/navigation/favorite", methods=["DELETE"])
@@ -3602,7 +3685,7 @@ def setup(app):
         )
       ]
 
-    params.put("FavoriteDestinations", json.dumps(favorites))
+    params.put("FavoriteDestinations", favorites)
     return jsonify(message="Destination removed from favorites!")
 
   @app.route("/api/navigation/favorite", methods=["GET"])
@@ -3615,7 +3698,7 @@ def setup(app):
         f["id"] = hashlib.sha1(raw.encode()).hexdigest()
         changed = True
     if changed:
-      params.put("FavoriteDestinations", json.dumps(favorites))
+      params.put("FavoriteDestinations", favorites)
     return jsonify(favorites=favorites)
 
   @app.route("/api/navigation/favorite", methods=["POST"])
@@ -3630,7 +3713,7 @@ def setup(app):
     if not any(f.get("id") == new_fav["id"] for f in existing):
       existing.append(new_fav)
 
-    params.put("FavoriteDestinations", json.dumps(existing))
+    params.put("FavoriteDestinations", existing)
     return {"message": "Destination added to favorites!"}
 
   @app.route("/api/navigation/favorite/rename", methods=["POST"])
@@ -3680,7 +3763,7 @@ def setup(app):
     if not found:
       return jsonify({"error": "Favorite not found"}), 404
 
-    params.put("FavoriteDestinations", json.dumps(existing_favorites))
+    params.put("FavoriteDestinations", existing_favorites)
     return jsonify(message="Favorite updated successfully!")
 
   @app.route("/api/navigation_key", methods=["DELETE"])
@@ -3728,6 +3811,56 @@ def setup(app):
 
     return jsonify(models), 200
 
+  @app.route("/api/favorites/slots", methods=["GET", "PUT"])
+  def favorite_slots():
+    options = _get_favorite_slot_options()
+    option_by_key = {option["key"]: option for option in options}
+    eligible_keys = set(option_by_key)
+
+    if request.method == "PUT":
+      data = request.get_json() or {}
+      raw_slots = data.get("slots", data) if isinstance(data, dict) else data
+      if isinstance(raw_slots, dict):
+        raw_slots = raw_slots.get("slots", [])
+      if not isinstance(raw_slots, list):
+        return jsonify(error="Favorite slots payload must be a list."), 400
+
+      for idx, raw_slot in enumerate(raw_slots[:3]):
+        if not isinstance(raw_slot, dict):
+          continue
+        key = str(raw_slot.get("key") or "").strip()
+        if key and key not in eligible_keys:
+          return jsonify(error=f"Favorite #{idx + 1} must use a Galaxy-exposed boolean toggle."), 400
+
+      slots = normalize_favorite_slots(raw_slots, params=params, eligible_keys=eligible_keys)
+
+      for slot in slots:
+        key = slot.get("key")
+        if not key:
+          continue
+        slot["label"] = option_by_key[key]["label"]
+
+      params.put(FAVORITE_SLOTS_PARAM, slots)
+      update_starpilot_toggles()
+      return jsonify({
+        "message": "Favorite slots saved.",
+        "slots": slots,
+        "options": options,
+        "values": _favorite_slot_values(options),
+      }), 200
+
+    slots = normalize_favorite_slots(params.get(FAVORITE_SLOTS_PARAM), params=params, eligible_keys=eligible_keys)
+    for slot in slots:
+      key = slot.get("key")
+      if key in option_by_key:
+        slot["label"] = option_by_key[key]["label"]
+
+    return jsonify({
+      "slots": slots,
+      "options": options,
+      "values": _favorite_slot_values(options),
+    }), 200
+
   @app.route("/api/params", methods=["GET", "PUT"])
   def get_param():
     if request.method == "PUT":
@@ -3736,6 +3869,30 @@ def setup(app):
         return jsonify({"error": "Missing 'key' or 'value' in request body."}), 400
 
       key = str(data["key"]).strip()
+      if key.lower() == FAVORITE_SLOTS_PARAM.lower():
+        key = FAVORITE_SLOTS_PARAM
+        raw_slots = data["value"]
+        if isinstance(raw_slots, dict):
+          raw_slots = raw_slots.get("slots", raw_slots)
+        if not isinstance(raw_slots, list):
+          return jsonify({"error": "Favorite slots must be configured with the Favorites editor."}), 400
+
+        options = _get_favorite_slot_options()
+        option_by_key = {option["key"]: option for option in options}
+        eligible_keys = set(option_by_key)
+        slots = normalize_favorite_slots(raw_slots, params=params, eligible_keys=eligible_keys)
+        for slot in slots:
+          slot_key = slot.get("key")
+          if slot_key in option_by_key:
+            slot["label"] = option_by_key[slot_key]["label"]
+
+        params.put(FAVORITE_SLOTS_PARAM, slots)
+        update_starpilot_toggles()
+        return jsonify({
+          "message": "Favorite slots saved.",
+          "updated": {FAVORITE_SLOTS_PARAM: slots},
+        }), 200
+
       key = {
         "model": "Model",
         "modelversion": "ModelVersion",
@@ -5011,6 +5168,11 @@ def setup(app):
 
   @app.route("/api/stats", methods=["GET"])
   def get_stats():
+    cache_now = time.monotonic()
+    cached_payload = _STATS_RESPONSE_CACHE.get("payload")
+    if cached_payload is not None and cache_now - _STATS_RESPONSE_CACHE.get("updated_at", 0.0) < STATS_RESPONSE_CACHE_SECONDS:
+      return cached_payload
+
     build_metadata = get_build_metadata()
 
     short_branch = build_metadata.channel
@@ -5023,18 +5185,33 @@ def setup(app):
     else:
       env = short_branch
 
-    return {
+    software_info = {
+      "branchName": build_metadata.channel,
+      "buildEnvironment": env,
+      "changelogUrl": utilities.get_github_changelog_url(build_metadata.openpilot.git_normalized_origin, build_metadata.channel),
+      "commitHash": build_metadata.openpilot.git_commit,
+      "commitUrl": utilities.get_github_commit_url(build_metadata.openpilot.git_normalized_origin, build_metadata.openpilot.git_commit),
+      "forkMaintainer": utilities.get_repo_owner(build_metadata.openpilot.git_normalized_origin),
+      "updateAvailable": "Yes" if params.get_bool("UpdaterFetchAvailable") else "No",
+      "versionDate": utilities.format_git_date(build_metadata.openpilot.git_commit_date),
+    }
+
+    try:
+      dashboard_stats = utilities.get_dashboard_stats(FOOTAGE_PATHS, params)
+    except Exception:
+      dashboard_stats = utilities.get_dashboard_stats([], params)
+
+    payload = {
       "diskUsage": utilities.get_disk_usage(),
       "driveStats": utilities.get_drive_stats(),
-      "softwareInfo": {
-        "branchName": build_metadata.channel,
-        "buildEnvironment": env,
-        "commitHash": build_metadata.openpilot.git_commit,
-        "forkMaintainer": utilities.get_repo_owner(build_metadata.openpilot.git_normalized_origin),
-        "updateAvailable": "Yes" if params.get_bool("UpdaterFetchAvailable") else "No",
-        "versionDate": utilities.format_git_date(build_metadata.openpilot.git_commit_date),
-      },
+      "softwareInfo": software_info,
+      "dashboard": dashboard_stats,
     }
+    _STATS_RESPONSE_CACHE.update({
+      "updated_at": cache_now,
+      "payload": payload,
+    })
+    return payload
 
   @app.route("/api/plots/live", methods=["GET"])
   def get_live_plots():

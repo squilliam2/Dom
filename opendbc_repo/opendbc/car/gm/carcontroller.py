@@ -28,11 +28,11 @@ AUTO_HOLD_VOLT_CARS = {
   CAR.CHEVROLET_VOLT_ASCM,
   CAR.CHEVROLET_VOLT_CAMERA,
 }
-AUTO_HOLD_DRIVE_GEARS = {
+AUTO_HOLD_DRIVE_GEARS = (
   GearShifter.drive,
   GearShifter.low,
   GearShifter.manumatic,
-}
+)
 AUTO_HOLD_MIN_BRAKE = 80
 AUTO_HOLD_MAX_BRAKE = 240
 AUTO_HOLD_MIN_DRIVE_TIME_S = 3.0
@@ -149,12 +149,13 @@ def estimate_auto_hold_brake(driver_brake: float, op_brake: float) -> int:
 
 
 def should_activate_auto_hold(hold_ready: bool, auto_hold_armed: bool, auto_hold_engaged: bool,
-                              brake_pressed: bool, standstill: bool, long_active: bool,
+                              brake_pressed: bool, gas_pressed: bool, standstill: bool, long_active: bool,
                               regen_braking: bool, v_ego: float) -> bool:
   stopped = standstill or v_ego < 0.02
   return (
     hold_ready and
     (auto_hold_armed or auto_hold_engaged or brake_pressed) and
+    not gas_pressed and
     stopped and
     not long_active and
     not regen_braking
@@ -398,6 +399,8 @@ class CarController(CarControllerBase):
     )
     if not hold_ready or CS.out.gasPressed:
       CS.auto_hold_armed = False
+      if CS.out.gasPressed:
+        CS.auto_hold_engaged = False
     elif CS.regen_release_timer > 0.0:
       CS.auto_hold_armed = False
     elif not CS.auto_hold_armed and (CS.out.vEgo > 0.03 or ((CS.out.standstill or CS.out.vEgo < 0.02) and CS.out.brakePressed)):
@@ -497,6 +500,7 @@ class CarController(CarControllerBase):
       CS.auto_hold_armed,
       CS.auto_hold_engaged,
       CS.out.brakePressed,
+      CS.out.gasPressed,
       CS.out.standstill,
       CC.longActive,
       CS.out.regenBraking,
@@ -690,7 +694,8 @@ class CarController(CarControllerBase):
             hold_standstill = CS.pcm_acc_status == AccState.STANDSTILL
             hold_near_stop = CS.out.vEgo < self.params.NEAR_STOP_BRAKE_PHASE
             can_sends.append(gmcan.create_friction_brake_command(
-              self.packer_ch, friction_brake_bus, hold_brake, idx, False, hold_near_stop, hold_standstill, self.CP))
+              self.packer_ch, friction_brake_bus, hold_brake, idx, False, hold_near_stop, hold_standstill,
+              self.CP, allow_near_stop_mode=True))
             CS.auto_hold_engaged = True
             CS.auto_hold_fault_suppression_timer = 1.0
           else:
@@ -765,7 +770,8 @@ class CarController(CarControllerBase):
         hold_standstill = CS.pcm_acc_status == AccState.STANDSTILL
         hold_near_stop = CS.out.vEgo < self.params.NEAR_STOP_BRAKE_PHASE
         can_sends.append(gmcan.create_friction_brake_command(
-          self.packer_ch, get_friction_brake_bus(self.CP), hold_brake, idx, False, hold_near_stop, hold_standstill, self.CP))
+          self.packer_ch, get_friction_brake_bus(self.CP), hold_brake, idx, False, hold_near_stop, hold_standstill,
+          self.CP, allow_near_stop_mode=True))
         CS.auto_hold_engaged = True
         CS.auto_hold_fault_suppression_timer = 1.0
       elif self.frame % 4 == 0:

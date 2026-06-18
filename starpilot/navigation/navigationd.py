@@ -292,6 +292,7 @@ class Navigationd:
       "valid": True,
       "maneuverModifier": str(payload.get("maneuverModifier") or ""),
       "maneuverType": str(payload.get("maneuverType") or ""),
+      "laneCount": len(lanes),
       "activeLaneDirection": active_lane_direction,
       "activeLaneIndex": active_lane_index,
       "activeLaneAtRoadEdge": active_lane_at_road_edge,

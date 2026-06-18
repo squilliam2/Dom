@@ -144,7 +144,8 @@ def sync_drive_stats(params, session):
     print(f"Failed to sync drive stats: {exception}")
 
 def transition_offroad(starpilot_planner, model_manager, theme_manager, thread_manager, time_validated, sm, params, starpilot_toggles):
-  params.put("LastGPSPosition", json.dumps(starpilot_planner.gps_position))
+  if gps_position_valid(starpilot_planner.gps_position):
+    params.put("LastGPSPosition", json.dumps(starpilot_planner.gps_position))
 
   if starpilot_toggles.lock_doors_timer != 0:
     thread_manager.run_with_lock(lock_doors, (starpilot_toggles.lock_doors_timer, sm, params), report=False)

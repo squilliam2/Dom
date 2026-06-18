@@ -2,6 +2,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+from opendbc.car import structs
+
 fake_interfaces = types.ModuleType("opendbc.car.interfaces")
 
 
@@ -33,6 +35,7 @@ fake_testing_grounds.testing_ground = SimpleNamespace(use_1=False)
 sys.modules.setdefault("openpilot.starpilot.common.testing_grounds", fake_testing_grounds)
 
 from opendbc.car.gm.carcontroller import (
+  AUTO_HOLD_DRIVE_GEARS,
   CarController,
   estimate_auto_hold_brake,
   get_adas_keepalive_step,
@@ -46,6 +49,7 @@ from opendbc.car.gm.carcontroller import (
   supports_volt_auto_hold,
   use_interceptor_sng_launch,
 )
+from opendbc.car.gm.gmcan import get_friction_brake_mode
 from opendbc.car.gm.values import AccState, CAR, GMFlags
 from opendbc.car.structs import CarParams
 
@@ -219,12 +223,20 @@ def test_auto_hold_brake_estimate_uses_driver_or_op_brake_and_clamps():
   assert estimate_auto_hold_brake(100.0, 400.0) == 240
 
 
+def test_auto_hold_drive_gears_accept_capnp_dynamic_enum_membership():
+  msg = structs.CarState.new_message()
+  msg.gearShifter = structs.CarState.GearShifter.drive
+
+  assert msg.gearShifter in AUTO_HOLD_DRIVE_GEARS
+
+
 def test_auto_hold_activation_allows_direct_entry_from_stopped_brake_press():
   assert should_activate_auto_hold(
     True,
     False,
     False,
     True,
+    False,
     True,
     False,
     False,
@@ -237,6 +249,7 @@ def test_auto_hold_activation_stays_latched_after_brake_release():
     True,
     False,
     True,
+    False,
     False,
     True,
     False,
@@ -251,6 +264,7 @@ def test_auto_hold_activation_blocks_when_long_is_active_or_motion_is_above_thre
     True,
     False,
     True,
+    False,
     True,
     True,
     False,
@@ -259,6 +273,7 @@ def test_auto_hold_activation_blocks_when_long_is_active_or_motion_is_above_thre
   assert not should_activate_auto_hold(
     True,
     True,
+    False,
     False,
     False,
     False,
@@ -273,11 +288,39 @@ def test_auto_hold_activation_allows_standstill_even_if_speed_filter_is_slightly
     True,
     False,
     False,
+    False,
     True,
     False,
     False,
     0.05,
   )
+
+
+def test_auto_hold_activation_releases_immediately_on_gas_press():
+  assert not should_activate_auto_hold(
+    True,
+    True,
+    True,
+    False,
+    True,
+    True,
+    False,
+    False,
+    0.0,
+  )
+
+
+def test_friction_brake_mode_keeps_near_stop_disabled_for_regular_long_braking():
+  CP = SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_ASCM)
+
+  assert get_friction_brake_mode(120, False, True, False, CP) == 0xa
+
+
+def test_friction_brake_mode_uses_near_stop_hold_mode_for_volt_auto_hold():
+  CP = SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_ASCM)
+
+  assert get_friction_brake_mode(120, False, True, False, CP, allow_near_stop_mode=True) == 0xb
+  assert get_friction_brake_mode(120, False, True, True, CP, allow_near_stop_mode=True) == 0xd
 
 
 def test_calc_pedal_command_small_accel_deadband_keeps_creep_target_stable():

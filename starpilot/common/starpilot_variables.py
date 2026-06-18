@@ -137,6 +137,9 @@ BUTTON_FUNCTIONS = {
   "BOOKMARK": 8,
   "AOL_TOGGLE": 9,
   "SLC_ADOPT": 10,
+  "FAVORITE_1": 11,
+  "FAVORITE_2": 12,
+  "FAVORITE_3": 13,
 }
 
 CANCEL_BUTTON_MIGRATION_KEY = "CancelButtonControlsMigrated"
@@ -498,6 +501,11 @@ class StarPilotVariables:
     # Tuning level should hide wheel-mapping controls, not silently revert their
     # runtime behavior to defaults after the driver has configured them.
     return self.get_value(key, cast=float, condition=condition, respect_tuning_level=False)
+
+  @staticmethod
+  def set_favorite_button_flags(toggle, suffix, button_control):
+    for slot_number in range(1, 4):
+      setattr(toggle, f"favorite_{slot_number}_via_{suffix}", button_control == BUTTON_FUNCTIONS[f"FAVORITE_{slot_number}"])
 
   def _sync_stock_param(self, key, stock_key, live_value):
     try:
@@ -893,6 +901,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_distance = distance_button_control == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_distance = toggle.openpilot_longitudinal and distance_button_control == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_distance = distance_button_control == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "distance", distance_button_control)
 
     distance_button_control_long = self.get_button_function("LongDistanceButtonControl")
     toggle.experimental_mode_via_distance_long = toggle.openpilot_longitudinal and distance_button_control_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -904,6 +913,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_distance_long = distance_button_control_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_distance_long = toggle.openpilot_longitudinal and distance_button_control_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_distance_long = distance_button_control_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "distance_long", distance_button_control_long)
 
     distance_button_control_very_long = self.get_button_function("VeryLongDistanceButtonControl")
     toggle.experimental_mode_via_distance_very_long = toggle.openpilot_longitudinal and distance_button_control_very_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -915,6 +925,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_distance_very_long = distance_button_control_very_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_distance_very_long = toggle.openpilot_longitudinal and distance_button_control_very_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_distance_very_long = distance_button_control_very_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "distance_very_long", distance_button_control_very_long)
 
     cancel_button_control = self.get_button_function("CancelButtonControl", condition=toggle.remap_cancel_to_distance)
     toggle.experimental_mode_via_cancel = toggle.openpilot_longitudinal and cancel_button_control == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -926,6 +937,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_cancel = cancel_button_control == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_cancel = toggle.openpilot_longitudinal and cancel_button_control == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_cancel = cancel_button_control == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "cancel", cancel_button_control)
 
     cancel_button_control_long = self.get_button_function("LongCancelButtonControl", condition=toggle.remap_cancel_to_distance)
     toggle.experimental_mode_via_cancel_long = toggle.openpilot_longitudinal and cancel_button_control_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -937,6 +949,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_cancel_long = cancel_button_control_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_cancel_long = toggle.openpilot_longitudinal and cancel_button_control_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_cancel_long = cancel_button_control_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "cancel_long", cancel_button_control_long)
 
     cancel_button_control_very_long = self.get_button_function("VeryLongCancelButtonControl", condition=toggle.remap_cancel_to_distance)
     toggle.experimental_mode_via_cancel_very_long = toggle.openpilot_longitudinal and cancel_button_control_very_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -948,6 +961,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_cancel_very_long = cancel_button_control_very_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_cancel_very_long = toggle.openpilot_longitudinal and cancel_button_control_very_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_cancel_very_long = cancel_button_control_very_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "cancel_very_long", cancel_button_control_very_long)
 
     toggle.frogsgomoo_tweak = self.get_value("FrogsGoMoosTweak", condition=toggle.openpilot_longitudinal and toggle.car_make == "toyota")
     toggle.stoppingDecelRate = 0.01 if toggle.frogsgomoo_tweak else toggle.stoppingDecelRate
@@ -970,6 +984,7 @@ class StarPilotVariables:
     toggle.lane_detection_width = self.get_value("LaneDetectionWidth", cast=float, condition=toggle.lane_changes, conversion=distance_conversion)
     toggle.minimum_lane_change_speed = self.get_value("MinimumLaneChangeSpeed", cast=float, condition=toggle.lane_changes, conversion=speed_conversion)
     toggle.nudgeless = self.get_value("NudgelessLaneChange", condition=toggle.lane_changes)
+    toggle.nudgeless_lane_change_only_when_engaged = self.get_value("NudgelessLaneChangeOnlyWhenEngaged", condition=toggle.lane_changes and toggle.nudgeless)
     toggle.one_lane_change = self.get_value("OneLaneChange", condition=toggle.lane_changes)
 
     # Lane change pace: 1 = smoothest (~8 s target), 10 = stock (no clamp applied)
@@ -1003,6 +1018,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_lkas = lkas_button_control == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_lkas = toggle.openpilot_longitudinal and lkas_button_control == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_lkas = lkas_button_control == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "lkas", lkas_button_control)
 
     has_canfd_media_buttons = toggle.car_make == "hyundai" and bool(CP.flags & HyundaiFlags.CANFD)
     mode_button_control = self.get_button_function("ModeButtonControl", condition=has_canfd_media_buttons)
@@ -1015,6 +1031,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_mode = mode_button_control == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_mode = toggle.openpilot_longitudinal and mode_button_control == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_mode = mode_button_control == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "mode", mode_button_control)
 
     mode_button_control_long = self.get_button_function("LongModeButtonControl", condition=has_canfd_media_buttons)
     toggle.experimental_mode_via_mode_long = toggle.openpilot_longitudinal and mode_button_control_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -1026,6 +1043,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_mode_long = mode_button_control_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_mode_long = toggle.openpilot_longitudinal and mode_button_control_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_mode_long = mode_button_control_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "mode_long", mode_button_control_long)
 
     mode_button_control_very_long = self.get_button_function("VeryLongModeButtonControl", condition=has_canfd_media_buttons)
     toggle.experimental_mode_via_mode_very_long = toggle.openpilot_longitudinal and mode_button_control_very_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -1037,6 +1055,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_mode_very_long = mode_button_control_very_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_mode_very_long = toggle.openpilot_longitudinal and mode_button_control_very_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_mode_very_long = mode_button_control_very_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "mode_very_long", mode_button_control_very_long)
 
     star_button_control = self.get_button_function("StarButtonControl", condition=has_canfd_media_buttons)
     toggle.experimental_mode_via_star = toggle.openpilot_longitudinal and star_button_control == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -1048,6 +1067,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_star = star_button_control == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_star = toggle.openpilot_longitudinal and star_button_control == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_star = star_button_control == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "star", star_button_control)
 
     star_button_control_long = self.get_button_function("LongStarButtonControl", condition=has_canfd_media_buttons)
     toggle.experimental_mode_via_star_long = toggle.openpilot_longitudinal and star_button_control_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -1059,6 +1079,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_star_long = star_button_control_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_star_long = toggle.openpilot_longitudinal and star_button_control_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_star_long = star_button_control_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "star_long", star_button_control_long)
 
     star_button_control_very_long = self.get_button_function("VeryLongStarButtonControl", condition=has_canfd_media_buttons)
     toggle.experimental_mode_via_star_very_long = toggle.openpilot_longitudinal and star_button_control_very_long == BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
@@ -1070,6 +1091,7 @@ class StarPilotVariables:
     toggle.switchback_mode_via_star_very_long = star_button_control_very_long == BUTTON_FUNCTIONS["SWITCHBACK_MODE"]
     toggle.traffic_mode_via_star_very_long = toggle.openpilot_longitudinal and star_button_control_very_long == BUTTON_FUNCTIONS["TRAFFIC_MODE"]
     toggle.bookmark_via_star_very_long = star_button_control_very_long == BUTTON_FUNCTIONS["BOOKMARK"]
+    self.set_favorite_button_flags(toggle, "star_very_long", star_button_control_very_long)
     toggle.has_canfd_media_buttons = has_canfd_media_buttons
 
     toggle.lock_doors_timer = self.get_value("LockDoorsTimer", cast=float, condition=(toggle.car_make == "toyota"))

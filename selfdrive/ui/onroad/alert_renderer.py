@@ -1,7 +1,7 @@
 import time
 import pyray as rl
 from dataclasses import dataclass
-from cereal import messaging, log
+from cereal import custom, messaging, log
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.hardware import TICI
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -12,6 +12,7 @@ from openpilot.system.ui.widgets.label import Label
 
 AlertSize = log.SelfdriveState.AlertSize
 AlertStatus = log.SelfdriveState.AlertStatus
+StarPilotAlertStatus = custom.StarPilotSelfdriveState.AlertStatus
 
 ALERT_MARGIN = 40
 ALERT_PADDING = 60
@@ -35,6 +36,7 @@ ALERT_COLORS = {
   AlertStatus.normal: rl.Color(0x15, 0x15, 0x15, 0xF1),      # #151515 with alpha 0xF1
   AlertStatus.userPrompt: rl.Color(0xDA, 0x6F, 0x25, 0xF1),  # #DA6F25 with alpha 0xF1
   AlertStatus.critical: rl.Color(0xC9, 0x22, 0x31, 0xF1),    # #C92231 with alpha 0xF1
+  StarPilotAlertStatus.starpilot: rl.Color(0x17, 0x86, 0x44, 0xF1),
 }
 
 
@@ -103,19 +105,23 @@ class AlertRenderer(Widget):
             return ALERT_CRITICAL_TIMEOUT
           return ALERT_CRITICAL_REBOOT
 
-    # No alert if size is none
-    if ss.alertSize == 0:
-      return None
+    if ss.alertSize != AlertSize.none:
+      alert = Alert(text1=ss.alertText1, text2=ss.alertText2, size=ss.alertSize.raw, status=ss.alertStatus.raw)
+    else:
+      starpilot_ss = sm["starpilotSelfdriveState"]
+      if starpilot_ss.alertSize == custom.StarPilotSelfdriveState.AlertSize.none:
+        return None
+      alert = Alert(text1=starpilot_ss.alertText1, text2=starpilot_ss.alertText2,
+                    size=starpilot_ss.alertSize.raw, status=starpilot_ss.alertStatus.raw)
 
-    if ss.alertStatus.raw == AlertStatus.normal and ui_state.starpilot_toggles.get("hide_alerts", False):
+    if alert.status == AlertStatus.normal and ui_state.starpilot_toggles.get("hide_alerts", False):
       return None
 
     # Don't get old alert
     if recv_frame < ui_state.started_frame:
       return None
 
-    # Return current alert
-    return Alert(text1=ss.alertText1, text2=ss.alertText2, size=ss.alertSize.raw, status=ss.alertStatus.raw)
+    return alert
 
   def _render(self, rect: rl.Rectangle):
     alert = self.get_alert(ui_state.sm)

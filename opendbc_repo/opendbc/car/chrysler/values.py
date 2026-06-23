@@ -21,6 +21,7 @@ class ChryslerFlags(IntFlag):
 
 class ChryslerStarPilotFlags(IntFlag):
   RAM_HD_ALT_BUTTONS = 1
+  NO_MIN_STEERING_SPEED = 2
 
 
 @dataclass

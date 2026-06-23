@@ -9,7 +9,8 @@ from opendbc.car.structs import CarControl, CarParams
 from opendbc.car.fw_versions import build_fw_dict, match_fw_to_car
 from opendbc.car.hyundai.carcontroller import CarController, Ioniq6LongitudinalTuningState, GenesisG90LongitudinalTuningState, \
                                              update_ioniq_6_longitudinal_tuning, \
-                                             update_genesis_g90_longitudinal_tuning
+                                             update_genesis_g90_longitudinal_tuning, egmp_dynamic_longitudinal_tuning, \
+                                             should_reset_ev6_gt_line_longitudinal_tuning, reset_ev6_gt_line_longitudinal_tuning
 from opendbc.car.hyundai.carstate import CarState, decode_canfd_camera_lead, decode_ioniq_6_blindspot_radar_state
 from opendbc.car.hyundai.interface import CarInterface
 from opendbc.car.hyundai import hyundaican, hyundaicanfd
@@ -20,7 +21,7 @@ from opendbc.car.hyundai.values import CAMERA_SCC_CAR, CANFD_CAR, CAN_GEARS, CAR
                                          HYBRID_CAR, EV_CAR, FW_QUERY_CONFIG, LEGACY_SAFETY_MODE_CAR, CANFD_FUZZY_WHITELIST, \
                                          UNSUPPORTED_LONGITUDINAL_CAR, PLATFORM_CODE_ECUS, HYUNDAI_VERSION_REQUEST_LONG, \
                                          LEGACY_LONGITUDINAL_CAR, CarControllerParams, DBC, HyundaiFlags, get_platform_codes, HyundaiSafetyFlags, \
-                                         HyundaiStarPilotSafetyFlags, Buttons
+                                         HyundaiStarPilotSafetyFlags, Buttons, kia_ev6_gt_line_longitudinal_tuning
 
 LongCtrlState = CarControl.Actuators.LongControlState
 from opendbc.car.hyundai.fingerprints import FW_VERSIONS
@@ -526,6 +527,47 @@ class TestHyundaiFingerprint:
     assert CP.stoppingDecelRate == pytest.approx(0.4)
     assert CP.longitudinalActuatorDelay == pytest.approx(0.5)
     assert CP.startingState
+
+  def test_kia_ev6_gt_line_post_fingerprint_longitudinal_params(self):
+    toggles = get_test_toggles()
+    CP = CarInterface.get_params(CAR.KIA_EV6, gen_empty_fingerprint(), [], True, False, False, toggles)
+    CP.carVin = "KNDC4DLC0P0000000"
+
+    CarInterface.apply_post_fingerprint_params(CP, CAR.KIA_EV6, gen_empty_fingerprint(), [])
+
+    assert CP.startAccel == pytest.approx(1.4)
+    assert CP.vEgoStarting == pytest.approx(0.5)
+    assert CP.longitudinalActuatorDelay == pytest.approx(0.35)
+    assert CP.vEgoStopping == pytest.approx(0.3)
+    assert CP.stoppingDecelRate == pytest.approx(0.4)
+    assert kia_ev6_gt_line_longitudinal_tuning(CP.carFingerprint, CP.carVin)
+    assert egmp_dynamic_longitudinal_tuning(CP)
+    assert should_reset_ev6_gt_line_longitudinal_tuning(CP, LongCtrlState.off)
+    assert not should_reset_ev6_gt_line_longitudinal_tuning(CP, LongCtrlState.pid)
+
+    stale_state = Ioniq6LongitudinalTuningState(desired_accel=-2.2, actual_accel=-2.2, accel_last=-2.2,
+                                                jerk_upper=1.0, jerk_lower=5.0,
+                                                long_control_state_last=LongCtrlState.stopping)
+    reset_state = reset_ev6_gt_line_longitudinal_tuning(stale_state, CP, LongCtrlState.off)
+    assert reset_state.actual_accel == pytest.approx(0.0)
+    assert reset_state.accel_last == pytest.approx(0.0)
+    assert reset_state.long_control_state_last == LongCtrlState.off
+
+  def test_kia_ev6_non_gt_line_keeps_family_longitudinal_params(self):
+    toggles = get_test_toggles()
+    CP = CarInterface.get_params(CAR.KIA_EV6, gen_empty_fingerprint(), [], True, False, False, toggles)
+    CP.carVin = "KNDC3DLC0P0000000"
+
+    CarInterface.apply_post_fingerprint_params(CP, CAR.KIA_EV6, gen_empty_fingerprint(), [])
+
+    assert CP.startAccel == pytest.approx(1.0)
+    assert CP.vEgoStarting == pytest.approx(0.1)
+    assert CP.longitudinalActuatorDelay == pytest.approx(0.5)
+    assert not kia_ev6_gt_line_longitudinal_tuning(CP.carFingerprint, CP.carVin)
+    assert not egmp_dynamic_longitudinal_tuning(CP)
+    assert not should_reset_ev6_gt_line_longitudinal_tuning(CP, LongCtrlState.off)
+    stale_state = Ioniq6LongitudinalTuningState(actual_accel=-2.2, accel_last=-2.2)
+    assert reset_ev6_gt_line_longitudinal_tuning(stale_state, CP, LongCtrlState.off) is stale_state
 
   def test_genesis_g90_longitudinal_params_bias_toward_earlier_stop_handoff(self):
     toggles = get_test_toggles()
@@ -1385,6 +1427,84 @@ class TestHyundaiFingerprint:
 
     assert parser.can_valid
     assert parser.vl["LFA"]["LKA_ICON"] == 3
+
+  def test_kia_ev6_lfa_helper_preserves_stock_ui_fields_with_stock_long(self):
+    CP = CarParams.new_message()
+    CP.carFingerprint = CAR.KIA_EV6
+    CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.CANFD_LKA_STEERING)
+    CP.openpilotLongitudinalControl = False
+
+    packer = CANPacker(DBC[CP.carFingerprint][Bus.pt])
+    can_bus = CanBus(CP)
+
+    stock_lfa = {
+      "CHECKSUM": 1234,
+      "COUNTER": 42,
+      "LKA_MODE": 6,
+      "NEW_SIGNAL_1": 3,
+      "LKA_WARNING": 1,
+      "LKA_ICON": 1,
+      "TORQUE_REQUEST": 17,
+      "STEER_REQ": 0,
+      "LFA_BUTTON": 1,
+      "LKA_ASSIST": 1,
+      "STEER_MODE": 5,
+      "NEW_SIGNAL_2": 2,
+      "NEW_SIGNAL_4": 7,
+      "HAS_LANE_SAFETY": 1,
+      "DAMP_FACTOR": 0x77,
+    }
+
+    msgs = hyundaicanfd.create_steering_messages(packer, CP, can_bus, True, True, 123, 0.0, stock_lfa)
+    assert [(packer.dbc.addr_to_msg[addr].name, bus) for addr, _, bus in msgs] == [
+      ("LKAS", can_bus.ACAN),
+    ]
+
+  def test_kia_ev6_lkas_helper_preserves_stock_camera_fields_with_stock_long(self):
+    CP = CarParams.new_message()
+    CP.carFingerprint = CAR.KIA_EV6
+    CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.CANFD_LKA_STEERING)
+    CP.openpilotLongitudinalControl = False
+
+    packer = CANPacker(DBC[CP.carFingerprint][Bus.pt])
+    can_bus = CanBus(CP)
+    parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [("LKAS", 0)], can_bus.ACAN)
+
+    stock_lkas = {
+      "CHECKSUM": 1234,
+      "COUNTER": 42,
+      "LKA_MODE": 6,
+      "LKA_AVAILABLE": 3,
+      "LKA_WARNING": 1,
+      "LKA_ICON": 1,
+      "FCA_SYSWARN": 1,
+      "TORQUE_REQUEST": 17,
+      "STEER_REQ": 0,
+      "LFA_BUTTON": 1,
+      "LKA_ASSIST": 1,
+      "STEER_MODE": 5,
+      "NEW_SIGNAL_2": 2,
+      "HAS_LANE_SAFETY": 1,
+      "DAMP_FACTOR": 0x70,
+    }
+
+    msgs = hyundaicanfd.create_steering_messages(packer, CP, can_bus, True, True, 123, 0.0,
+                                                 lkas_base_values=stock_lkas)
+    lkas_msgs = [msg for msg in msgs if msg[0] == 0x50]
+    assert len(lkas_msgs) == 1
+
+    parser.update([(1, lkas_msgs)])
+
+    assert parser.can_valid
+    assert parser.vl["LKAS"]["LKA_AVAILABLE"] == 3
+    assert parser.vl["LKAS"]["LKA_WARNING"] == 1
+    assert parser.vl["LKAS"]["FCA_SYSWARN"] == 1
+    assert parser.vl["LKAS"]["LFA_BUTTON"] == 1
+    assert parser.vl["LKAS"]["HAS_LANE_SAFETY"] == 1
+    assert parser.vl["LKAS"]["DAMP_FACTOR"] == 0x70
+    assert parser.vl["LKAS"]["TORQUE_REQUEST"] == 123
+    assert parser.vl["LKAS"]["STEER_REQ"] == 1
+    assert parser.vl["LKAS"]["LKA_ICON"] == 2
 
   def test_ioniq_6_lkas_alt_helper_preserves_stock_camera_fields(self):
     CP = CarParams.new_message()

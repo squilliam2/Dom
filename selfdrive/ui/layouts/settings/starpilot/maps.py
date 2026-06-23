@@ -85,7 +85,7 @@ STATUS_REMOVE_HEIGHT = 40
 STATUS_METRIC_GAP = 18
 STATUS_SELECTION_CHIP_HEIGHT = 30
 PANEL_STYLE = DEFAULT_PANEL_STYLE
-MAPS_METRICS = replace(AETHER_LIST_METRICS, header_height=240)
+MAPS_METRICS = replace(AETHER_LIST_METRICS, header_height=274)
 
 COUNTRIES_SECTION = next(section for section in MAPS_CATALOG if section["key"] == "countries")
 STATES_SECTION = next(section for section in MAPS_CATALOG if section["key"] == "states")
@@ -1133,7 +1133,7 @@ class StarPilotMapsLayout(StarPilotPanel):
     draw_settings_panel_header(hdr, tr("Map Data"), tr("Use offline maps for speed-limit control and keep only the regions you need."),
                                 max_title_width=1.0, max_subtitle_width=0.60)
 
-    header_status_y = hdr.y + 48 + HEADER_SUBTITLE_HEIGHT + 12
+    header_status_y = hdr.y + 82 + HEADER_SUBTITLE_HEIGHT + 12
     header_status_rect = rl.Rectangle(hdr.x, header_status_y, hdr.width, hdr.y + hdr.height - header_status_y - HEADER_BOTTOM_GAP)
     self._status_card.render(header_status_rect)
 

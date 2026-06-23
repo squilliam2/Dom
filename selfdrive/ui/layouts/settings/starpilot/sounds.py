@@ -46,7 +46,7 @@ SOUNDS_PANEL_METRICS = replace(
   outer_margin_y=14,
   panel_padding_top=16,
   panel_padding_bottom=14,
-  header_height=88,
+  header_height=125,
 )
 
 

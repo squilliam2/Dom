@@ -1,6 +1,8 @@
 import sys
 import types
 from types import SimpleNamespace
+import numpy as np
+import pytest
 
 from opendbc.car import structs
 
@@ -39,19 +41,33 @@ from opendbc.car.gm.carcontroller import (
   CarController,
   estimate_auto_hold_brake,
   get_adas_keepalive_step,
+  get_auto_hold_stop_threshold,
+  get_bolt_acc_pedal_friction_brake,
+  get_bolt_acc_pedal_friction_command_state,
+  get_bolt_acc_pedal_effective_brake_switch,
+  get_bolt_acc_pedal_planner_brake_switch,
+  get_bolt_pedal_long_accel_limit,
   get_lka_steering_cmd_counter,
+  get_volt_one_pedal_target_decel,
   get_testing_ground_1_brake_switch_bias,
   get_stock_cc_active_for_cancel,
+  shape_truck_positive_accel,
+  should_use_fixed_stopping_brake,
   should_activate_auto_hold,
+  should_activate_volt_one_pedal,
+  should_send_adas_status,
   should_send_stock_long_cancel,
   should_spoof_dash_speed,
   should_spoof_ecm_cruise_status,
+  supports_bolt_acc_pedal_friction_experiment,
   supports_volt_auto_hold,
+  supports_volt_one_pedal,
   use_interceptor_sng_launch,
 )
 from opendbc.car.gm.gmcan import get_friction_brake_mode
-from opendbc.car.gm.values import AccState, CAR, GMFlags
+from opendbc.car.gm.values import AccState, CAR, CarControllerParams, GMFlags
 from opendbc.car.structs import CarParams
+from opendbc.car.common.conversions import Conversions as CV
 
 
 def _cs(enabled, pcm_acc_status):
@@ -100,12 +116,151 @@ def test_gen2_bolt_acc_pedal_cancel_uses_enabled_only():
   assert not get_stock_cc_active_for_cancel(CP, _cs(False, AccState.ACTIVE))
 
 
+def test_bolt_acc_pedal_friction_experiment_is_single_fingerprint_only():
+  assert supports_bolt_acc_pedal_friction_experiment(SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+    openpilotLongitudinalControl=True,
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+  ))
+  assert not supports_bolt_acc_pedal_friction_experiment(SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_MALIBU_HYBRID_CC,
+    openpilotLongitudinalControl=True,
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+  ))
+  assert not supports_bolt_acc_pedal_friction_experiment(SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+    openpilotLongitudinalControl=False,
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+  ))
+
+
+def test_bolt_acc_pedal_friction_blend_preserves_zero_before_crossover():
+  params = SimpleNamespace(ACCEL_MIN=-4.0, MAX_BRAKE=400)
+
+  assert get_bolt_acc_pedal_friction_brake(0, -2.8, 20.0, params) == 0
+
+
+def test_bolt_acc_pedal_friction_blend_uses_full_brake_range_after_regen():
+  params = SimpleNamespace(ACCEL_MIN=-4.0, MAX_BRAKE=400)
+
+  # Legacy mapping tops out early once regen has already consumed part of the
+  # decel request. The experiment remaps that reduced span back to full scale.
+  assert get_bolt_acc_pedal_friction_brake(286, -2.86, 20.0, params) == 400
+
+
+def test_bolt_acc_pedal_friction_blend_biases_small_commands_upward_at_speed():
+  params = SimpleNamespace(ACCEL_MIN=-4.0, MAX_BRAKE=400)
+
+  low_speed = get_bolt_acc_pedal_friction_brake(31, -2.86, 0.0, params)
+  high_speed = get_bolt_acc_pedal_friction_brake(31, -2.86, 20.0, params)
+
+  assert low_speed > 31
+  assert high_speed > low_speed
+
+
+def test_bolt_pedal_long_accel_limit_matches_planner_regen_envelope():
+  assert get_bolt_pedal_long_accel_limit(6.66) == pytest.approx(-2.379, abs=1e-3)
+  assert get_bolt_pedal_long_accel_limit(3.0) == pytest.approx(-1.70, abs=1e-3)
+
+
+def test_bolt_acc_pedal_planner_brake_switch_is_lower_than_stock_switch():
+  params = SimpleNamespace(ZERO_GAS=6150, BRAKE_SWITCH_LOOKUP_BP=[0.5, 10.0], BRAKE_SWITCH_LOOKUP_V=[6150, 5500])
+  v_ego = 6.66
+
+  stock_switch = int(round(np.interp(v_ego, params.BRAKE_SWITCH_LOOKUP_BP, params.BRAKE_SWITCH_LOOKUP_V)))
+  planner_switch = get_bolt_acc_pedal_planner_brake_switch(
+    v_ego, params, tire_radius=0.336, mass=1832.0, coeff_drag=0.30, frontal_area=2.35, air_density=1.225,
+  )
+
+  assert planner_switch < stock_switch
+
+
+def test_bolt_acc_pedal_effective_brake_switch_never_suppresses_stock_friction():
+  params = SimpleNamespace(ZERO_GAS=6150, BRAKE_SWITCH_LOOKUP_BP=[0.5, 10.0], BRAKE_SWITCH_LOOKUP_V=[6150, 5500])
+  v_ego = 5.434
+  mass = 1805.0
+  tire_radius = 0.075 * 2.63779 + 0.1453
+  frontal_area = 1.05 * 2.63779 + 0.0679
+  coeff_drag = 0.30
+  air_density = 1.225
+  accel_cmd = -1.399
+
+  aero_drag_force = 0.5 * coeff_drag * frontal_area * air_density * v_ego ** 2
+  torque = tire_radius * ((mass * accel_cmd) + aero_drag_force)
+  scaled_torque = torque + params.ZERO_GAS
+
+  stock_switch = int(round(np.interp(v_ego, params.BRAKE_SWITCH_LOOKUP_BP, params.BRAKE_SWITCH_LOOKUP_V)))
+  planner_switch = get_bolt_acc_pedal_planner_brake_switch(
+    v_ego, params, tire_radius=tire_radius, mass=mass,
+    coeff_drag=coeff_drag, frontal_area=frontal_area, air_density=air_density,
+  )
+  effective_switch = get_bolt_acc_pedal_effective_brake_switch(stock_switch, planner_switch)
+
+  stock_brake_accel = min((scaled_torque - stock_switch) / (tire_radius * mass), 0)
+  effective_brake_accel = min((scaled_torque - effective_switch) / (tire_radius * mass), 0)
+
+  assert planner_switch < stock_switch
+  assert effective_switch == stock_switch
+  assert stock_brake_accel < 0
+  assert effective_brake_accel == stock_brake_accel
+
+
+def test_bolt_acc_pedal_friction_command_state_requires_cruise_main_for_positive_brake():
+  command_brake, release_frames, should_send = get_bolt_acc_pedal_friction_command_state(120, False, 0)
+
+  assert command_brake == 0
+  assert release_frames == 0
+  assert not should_send
+
+
+def test_bolt_acc_pedal_friction_command_state_sends_zero_unwind_after_main_off():
+  command_brake, release_frames, should_send = get_bolt_acc_pedal_friction_command_state(120, True, 0)
+
+  assert command_brake == 120
+  assert release_frames > 0
+  assert should_send
+
+  command_brake, release_frames, should_send = get_bolt_acc_pedal_friction_command_state(0, False, release_frames)
+
+  assert command_brake == 0
+  assert release_frames >= 0
+  assert should_send
+
+
+def test_fixed_stopping_brake_is_disabled_for_bolt_acc_pedal_experiment():
+  CP = SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+    openpilotLongitudinalControl=True,
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+  )
+
+  assert not should_use_fixed_stopping_brake(CP, True, True, False)
+
+
+def test_fixed_stopping_brake_stays_enabled_for_normal_acc_path():
+  CP = SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023,
+    openpilotLongitudinalControl=True,
+    enableGasInterceptorDEPRECATED=False,
+    flags=0,
+  )
+
+  assert should_use_fixed_stopping_brake(CP, True, True, False)
+  assert not should_use_fixed_stopping_brake(CP, False, True, False)
+  assert not should_use_fixed_stopping_brake(CP, True, False, False)
+  assert not should_use_fixed_stopping_brake(CP, True, True, True)
+
+
 def test_stock_cancel_is_suppressed_when_acc_is_faulted():
   CP = SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_CAMERA)
   cs = _cs(True, AccState.FAULTED)
   cs.out.accFaulted = True
 
-  assert not get_stock_cc_active_for_cancel(CP, cs)
+  assert get_stock_cc_active_for_cancel(CP, cs)
   assert not should_send_stock_long_cancel(11, cs)
 
 
@@ -145,6 +300,16 @@ def test_live_camera_path_does_not_send_pt_keepalive():
   cp = SimpleNamespace(networkLocation=CarParams.NetworkLocation.fwdCamera, flags=0)
 
   assert get_adas_keepalive_step(cp, is_kaofui_car=True) is None
+
+
+def test_ascm_int_cars_do_not_send_radar_status():
+  common = {
+    "networkLocation": CarParams.NetworkLocation.fwdCamera,
+    "radarUnavailable": False,
+  }
+
+  assert not should_send_adas_status(SimpleNamespace(carFingerprint=CAR.BUICK_LACROSSE_ASCM, **common), is_kaofui_car=True)
+  assert not should_send_adas_status(SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_ASCM, **common), is_kaofui_car=True)
 
 
 def test_volt_auto_hold_requires_toggle_supported_non_cc_only_volt_and_stock_safety():
@@ -221,6 +386,53 @@ def test_auto_hold_brake_estimate_uses_driver_or_op_brake_and_clamps():
   assert estimate_auto_hold_brake(20.0, 40.0) == 110
   assert estimate_auto_hold_brake(20.0, 160.0) == 160
   assert estimate_auto_hold_brake(100.0, 400.0) == 240
+  assert estimate_auto_hold_brake(7.0, 0.0, SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_2019)) == 100
+
+
+def test_volt_one_pedal_requires_toggle_supported_volt_stock_safety_and_ev_transmission():
+  stock_safety = [SimpleNamespace(safetyParam=0x8000)]
+  no_safety = [SimpleNamespace(safetyParam=0)]
+
+  assert supports_volt_one_pedal(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      safetyConfigs=stock_safety,
+      transmissionType=structs.CarParams.TransmissionType.direct,
+    ),
+    True,
+  )
+  assert not supports_volt_one_pedal(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      safetyConfigs=no_safety,
+      transmissionType=structs.CarParams.TransmissionType.direct,
+    ),
+    True,
+  )
+  assert not supports_volt_one_pedal(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CC,
+      safetyConfigs=stock_safety,
+      transmissionType=structs.CarParams.TransmissionType.direct,
+    ),
+    True,
+  )
+  assert not supports_volt_one_pedal(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      safetyConfigs=stock_safety,
+      transmissionType=structs.CarParams.TransmissionType.automatic,
+    ),
+    True,
+  )
+  assert not supports_volt_one_pedal(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      safetyConfigs=stock_safety,
+      transmissionType=structs.CarParams.TransmissionType.direct,
+    ),
+    False,
+  )
 
 
 def test_auto_hold_drive_gears_accept_capnp_dynamic_enum_membership():
@@ -258,6 +470,35 @@ def test_auto_hold_activation_stays_latched_after_brake_release():
   )
 
 
+def test_volt_2019_auto_hold_engaged_uses_near_stop_creep_hysteresis():
+  CP = SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_2019)
+
+  assert get_auto_hold_stop_threshold(CP, True) == CarControllerParams.NEAR_STOP_BRAKE_PHASE
+  assert should_activate_auto_hold(
+    True,
+    True,
+    True,
+    False,
+    False,
+    False,
+    False,
+    False,
+    0.05,
+    get_auto_hold_stop_threshold(CP, True),
+  )
+  assert not should_activate_auto_hold(
+    True,
+    True,
+    True,
+    False,
+    False,
+    False,
+    False,
+    False,
+    0.05,
+  )
+
+
 def test_auto_hold_activation_blocks_when_long_is_active_or_motion_is_above_threshold():
   assert not should_activate_auto_hold(
     True,
@@ -273,6 +514,7 @@ def test_auto_hold_activation_blocks_when_long_is_active_or_motion_is_above_thre
   assert not should_activate_auto_hold(
     True,
     True,
+    False,
     False,
     False,
     False,
@@ -307,6 +549,109 @@ def test_auto_hold_activation_releases_immediately_on_gas_press():
     False,
     False,
     0.0,
+  )
+
+
+def test_volt_one_pedal_activation_requires_main_l_mode_and_no_driver_input():
+  assert should_activate_volt_one_pedal(
+    True,
+    True,
+    False,
+    False,
+    False,
+    False,
+    True,
+    structs.CarState.GearShifter.low,
+    3.0,
+  )
+  assert not should_activate_volt_one_pedal(
+    True,
+    False,
+    False,
+    False,
+    False,
+    False,
+    True,
+    structs.CarState.GearShifter.low,
+    3.0,
+  )
+  assert not should_activate_volt_one_pedal(
+    True,
+    True,
+    True,
+    False,
+    False,
+    False,
+    True,
+    structs.CarState.GearShifter.low,
+    3.0,
+  )
+  assert not should_activate_volt_one_pedal(
+    True,
+    True,
+    False,
+    True,
+    False,
+    False,
+    True,
+    structs.CarState.GearShifter.low,
+    3.0,
+  )
+  assert not should_activate_volt_one_pedal(
+    True,
+    True,
+    False,
+    False,
+    False,
+    True,
+    True,
+    structs.CarState.GearShifter.low,
+    3.0,
+  )
+  assert not should_activate_volt_one_pedal(
+    True,
+    True,
+    False,
+    False,
+    False,
+    False,
+    False,
+    structs.CarState.GearShifter.drive,
+    3.0,
+  )
+
+
+def test_volt_one_pedal_target_decel_stays_active_above_low_speed_band():
+  assert get_volt_one_pedal_target_decel(0.5 * CV.MPH_TO_MS) == -1.0
+  assert get_volt_one_pedal_target_decel(6.0 * CV.MPH_TO_MS) == -1.1
+  assert get_volt_one_pedal_target_decel(20.0 * CV.MPH_TO_MS) == -1.1
+
+
+def test_volt_one_pedal_regression_ignores_noisy_wheel_direction_bits():
+  assert should_activate_volt_one_pedal(
+    True,
+    True,
+    False,
+    False,
+    False,
+    False,
+    True,
+    structs.CarState.GearShifter.low,
+    3.0,
+  )
+
+
+def test_volt_one_pedal_requires_time_in_drive_before_arming():
+  assert not should_activate_volt_one_pedal(
+    True,
+    True,
+    False,
+    False,
+    False,
+    False,
+    True,
+    structs.CarState.GearShifter.low,
+    2.5,
   )
 
 
@@ -369,6 +714,27 @@ def test_calc_pedal_command_keeps_strong_positive_requests_responsive():
   assert pedal_gas - 0.18 > 0.04
 
 
+def test_shape_truck_positive_accel_softens_small_highway_requests():
+  shaped = shape_truck_positive_accel(0.12, 26.0, True)
+
+  assert 0.09 < shaped < 0.10
+
+
+def test_shape_truck_positive_accel_keeps_mid_follow_requests_available():
+  shaped = shape_truck_positive_accel(0.45, 13.5, True)
+
+  assert 0.43 < shaped < 0.45
+
+
+def test_shape_truck_positive_accel_leaves_large_requests_alone():
+  assert shape_truck_positive_accel(1.0, 26.0, True) == 1.0
+
+
+def test_shape_truck_positive_accel_is_inactive_when_disabled_or_low_speed():
+  assert shape_truck_positive_accel(0.12, 26.0, False) == 0.12
+  assert shape_truck_positive_accel(0.12, 6.0, True) == 0.12
+
+
 def test_use_interceptor_sng_launch_requires_actual_near_stop():
   CP = SimpleNamespace(vEgoStarting=0.25)
 
@@ -376,6 +742,18 @@ def test_use_interceptor_sng_launch_requires_actual_near_stop():
   assert use_interceptor_sng_launch(CP, _sng_cs(0.2, False, True))
   assert not use_interceptor_sng_launch(CP, _sng_cs(1.2, False, True))
   assert not use_interceptor_sng_launch(CP, _sng_cs(0.0, True, False))
+
+
+def test_bolt_acc_pedal_sng_launch_uses_physical_standstill_without_stock_acc_bit():
+  CP = SimpleNamespace(
+    vEgoStarting=0.25,
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+    enableGasInterceptorDEPRECATED=True,
+  )
+
+  assert use_interceptor_sng_launch(CP, _sng_cs(0.0, True, False))
+  assert use_interceptor_sng_launch(CP, _sng_cs(0.2, False, False))
+  assert not use_interceptor_sng_launch(CP, _sng_cs(1.2, False, False))
 
 
 def test_use_interceptor_sng_launch_extends_for_maneuver_mode():

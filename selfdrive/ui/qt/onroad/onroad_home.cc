@@ -46,6 +46,7 @@ OnroadWindow::OnroadWindow(QWidget *parent) : QWidget(parent) {
   stacked_layout->addWidget(starpilot_onroad);
 
   starpilot_onroad->raise();
+  alerts->raise();
 
   nvg->starpilot_nvg = starpilot_nvg;
 }

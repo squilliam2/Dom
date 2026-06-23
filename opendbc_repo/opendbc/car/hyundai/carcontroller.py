@@ -8,7 +8,8 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_steer_an
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.hyundai import hyundaicanfd, hyundaican
 from opendbc.car.hyundai.hyundaicanfd import CanBus
-from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR, CANFD_RADAR_LIVE_LONGITUDINAL_CAR
+from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR, CANFD_RADAR_LIVE_LONGITUDINAL_CAR, \
+                                        kia_ev6_gt_line_longitudinal_tuning
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
@@ -65,6 +66,16 @@ REDNECK_BUTTON_COPIES_TIME_METRIC = [REDNECK_BUTTON_COPIES_TIME, 40]
 ANGLE_SAFETY_BASELINE_MODEL = str(CAR.KIA_SPORTAGE_HEV_2026)
 
 
+def egmp_dynamic_longitudinal_tuning(CP) -> bool:
+  return CP.carFingerprint == CAR.HYUNDAI_IONIQ_6 or \
+    kia_ev6_gt_line_longitudinal_tuning(CP.carFingerprint, getattr(CP, "carVin", ""))
+
+
+def should_reset_ev6_gt_line_longitudinal_tuning(CP, long_control_state: LongCtrlState) -> bool:
+  return kia_ev6_gt_line_longitudinal_tuning(CP.carFingerprint, getattr(CP, "carVin", "")) and \
+    long_control_state == LongCtrlState.off
+
+
 @dataclass
 class Ioniq6LongitudinalTuningState:
   desired_accel: float = 0.0
@@ -76,6 +87,13 @@ class Ioniq6LongitudinalTuningState:
   stopping: bool = False
   stopping_count: int = 0
   long_control_state_last: LongCtrlState = LongCtrlState.off
+
+
+def reset_ev6_gt_line_longitudinal_tuning(state: Ioniq6LongitudinalTuningState, CP,
+                                           long_control_state: LongCtrlState) -> Ioniq6LongitudinalTuningState:
+  if should_reset_ev6_gt_line_longitudinal_tuning(CP, long_control_state):
+    return Ioniq6LongitudinalTuningState(long_control_state_last=long_control_state)
+  return state
 
 
 @dataclass
@@ -426,22 +444,25 @@ class CarController(CarControllerBase):
     # longitudinal messages - stock ECU is still active and these would conflict
     self.long_active_ecu = self.CP.openpilotLongitudinalControl and not self.ecu_disable_failed
 
-    use_ioniq_6_dynamic_long_tuning = self.CP.carFingerprint == CAR.HYUNDAI_IONIQ_6 and self.long_active_ecu and \
-                                      actuators.longControlState in (LongCtrlState.starting, LongCtrlState.pid, LongCtrlState.stopping)
-    if use_ioniq_6_dynamic_long_tuning and self.frame % 5 == 0:
+    use_egmp_dynamic_long_tuning = egmp_dynamic_longitudinal_tuning(self.CP) and self.long_active_ecu and \
+                                   actuators.longControlState in (LongCtrlState.starting, LongCtrlState.pid, LongCtrlState.stopping)
+    if should_reset_ev6_gt_line_longitudinal_tuning(self.CP, actuators.longControlState):
+      self._ioniq_6_long_tuning = reset_ev6_gt_line_longitudinal_tuning(self._ioniq_6_long_tuning, self.CP,
+                                                                         actuators.longControlState)
+    elif use_egmp_dynamic_long_tuning and self.frame % 5 == 0:
       self._ioniq_6_long_tuning = update_ioniq_6_longitudinal_tuning(self._ioniq_6_long_tuning, accel_cmd,
                                                                       CS.out.vEgo, CS.out.aEgo,
                                                                       actuators.longControlState, self.long_active_ecu)
-    use_ioniq_6_smoothed_accel = use_ioniq_6_dynamic_long_tuning and (
+    use_egmp_smoothed_accel = use_egmp_dynamic_long_tuning and (
       accel_cmd >= self._ioniq_6_long_tuning.actual_accel or
       self._ioniq_6_long_tuning.launch_active or
       self._ioniq_6_long_tuning.stopping
     )
-    if self.CP.carFingerprint == CAR.HYUNDAI_IONIQ_6 and self.long_active_ecu:
-      if use_ioniq_6_smoothed_accel:
+    if use_egmp_dynamic_long_tuning:
+      if use_egmp_smoothed_accel:
         accel = self._ioniq_6_long_tuning.actual_accel
         stopping = self._ioniq_6_long_tuning.stopping
-      elif use_ioniq_6_dynamic_long_tuning:
+      else:
         accel = float(np.clip(accel_cmd,
                               self.accel_last - IONIQ_6_CANFD_SCC_DECEL_STEP,
                               self.accel_last + IONIQ_6_CANFD_SCC_ACCEL_STEP))
@@ -566,12 +587,16 @@ class CarController(CarControllerBase):
     lka_steering = self.CP.flags & HyundaiFlags.CANFD_LKA_STEERING
     lka_steering_long = lka_steering and self.long_active_ecu
     ccnc_non_hda2 = self.CP.flags & HyundaiFlags.CCNC and not lka_steering
-    use_ioniq_6_dynamic_long_tuning = self.CP.carFingerprint == CAR.HYUNDAI_IONIQ_6 and self.long_active_ecu and \
-                                      CC.actuators.longControlState == LongCtrlState.pid
-    use_ioniq_6_smoothed_accel = use_ioniq_6_dynamic_long_tuning and CC.actuators.accel >= self._ioniq_6_long_tuning.actual_accel
+    use_egmp_dynamic_long_tuning = egmp_dynamic_longitudinal_tuning(self.CP) and self.long_active_ecu and \
+                                   CC.actuators.longControlState in (LongCtrlState.starting, LongCtrlState.pid, LongCtrlState.stopping)
+    use_egmp_smoothed_accel = use_egmp_dynamic_long_tuning and (
+      CC.actuators.accel >= self._ioniq_6_long_tuning.actual_accel or
+      self._ioniq_6_long_tuning.launch_active or
+      self._ioniq_6_long_tuning.stopping
+    )
 
     # steering control
-    preserve_stock_lkas = self.CP.carFingerprint == CAR.HYUNDAI_IONIQ_6 and not self.long_active_ecu
+    preserve_stock_lkas = bool(self.CP.flags & HyundaiFlags.CANFD_LKA_STEERING) and not self.long_active_ecu
     can_sends.extend(hyundaicanfd.create_steering_messages(self.packer, self.CP, self.CAN, CC.enabled,
                                                            apply_steer_req, apply_torque, apply_angle,
                                                            CS.stock_lfa_msg,
@@ -656,8 +681,8 @@ class CarController(CarControllerBase):
           "lead_rel_speed": lead_rel_speed,
           "lead_visible": lead_visible,
         }
-        if self.CP.carFingerprint == CAR.HYUNDAI_IONIQ_6:
-          if use_ioniq_6_smoothed_accel:
+        if use_egmp_dynamic_long_tuning:
+          if use_egmp_smoothed_accel:
             acc_kwargs["jerk_lower"] = self._ioniq_6_long_tuning.jerk_lower
             acc_kwargs["jerk_upper"] = self._ioniq_6_long_tuning.jerk_upper
         can_sends.append(hyundaicanfd.create_acc_control(self.packer, self.CAN, CC.enabled, self.accel_last, accel, stopping, CC.cruiseControl.override,

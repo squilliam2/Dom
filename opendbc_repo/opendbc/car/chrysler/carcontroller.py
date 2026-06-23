@@ -2,7 +2,7 @@ from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL
 from opendbc.car.lateral import apply_meas_steer_torque_limits
 from opendbc.car.chrysler import chryslercan
-from opendbc.car.chrysler.values import RAM_CARS, RAM_DT, CarControllerParams, ChryslerFlags
+from opendbc.car.chrysler.values import RAM_CARS, RAM_DT, CarControllerParams, ChryslerFlags, ChryslerStarPilotFlags
 from opendbc.car.interfaces import CarControllerBase
 
 
@@ -50,7 +50,9 @@ class CarController(CarControllerBase):
 
       # TODO: can we make this more sane? why is it different for all the cars?
       lkas_control_bit = self.lkas_control_bit_prev
-      if self.CP.carFingerprint in RAM_DT:
+      if self.FPCP is not None and self.FPCP.flags & ChryslerStarPilotFlags.NO_MIN_STEERING_SPEED:
+        lkas_control_bit = CC.latActive
+      elif self.CP.carFingerprint in RAM_DT:
         if self.CP.minEnableSpeed <= CS.out.vEgo <= self.CP.minEnableSpeed + 0.5:
           lkas_control_bit = True
         if (self.CP.minEnableSpeed >= 14.5) and (CS.out.gearShifter != 2):

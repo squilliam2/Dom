@@ -75,7 +75,7 @@ CUSTOM_METRICS = AetherListMetrics(
   panel_padding_x=16,
   panel_padding_top=16,
   panel_padding_bottom=12,
-  header_height=164,
+  header_height=198,
   section_gap=12,
   section_header_height=28,
   section_header_gap=8,
@@ -239,7 +239,7 @@ class VehicleSettingsManagerView(PanelManagerView):
                                 tr("Configure vehicle fingerprint, driving features, and steering controls."),
                                 subtitle_size=22)
 
-    summary_y = rect.y + 44 + self.HEADER_SUBTITLE_HEIGHT + self.HEADER_SUMMARY_GAP
+    summary_y = rect.y + 78 + self.HEADER_SUBTITLE_HEIGHT + self.HEADER_SUMMARY_GAP
     summary_rect = rl.Rectangle(rect.x, summary_y, rect.width, min(self.HEADER_CARD_HEIGHT, rect.y + rect.height - summary_y))
     self._draw_summary_card(summary_rect)
 

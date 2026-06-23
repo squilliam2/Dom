@@ -12,11 +12,6 @@ from openpilot.starpilot.assets.model_manager import (
   DOWNLOAD_PROGRESS_PARAM,
   ModelManager,
 )
-from openpilot.starpilot.common.model_versions import (
-  is_tinygrad_model_version,
-  uses_combined_driving_artifacts,
-  uses_split_off_policy_artifacts,
-)
 from openpilot.starpilot.common.starpilot_variables import MODELS_PATH
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigDialogBase, BigMultiOptionDialog
@@ -692,9 +687,6 @@ class DrivingModelBigButton(BigButton):
     if self._is_builtin_default_model(key):
       return True
 
-    if (MODELS_PATH / f"{key}.thneed").is_file():
-      return True
-
     required_files = self._required_files_for_version(key, version)
     if not required_files:
       return False
@@ -719,26 +711,8 @@ class DrivingModelBigButton(BigButton):
     return False
 
   def _required_files_for_version(self, key: str, version: str) -> list[str]:
-    if not is_tinygrad_model_version(version):
-      return []
-
-    if uses_combined_driving_artifacts(version):
-      return [f"{key}_driving_tinygrad.pkl"]
-
-    files = [
-      f"{key}_driving_policy_tinygrad.pkl",
-      f"{key}_driving_vision_tinygrad.pkl",
-      f"{key}_driving_policy_metadata.pkl",
-      f"{key}_driving_vision_metadata.pkl",
-    ]
-
-    if uses_split_off_policy_artifacts(version):
-      files.extend([
-        f"{key}_driving_off_policy_tinygrad.pkl",
-        f"{key}_driving_off_policy_metadata.pkl",
-      ])
-
-    return files
+    del version
+    return [f"{key}_driving_tinygrad.pkl"]
 
   @staticmethod
   def _is_terminal_progress(progress: str) -> bool:

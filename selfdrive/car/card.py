@@ -383,6 +383,8 @@ class Car:
     starpilot_target_speed = 0.0
     allow_plan_decrease = False
     lead_present = False
+    lead_distance_m = 0.0
+    lead_rel_speed_ms = 0.0
     lookahead_points = REDNECK_DECREASE_LOOKAHEAD_POINTS
     if self.sm.seen['starpilotPlan'] and self.sm.valid['starpilotPlan']:
       starpilot_target_speed = float(self.sm['starpilotPlan'].vCruise)
@@ -396,6 +398,11 @@ class Car:
                                  str(longitudinal_plan.longitudinalPlanSource) != "cruise")
       if lead_present and len(plan_speeds) > 0:
         lookahead_points = len(plan_speeds)
+        if self.sm.seen['radarState'] and self.sm.valid['radarState']:
+          lead = self.sm['radarState'].leadOne
+          if lead.status:
+            lead_distance_m = max(float(lead.dRel), 0.0)
+            lead_rel_speed_ms = float(lead.vRel)
 
     return select_redneck_target_speed(
       float(getattr(CS, "vCruise", 0.0)),
@@ -405,6 +412,8 @@ class Car:
       lookahead_points,
       allow_plan_decrease=allow_plan_decrease,
       lead_present=lead_present,
+      lead_distance_m=lead_distance_m,
+      lead_rel_speed_ms=lead_rel_speed_ms,
     ), lead_present
 
   def step(self):

@@ -45,7 +45,7 @@ def _install_aethergrid_stubs():
     draw_triangle=lambda *a, **k: None,
     draw_texture_pro=lambda *a, **k: None,
     draw_text_ex=lambda *a, **k: None,
-    check_collision_point_rec=lambda *a, **k: False,
+    check_collision_point_rec=lambda p, r: (r.x <= p.x <= r.x + r.width) and (r.y <= p.y <= r.y + r.height),
     get_frame_time=lambda: 0.016,
     get_mouse_position=lambda: types.SimpleNamespace(x=0, y=0),
   )
@@ -55,6 +55,7 @@ def _install_aethergrid_stubs():
   app_mod.FontWeight = types.SimpleNamespace(BOLD=700, NORMAL=400, MEDIUM=500, SEMI_BOLD=600)
   app_mod.MousePos = type("MousePos", (), {})
   app_mod.MouseEvent = type("MouseEvent", (), {})
+  app_mod.FONT_SCALE = 1.0
   app_mod.gui_app = types.SimpleNamespace(
     width=1920,
     height=1080,
@@ -99,6 +100,11 @@ def _install_aethergrid_stubs():
       self._parent_rect = None
       self._enabled = True
       self.is_pressed = False
+      self._children = []
+
+    def _child(self, widget):
+      self._children.append(widget)
+      return widget
 
     @property
     def enabled(self):
@@ -116,6 +122,9 @@ def _install_aethergrid_stubs():
 
     def set_click_callback(self, callback):
       self.on_click = callback
+
+    def set_touch_valid_callback(self, callback):
+      self._touch_valid_callback = callback
 
     def set_enabled(self, enabled):
       self._enabled = enabled
@@ -401,7 +410,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=140)
     for _ in range(5):
       grid.add_tile(RenderSpy())
-    
+
     h = grid.measure_height(500)
     self.assertEqual(h, 740)
 
@@ -410,7 +419,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=None)
     for _ in range(5):
       grid.add_tile(RenderSpy())
-    
+
     h = grid.measure_height(500)
     self.assertEqual(h, 690)
 
@@ -419,7 +428,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=140)
     spy = RenderSpy()
     grid.add_tile(spy)
-    
+
     grid.render(mod.rl.Rectangle(0, 50, 500, 300))
     self.assertTrue(spy.rects)
     self.assertEqual(spy.rects[0].y, 50)
@@ -427,7 +436,7 @@ class TestAethergridContracts(unittest.TestCase):
 
   def test_disabled_tiles_hud_mode_rendering(self):
     mod = _import_aethergrid()
-    
+
     # ToggleTile disabled, show_led=True
     toggle = mod.ToggleTile(
       title="Test Loud",
@@ -485,12 +494,12 @@ class TestAethergridContracts(unittest.TestCase):
     spies = [RenderSpy() for _ in range(5)]
     for spy in spies:
       grid.add_tile(spy)
-    
+
     # col_w = (500 - 10) / 2 = 245
     # rows = 3, gap_h = 2 * 10 = 20
     # expected height = 3 * 245 + 20 = 755
     self.assertEqual(grid.measure_height(500), 755)
-    
+
     grid.render(mod.rl.Rectangle(0, 0, 500, 300))
     self.assertTrue(spies[0].rects)
     self.assertEqual(spies[0].rects[0].width, 245)
@@ -518,6 +527,46 @@ class TestAethergridContracts(unittest.TestCase):
       tile._render_hud_background(mod.rl.Rectangle(0, 0, 150, 130), mod.rl.Color(255, 0, 0, 255), glow=-2.0)
     except OverflowError:
       self.fail("OverflowError raised with extreme glow values")
+
+  def test_aether_category_tile_view(self):
+    mod = _import_aethergrid()
+    controller_mock = MagicMock()
+
+    toggle_visible = True
+    rows = [
+      mod.SettingRow("toggle_row", "toggle", "Toggle Title", subtitle="Toggle Subtitle",
+                     get_state=lambda: True, set_state=lambda v: None,
+                     visible=lambda: toggle_visible),
+      mod.SettingRow("value_row", "value", "Value Title", subtitle="Value Subtitle",
+                     get_value=lambda: "Value", on_click=lambda: None),
+      mod.SettingRow("action_row", "action", "Action Title", action_text="Run", on_click=lambda: None),
+    ]
+
+    view = mod.AetherCategoryTileView(controller_mock, "Category Title", rows, color="#FF0000", subtitle="Category Description")
+
+    self.assertEqual(len(view._row_to_tile_map), 3)
+    self.assertIsInstance(view._row_to_tile_map["toggle_row"], mod.RowToggleTile)
+    self.assertIsInstance(view._row_to_tile_map["value_row"], mod.RowPanelTile)
+    self.assertIsInstance(view._row_to_tile_map["action_row"], mod.RowPanelTile)
+
+    view._update_visible_tiles()
+    self.assertEqual(len(view._tile_grid.tiles), 3)
+
+    toggle_visible = False
+    view._update_visible_tiles()
+    self.assertEqual(len(view._tile_grid.tiles), 2)
+    self.assertNotIn(view._row_to_tile_map["toggle_row"], view._tile_grid.tiles)
+
+    view._back_btn_rect = mod.rl.Rectangle(196, 56, 68, 68)
+
+    self.assertEqual(view._target_at(mod.rl.Vector2(200, 60)), "static:back")
+    self.assertNotEqual(view._target_at(mod.rl.Vector2(0, 0)), "static:back")
+
+    app_mod = sys.modules["openpilot.system.ui.lib.application"]
+    app_mod.gui_app.pop_widget = MagicMock()
+
+    view._activate_target("static:back")
+    app_mod.gui_app.pop_widget.assert_called_once()
 
 
 if __name__ == "__main__":

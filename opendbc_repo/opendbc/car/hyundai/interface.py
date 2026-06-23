@@ -9,7 +9,8 @@ from opendbc.car.hyundai.values import HyundaiFlags, CAR, CarControllerParams, \
                                                    UNSUPPORTED_LONGITUDINAL_CAR, HyundaiSafetyFlags, \
                                                    LEGACY_LONGITUDINAL_CAR, \
                                                    HyundaiStarPilotSafetyFlags, \
-                                                   hyundai_cancel_button_enables_cruise
+                                                   hyundai_cancel_button_enables_cruise, \
+                                                   kia_ev6_gt_line_longitudinal_tuning
 from opendbc.car.hyundai.radar_interface import get_radar_track_config, radar_tracks_available
 from opendbc.car.interfaces import CarInterfaceBase, ACCEL_MIN
 from opendbc.car.disable_ecu import disable_ecu, ecu_log
@@ -40,6 +41,12 @@ def apply_platform_longitudinal_params(ret: structs.CarParams) -> None:
   ret.stoppingDecelRate = 0.4
 
 
+def apply_kia_ev6_gt_line_longitudinal_params(ret: structs.CarParams) -> None:
+  ret.startAccel = 1.4
+  ret.longitudinalActuatorDelay = 0.35
+  ret.vEgoStarting = 0.5
+
+
 def apply_ecu_disable_failure_fallback(CP: structs.CarParams, params) -> None:
   params.put_bool("EcuDisableFailed", True)
   CP.safetyConfigs[-1].safetyParam &= ~HyundaiSafetyFlags.LONG.value
@@ -67,6 +74,11 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def get_pid_accel_limits(CP, current_speed, cruise_speed):
     return ACCEL_MIN, CarControllerParams.ACCEL_MAX
+
+  @staticmethod
+  def apply_post_fingerprint_params(CP: structs.CarParams, candidate, fingerprint, car_fw) -> None:
+    if kia_ev6_gt_line_longitudinal_tuning(CP.carFingerprint, CP.carVin):
+      apply_kia_ev6_gt_line_longitudinal_params(CP)
 
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:

@@ -18,6 +18,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
     SettingRow,
     SettingSection,
     AetherSettingsView,
+    AetherCategoryTileView,
     TileGrid,
     HubTile,
     draw_list_group_shell,
@@ -68,203 +69,6 @@ def _theme_display_name(value: str) -> str:
     return display
 
 # ═══════════════════════════════════════════════════════════════
-# Custom Category Settings Dialog
-# ═══════════════════════════════════════════════════════════════
-
-class AetherCategorySettingsDialog(Widget):
-  def __init__(self, title: str, rows: list[SettingRow], color: rl.Color | str = "#8B5CF6", style=None):
-    super().__init__()
-    self.title = title
-    self._rows = rows
-    self._color = hex_to_color(color) if isinstance(color, str) else color
-    self._style = style or PANEL_STYLE
-    self._font_title = gui_app.font(FontWeight.BOLD)
-    self._font_btn = gui_app.font(FontWeight.BOLD)
-
-    self._scroll_panel = GuiScrollPanel2(horizontal=False)
-    self._scroll_offset = 0.0
-    self._scroll_rect = rl.Rectangle(0, 0, 0, 0)
-    self._content_height = 0.0
-
-    self._interactive_rects: dict[str, rl.Rectangle] = {}
-    self._pressed_target: str | None = None
-    self._can_click = True
-
-    self._ok_rect = rl.Rectangle(0, 0, 0, 0)
-    self._ok_offset = 0.0
-    self._ok_target = 0.0
-    self._is_pressed_ok = False
-
-  def _interactive_state(self, target_id: str, rect: rl.Rectangle) -> tuple[bool, bool]:
-    self._interactive_rects[target_id] = rect
-    hovered = _point_hits(gui_app.last_mouse_event.pos, rect, self._scroll_rect, pad_x=6, pad_y=0)
-    return hovered, self._pressed_target == target_id
-
-  def _target_at(self, mouse_pos: MousePos) -> str | None:
-    if rl.check_collision_point_rec(mouse_pos, self._ok_rect):
-      return "ok"
-    for target_id, rect in self._interactive_rects.items():
-      if _point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=0):
-        return target_id
-    return None
-
-  def _handle_mouse_press(self, mouse_pos: MousePos):
-    target = self._target_at(mouse_pos)
-    self._pressed_target = target
-    self._can_click = True
-    if target == "ok":
-      self._is_pressed_ok = True
-      self._ok_target = 1.0
-
-  def _handle_mouse_event(self, mouse_event):
-    if not self._scroll_panel.is_touch_valid():
-      self._can_click = False
-      return
-    if self._pressed_target is not None and self._target_at(mouse_event.pos) != self._pressed_target:
-      if self._pressed_target == "ok":
-        self._ok_target = 0.0
-        self._is_pressed_ok = False
-      self._pressed_target = None
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    target = self._target_at(mouse_pos) if self._scroll_panel.is_touch_valid() else None
-    if self._pressed_target is not None and self._pressed_target == target and self._can_click:
-      if target == "ok":
-        gui_app.pop_widget()
-      else:
-        row = None
-        for r in self._rows:
-          if f"{r.type}:{r.id}" == target:
-            row = r
-            break
-        if row is not None:
-          enabled = row.enabled() if row.enabled is not None else True
-          if enabled:
-            if row.on_click:
-              row.on_click()
-            elif row.type == "toggle" and row.set_state and row.get_state:
-              row.set_state(not row.get_state())
-
-    self._ok_target = 0.0
-    self._is_pressed_ok = False
-    self._pressed_target = None
-    self._can_click = True
-
-  def _render_row(self, rect: rl.Rectangle, row: SettingRow, is_last: bool):
-    target_id = f"{row.type}:{row.id}"
-    hovered, pressed = self._interactive_state(target_id, rect)
-
-    enabled = row.enabled() if row.enabled is not None else True
-    subtitle = row.disabled_label if not enabled and row.disabled_label else row.subtitle
-
-    from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
-      draw_standard_toggle_row,
-      draw_settings_list_row,
-      draw_selection_list_row,
-    )
-
-    if row.type == "toggle":
-      toggle_value = row.get_state() if row.get_state else False
-      draw_standard_toggle_row(
-        rect, tr(row.title), tr(subtitle), toggle_value,
-        enabled=enabled, hovered=hovered, pressed=pressed,
-        is_last=is_last, style=self._style,
-      )
-    elif row.type == "value":
-      value_text = row.get_value() if row.get_value else ""
-      draw_settings_list_row(
-        rect,
-        title=tr(row.title),
-        subtitle=tr(subtitle),
-        value=value_text,
-        enabled=enabled,
-        hovered=hovered,
-        pressed=pressed,
-        is_last=is_last,
-        show_chevron=row.on_click is not None,
-        title_size=34, subtitle_size=22, value_size=28,
-        style=self._style,
-      )
-    elif row.type == "action":
-      action_fill = self._style.danger_fill if row.action_danger else self._style.current_fill
-      action_border = self._style.danger_border if row.action_danger else self._style.current_border
-      action_text_color = self._style.danger_text if row.action_danger else AetherListColors.HEADER
-      draw_selection_list_row(
-        rect,
-        title=tr(row.title),
-        subtitle=tr(subtitle),
-        action_text=tr(row.action_text),
-        hovered=hovered,
-        pressed=pressed,
-        is_last=is_last,
-        action_pill=True,
-        title_size=34, subtitle_size=22,
-        action_pill_height=44, action_text_size=18,
-        action_text_color=action_text_color,
-        action_fill=action_fill,
-        action_border=action_border,
-        row_separator=self._style.divider_color,
-      )
-
-  def _render(self, rect: rl.Rectangle):
-    dt = rl.get_frame_time()
-    self._ok_offset += (self._ok_target - self._ok_offset) * (1 - math.exp(-dt / PLATE_TAU))
-    rl.draw_rectangle(0, 0, gui_app.width, gui_app.height, rl.Color(0, 0, 0, 160))
-
-    self._interactive_rects.clear()
-
-    dialog_w = 1600
-    dialog_h = 840
-    button_height = 110
-    button_width = 600
-
-    dx, dy = rect.x + (rect.width - dialog_w) / 2, rect.y + (rect.height - dialog_h) / 2
-    self._ok_rect = rl.Rectangle(dx + (dialog_w - button_width) / 2, dy + dialog_h - button_height - 60, button_width, button_height)
-
-    d_rect = _snap_rect(rl.Rectangle(dx, dy, dialog_w, dialog_h))
-    _draw_rounded_fill(d_rect, rl.Color(10, 12, 16, 255), radius_px=24)
-    _draw_rounded_stroke(d_rect, rl.Color(255, 255, 255, 16), radius_px=24)
-    rl.draw_rectangle_rec(rl.Rectangle(d_rect.x, d_rect.y, d_rect.width, 3), self._color)
-
-    title_size = 44
-    ts = measure_text_cached(self._font_title, self.title, title_size)
-    rl.draw_text_ex(self._font_title, self.title, rl.Vector2(round(dx + (dialog_w - ts.x) / 2), round(dy + 60)), title_size, 0, rl.WHITE)
-
-    scroll_x = dx + 80
-    scroll_y = dy + 150
-    scroll_w = dialog_w - 160
-    scroll_h = dialog_h - 150 - button_height - 100
-    self._scroll_rect = rl.Rectangle(scroll_x, scroll_y, scroll_w, scroll_h)
-
-    row_height = 122
-    visible_rows = [r for r in self._rows if r.visible is None or r.visible()]
-    self._content_height = len(visible_rows) * row_height
-
-    self._scroll_panel.set_enabled(self.is_visible)
-    self._scroll_offset = self._scroll_panel.update(self._scroll_rect, max(self._content_height, scroll_h))
-
-    rl.begin_scissor_mode(int(scroll_x), int(scroll_y), int(scroll_w), int(scroll_h))
-    y = scroll_y + self._scroll_offset
-
-    if visible_rows:
-      group_rect = rl.Rectangle(scroll_x, y, scroll_w, self._content_height)
-      draw_list_group_shell(group_rect, style=self._style)
-
-      for i, row in enumerate(visible_rows):
-        row_rect = rl.Rectangle(scroll_x, y + i * row_height, scroll_w, row_height)
-        self._render_row(row_rect, row, is_last=(i == len(visible_rows) - 1))
-
-    rl.end_scissor_mode()
-
-    o_off = self._ok_offset * 4.0
-    o_rect = rl.Rectangle(self._ok_rect.x + o_off, self._ok_rect.y + o_off, self._ok_rect.width - o_off * 2, self._ok_rect.height - o_off * 2)
-    _draw_rounded_fill(o_rect, self._color, radius_px=button_height / 2)
-    _draw_rounded_stroke(o_rect, _mix_colors(self._color, rl.WHITE, 0.4, alpha=160), thickness=2, radius_px=button_height / 2)
-    ots = measure_text_cached(self._font_btn, tr("OK"), 38)
-    rl.draw_text_ex(self._font_btn, tr("OK"), rl.Vector2(round(o_rect.x + (o_rect.width - ots.x) / 2), round(o_rect.y + (o_rect.height - ots.y) / 2)), 38, 0, rl.WHITE)
-
-
-# ═══════════════════════════════════════════════════════════════
 # Unified Appearance panel
 # ═══════════════════════════════════════════════════════════════
 
@@ -275,13 +79,9 @@ class AppearanceManagerView(AetherSettingsView):
 
     def __init__(self, controller, sections, **kwargs):
         super().__init__(controller, sections, **kwargs)
-        self._hero_grid = TileGrid(columns=3, padding=12)
-        self._hero_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
-        self._child(self._hero_grid)
-
-        self._standard_grid = TileGrid(columns=3, padding=12)
-        self._standard_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
-        self._child(self._standard_grid)
+        self._main_grid = TileGrid(columns=3, padding=12)
+        self._main_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
+        self._child(self._main_grid)
 
         self._init_toggles()
 
@@ -293,7 +93,14 @@ class AppearanceManagerView(AetherSettingsView):
                 "icon": "steering",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
-                    AetherCategorySettingsDialog(tr("Model & Path Visualization"), self._controller._model_rows, color="#8B5CF6", style=self._panel_style)
+                    AetherCategoryTileView(
+                        self._controller,
+                        tr("Model & Path Visualization"),
+                        self._controller._model_rows,
+                        color="#8B5CF6",
+                        subtitle=tr("Customize dynamic lane paths, road edges, and colors."),
+                        panel_style=self._panel_style,
+                    )
                 )
             },
             {
@@ -302,7 +109,14 @@ class AppearanceManagerView(AetherSettingsView):
                 "icon": "display",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
-                    AetherCategorySettingsDialog(tr("Driving Widgets & HUD"), self._controller._hud_rows, color="#8B5CF6", style=self._panel_style)
+                    AetherCategoryTileView(
+                        self._controller,
+                        tr("Driving Widgets & HUD"),
+                        self._controller._hud_rows,
+                        color="#8B5CF6",
+                        subtitle=tr("Configure compass, dynamic pedals, signals, and screen borders."),
+                        panel_style=self._panel_style,
+                    )
                 )
             },
             {
@@ -311,7 +125,14 @@ class AppearanceManagerView(AetherSettingsView):
                 "icon": "system",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
-                    AetherCategorySettingsDialog(tr("Screen Declutter & Visibility"), self._controller._declutter_rows, color="#8B5CF6", style=self._panel_style)
+                    AetherCategoryTileView(
+                        self._controller,
+                        tr("Screen Declutter & Visibility"),
+                        self._controller._declutter_rows,
+                        color="#8B5CF6",
+                        subtitle=tr("Toggle speed limits, alert banners, and driver monitoring icon."),
+                        panel_style=self._panel_style,
+                    )
                 )
             },
         ]
@@ -323,7 +144,14 @@ class AppearanceManagerView(AetherSettingsView):
                 "icon": "navigate",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
-                    AetherCategorySettingsDialog(tr("Navigation & Mapping"), self._controller._nav_rows, color="#8B5CF6", style=self._panel_style)
+                    AetherCategoryTileView(
+                        self._controller,
+                        tr("Navigation & Mapping"),
+                        self._controller._nav_rows,
+                        color="#8B5CF6",
+                        subtitle=tr("Configure road names, Vienna signs, and offroad routes."),
+                        panel_style=self._panel_style,
+                    )
                 )
             },
             {
@@ -332,7 +160,14 @@ class AppearanceManagerView(AetherSettingsView):
                 "icon": "vehicle",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
-                    AetherCategorySettingsDialog(tr("Camera & System Startup"), self._controller._system_rows, color="#8B5CF6", style=self._panel_style)
+                    AetherCategoryTileView(
+                        self._controller,
+                        tr("Camera & System Startup"),
+                        self._controller._system_rows,
+                        color="#8B5CF6",
+                        subtitle=tr("Manage driver monitoring cameras, boot logos, and startup sounds."),
+                        panel_style=self._panel_style,
+                    )
                 )
             },
             {
@@ -341,26 +176,22 @@ class AppearanceManagerView(AetherSettingsView):
                 "icon": "sound",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
-                    AetherCategorySettingsDialog(tr("Developer & Beta Metrics"), self._controller._dev_rows, color="#8B5CF6", style=self._panel_style)
+                    AetherCategoryTileView(
+                        self._controller,
+                        tr("Developer & Beta Metrics"),
+                        self._controller._dev_rows,
+                        color="#8B5CF6",
+                        subtitle=tr("Adjust radar plots, lead vehicle info, and stop sign metrics."),
+                        panel_style=self._panel_style,
+                    )
                 )
             },
         ]
 
-        self._hero_grid.clear()
-        for d in hero_data:
-            self._hero_grid.add_tile(
-                HubTile(
-                    title=d["title"],
-                    desc=d["desc"],
-                    icon_key=d["icon"],
-                    on_click=d["on_click"],
-                    bg_color=d["color"],
-                )
-            )
-
-        self._standard_grid.clear()
-        for d in standard_data:
-            self._standard_grid.add_tile(
+        all_data = hero_data + standard_data
+        self._main_grid.clear()
+        for d in all_data:
+            self._main_grid.add_tile(
                 HubTile(
                     title=d["title"],
                     desc=d["desc"],
@@ -377,7 +208,7 @@ class AppearanceManagerView(AetherSettingsView):
         margin_x = 12.0
         margin_top = 16.0
         margin_bottom = 16.0
-        header_h = 90.0
+        header_h = 125.0
         gap_after_header = 16.0
 
         # Draw the header at the top of rect:
@@ -411,24 +242,8 @@ class AppearanceManagerView(AetherSettingsView):
 
     def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
         y = rect.y + self._scroll_offset
-        viewport_h = rect.height
-
-        gap_y = 12.0
-        padding_bottom = 6.0
-        tile_space = viewport_h - gap_y - padding_bottom
-
-        # Hero tiles are larger/taller
-        hero_h = tile_space * 0.55
-        standard_h = tile_space * 0.45
-
-        self._hero_grid._tile_height = hero_h
-        self._standard_grid._tile_height = standard_h
-
-        self._hero_grid.set_parent_rect(self._scroll_rect)
-        self._hero_grid.render(rl.Rectangle(rect.x, y, width, hero_h))
-
-        self._standard_grid.set_parent_rect(self._scroll_rect)
-        self._standard_grid.render(rl.Rectangle(rect.x, y + hero_h + gap_y, width, standard_h))
+        self._main_grid.set_parent_rect(self._scroll_rect)
+        self._main_grid.render(rl.Rectangle(rect.x, y, width, rect.height))
 
 
 class StarPilotAppearanceLayout(_SettingsPage):

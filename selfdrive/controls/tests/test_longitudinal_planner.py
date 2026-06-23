@@ -1223,6 +1223,83 @@ def test_standstill_tiny_opening_lead_without_accel_does_not_get_nudge_floor(mod
 
 
 @pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
+def test_standstill_slow_creep_depart_releases_after_short_confirm(model_version):
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=0.0)
+
+  sm = make_sm(
+    0.0,
+    desired_accel=0.0,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=True,
+    lead_one=make_lead(status=True, d_rel=7.2, v_lead=0.33, a_lead=0.28, radar=True, model_prob=1.0),
+  )
+  sm["carState"].standstill = True
+  sm["controlsState"].longControlState = LongCtrlState.stopping
+  sm["starpilotPlan"].vCruise = 10.0
+  sm["modelV2"].action.shouldStop = False
+
+  frames = int(round(longitudinal_planner_module.STANDSTILL_LEAD_CREEP_RELEASE_CONFIRM_TIME / planner.dt))
+  for _ in range(max(frames, 1)):
+    planner.update(sm, make_toggles(model_version))
+
+  assert not planner.output_should_stop
+  assert planner.output_a_target >= longitudinal_planner_module.STANDSTILL_LEAD_CREEP_RELEASE_MIN_ACCEL
+
+
+@pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
+def test_standstill_slow_creep_depart_releases_near_stop_gap_with_modest_accel(model_version):
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=0.0)
+
+  sm = make_sm(
+    0.0,
+    desired_accel=0.0,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=True,
+    lead_one=make_lead(status=True, d_rel=5.7, v_lead=1.0, a_lead=0.09, radar=True, model_prob=1.0),
+  )
+  sm["carState"].standstill = True
+  sm["controlsState"].longControlState = LongCtrlState.stopping
+  sm["starpilotPlan"].vCruise = 10.0
+  sm["modelV2"].action.shouldStop = False
+
+  frames = int(round(longitudinal_planner_module.STANDSTILL_LEAD_CREEP_RELEASE_CONFIRM_TIME / planner.dt))
+  for _ in range(max(frames, 1)):
+    planner.update(sm, make_toggles(model_version))
+
+  assert not planner.output_should_stop
+  assert planner.output_a_target >= longitudinal_planner_module.STANDSTILL_LEAD_CREEP_RELEASE_MIN_ACCEL
+
+
+@pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
+def test_standstill_slow_creep_depart_does_not_release_on_gap_without_motion_signal(model_version):
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=0.0)
+
+  sm = make_sm(
+    0.0,
+    desired_accel=0.0,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=True,
+    lead_one=make_lead(status=True, d_rel=7.2, v_lead=0.20, a_lead=0.05, radar=True, model_prob=1.0),
+  )
+  sm["carState"].standstill = True
+  sm["controlsState"].longControlState = LongCtrlState.stopping
+  sm["starpilotPlan"].vCruise = 10.0
+  sm["modelV2"].action.shouldStop = False
+
+  frames = int(round(longitudinal_planner_module.STANDSTILL_LEAD_CREEP_RELEASE_CONFIRM_TIME / planner.dt)) + 2
+  for _ in range(max(frames, 1)):
+    planner.update(sm, make_toggles(model_version))
+
+  assert planner.output_should_stop
+
+
+@pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
 def test_standstill_moving_lead_applies_resume_floor_once_stop_clears(model_version):
   v_ego = 0.0
 
@@ -1436,6 +1513,52 @@ def test_standstill_moving_lead_holds_depart_accel_floor_after_stop_release(mode
   assert outputs[2] >= 0.25
   assert outputs[3] >= 0.25
   assert outputs[4] >= 0.25
+
+
+@pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
+def test_standstill_depart_accel_hold_reuses_floor_through_softening_lead_delta(model_version):
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=0.0)
+  toggles = make_toggles(model_version)
+
+  sm_release = make_sm(
+    0.0,
+    desired_accel=0.0,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=True,
+    lead_one=make_lead(status=True, d_rel=4.1, v_lead=1.05, a_lead=1.2, radar=False, model_prob=1.0),
+  )
+  sm_release["carState"].standstill = True
+  sm_release["controlsState"].longControlState = LongCtrlState.stopping
+  sm_release["starpilotPlan"].vCruise = 10.0
+  sm_release["modelV2"].action.shouldStop = False
+
+  for _ in range(6):
+    planner.update(sm_release, toggles)
+    assert planner.output_should_stop
+
+  planner.update(sm_release, toggles)
+  assert not planner.output_should_stop
+  assert planner.output_a_target >= longitudinal_planner_module.LEAD_DEPART_ACCEL_HOLD_MIN_ACCEL
+
+  sm_hold = make_sm(
+    0.5,
+    desired_accel=0.0,
+    min_accel=-0.5,
+    experimental_mode=False,
+    tracking_lead=True,
+    lead_one=make_lead(status=True, d_rel=5.8, v_lead=1.25, a_lead=0.08, radar=False, model_prob=1.0),
+  )
+  sm_hold["carState"].standstill = False
+  sm_hold["controlsState"].longControlState = LongCtrlState.pid
+  sm_hold["starpilotPlan"].vCruise = 10.0
+  sm_hold["modelV2"].action.shouldStop = False
+
+  planner.update(sm_hold, toggles)
+
+  assert not planner.output_should_stop
+  assert planner.output_a_target >= longitudinal_planner_module.LEAD_DEPART_ACCEL_HOLD_MIN_ACCEL
 
 
 @pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
@@ -2447,6 +2570,179 @@ def test_route_8bc6_catchup_cap_skips_slightly_negative_delta_when_lead_accelera
   assert cap is None
 
 
+def test_route_8bc6_catchup_cap_skips_comfortable_accelerating_lead_when_source_flips_to_lead0():
+  v_ego = 24.361867904663086
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead = make_lead(
+    status=True, d_rel=38.5, v_lead=24.46365737915039,
+    a_lead=0.4625629186630249, radar=True, model_prob=1.0, y_rel=0.0,
+  )
+
+  cap = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.3549551963806152,
+    current_source="lead0",
+    tracking_lead_active=True,
+  )
+
+  assert planner.is_comfortable_accelerating_away_follow(lead, v_ego, 1.3549551963806152)
+  assert cap is None
+
+
+def test_route_8bc6_radar_matched_follow_catchup_cap_skips_buffer_edge_square_wave():
+  v_ego = 22.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead = make_lead(
+    status=True, d_rel=41.558, v_lead=22.3, a_lead=0.0, radar=True, model_prob=1.0, y_rel=0.0,
+  )
+
+  cap = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.45,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+
+  assert planner.lead_is_matched_follow_window(lead, v_ego, 1.45)
+  assert cap is None
+
+
+def test_route_8bc6_radar_matched_follow_catchup_cap_holds_small_cap_for_slower_lead_on_cruise():
+  v_ego = 22.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead = make_lead(
+    status=True, d_rel=39.108, v_lead=21.2, a_lead=0.0, radar=True, model_prob=1.0, y_rel=0.0,
+  )
+
+  cap = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.45,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+
+  assert planner.lead_is_matched_follow_window(lead, v_ego, 1.45)
+  assert cap == pytest.approx(0.04, abs=1e-6)
+
+
+def test_route_8bc6_post_departure_settle_latch_bypasses_mild_closure_catchup_cap():
+  v_ego = 16.4023914337
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead = make_lead(
+    status=True, d_rel=25.75, v_lead=15.9339208603,
+    a_lead=0.1164954603, radar=True, model_prob=1.0, y_rel=0.0,
+  )
+
+  cap_without_latch = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="lead0",
+    tracking_lead_active=True,
+  )
+
+  planner.post_departure_follow_settle_until = time.monotonic() + 5.0
+  cap_with_latch = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="lead0",
+    tracking_lead_active=True,
+  )
+
+  assert cap_without_latch == pytest.approx(0.03, abs=1e-6)
+  assert cap_with_latch is None
+
+
+def test_route_8bc6_post_departure_settle_latch_bypasses_mild_closure_cruise_cap():
+  v_ego = 19.2975330353
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead = make_lead(
+    status=True, d_rel=28.9, v_lead=19.6019687653,
+    a_lead=0.1241656989, radar=True, model_prob=1.0, y_rel=0.0,
+  )
+
+  cap_without_latch = planner.get_cruise_tracking_lead_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+
+  planner.post_departure_follow_settle_until = time.monotonic() + 5.0
+  cap_with_latch = planner.get_cruise_tracking_lead_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+
+  assert cap_without_latch == pytest.approx(0.10831585854957321, abs=1e-6)
+  assert cap_with_latch is None
+
+
+def test_post_departure_settle_latch_does_not_bypass_when_lead_brakes_again():
+  v_ego = 19.192998192
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  planner.post_departure_follow_settle_until = time.monotonic() + 5.0
+  lead = make_lead(
+    status=True, d_rel=30.5, v_lead=19.147550216,
+    a_lead=-0.16, radar=True, model_prob=1.0, y_rel=0.2,
+  )
+
+  catchup_cap = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+  cruise_cap = planner.get_cruise_tracking_lead_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+
+  assert catchup_cap is not None
+  assert cruise_cap is not None
+  assert planner.post_departure_follow_settle_until == 0.0
+
+
+def test_post_departure_settle_latch_clears_once_follow_has_settled_near_target():
+  v_ego = 16.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  planner.post_departure_follow_settle_until = time.monotonic() + 5.0
+  lead = make_lead(
+    status=True, d_rel=20.48, v_lead=16.25,
+    a_lead=0.18, radar=True, model_prob=1.0, y_rel=0.0,
+  )
+
+  cap = planner.get_lead_catchup_accel_cap(
+    lead,
+    v_ego,
+    1.25,
+    current_source="lead0",
+    tracking_lead_active=True,
+  )
+
+  assert cap is not None
+  assert planner.post_departure_follow_settle_until == 0.0
+
+
 def test_post_departure_pullaway_bypass_does_not_skip_when_lead_brakes_again():
   v_ego = 19.03
   CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
@@ -2667,6 +2963,82 @@ def test_near_duplicate_lead_source_hysteresis_prefers_previous_source_for_ident
   assert lead_1_bias > 0.0
 
 
+def test_near_duplicate_leads_detect_identical_radar_track_below_45_mph():
+  v_ego = 14.31
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=25.7, v_lead=14.61, a_lead=0.0, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=25.7, v_lead=14.61, a_lead=0.0, radar=True, model_prob=1.0)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+
+  assert planner.mpc.leads_are_near_duplicates(lead_one, lead_two, v_ego)
+
+
+def test_identical_radar_duplicate_source_hold_keeps_previous_label():
+  v_ego = 21.6
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=33.5, v_lead=20.7, a_lead=-0.03, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=33.5, v_lead=20.7, a_lead=-0.03, radar=True, model_prob=1.0)
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+
+  sticky = planner.mpc.get_identical_radar_duplicate_source_hold("lead1", lead_one, lead_two, 33.52, 33.50)
+
+  assert sticky == "lead1"
+
+
+def test_identical_radar_duplicate_cruise_hold_keeps_previous_lead_through_route_like_crossover():
+  v_ego = 22.57
+  t_follow = 1.20
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=32.3, v_lead=23.74, a_lead=0.67, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=32.3, v_lead=23.74, a_lead=0.67, radar=True, model_prob=1.0)
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+
+  sticky = planner.mpc.get_identical_radar_duplicate_cruise_hold(
+    "lead0",
+    lead_one,
+    lead_two,
+    144.92,
+    144.91,
+    135.10,
+    v_ego,
+    t_follow,
+  )
+
+  assert sticky == "lead0"
+
+
+def test_identical_radar_duplicate_cruise_hold_skips_clear_pullaway():
+  v_ego = 22.57
+  t_follow = 1.20
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=48.0, v_lead=25.5, a_lead=0.45, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=48.0, v_lead=25.5, a_lead=0.45, radar=True, model_prob=1.0)
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+
+  sticky = planner.mpc.get_identical_radar_duplicate_cruise_hold(
+    "lead0",
+    lead_one,
+    lead_two,
+    180.0,
+    180.0,
+    150.0,
+    v_ego,
+    t_follow,
+  )
+
+  assert sticky is None
+
+
 def test_near_duplicate_lead_source_hysteresis_skips_distinct_leads():
   v_ego = 27.0
   CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
@@ -2728,6 +3100,82 @@ def test_near_duplicate_lead_transition_target_damps_tracking_cruise_sign_flip()
 
   assert smoothed is not None
   assert smoothed == pytest.approx(-0.92, abs=1e-6)
+
+
+def test_near_duplicate_lead_transition_target_damps_low_speed_duplicate_radar_handoff():
+  v_ego = 17.61
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=41.9, v_lead=16.85, a_lead=0.0, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=41.9, v_lead=16.85, a_lead=0.0, radar=True, model_prob=1.0)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  smoothed = planner.get_near_duplicate_lead_transition_target(
+    lead_one,
+    v_ego,
+    1.45,
+    prev_output_a_target=0.89,
+    output_a_target=0.05,
+    current_source="cruise",
+    tracking_lead_active=True,
+  )
+
+  assert smoothed is not None
+  assert smoothed == pytest.approx(0.57, abs=1e-6)
+
+
+def test_duplicate_slow_lead_brake_hold_prevents_zero_cross_from_duplicate_voacc_leads():
+  v_ego = 24.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=19.2, v_lead=20.0, a_lead=-0.38, radar=False, model_prob=0.998)
+  lead_two = make_lead(status=True, d_rel=19.25, v_lead=20.02, a_lead=-0.41, radar=False, model_prob=0.996)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  smoothed = planner.get_duplicate_slow_lead_brake_hold_target(
+    lead_one,
+    v_ego,
+    1.0,
+    prev_output_a_target=-3.50,
+    output_a_target=0.0,
+    current_source="lead0",
+    tracking_lead_active=True,
+  )
+
+  assert smoothed is not None
+  assert smoothed == pytest.approx(-3.28, abs=1e-6)
+
+
+def test_duplicate_slow_lead_brake_hold_skips_distinct_leads():
+  v_ego = 24.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=19.2, v_lead=20.0, a_lead=-0.38, radar=False, model_prob=0.998)
+  lead_two = make_lead(status=True, d_rel=24.0, v_lead=21.5, a_lead=-0.10, radar=False, model_prob=0.996)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  smoothed = planner.get_duplicate_slow_lead_brake_hold_target(
+    lead_one,
+    v_ego,
+    1.0,
+    prev_output_a_target=-3.50,
+    output_a_target=0.0,
+    current_source="lead0",
+    tracking_lead_active=True,
+  )
+
+  assert smoothed is None
 
 
 def test_near_duplicate_lead_transition_target_skips_plain_cruise_without_tracking():

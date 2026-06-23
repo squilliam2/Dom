@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from types import SimpleNamespace
 from parameterized import parameterized
 
@@ -18,7 +19,7 @@ from opendbc.car.gm.carcontroller import (
 import opendbc.car.gm.interface as gm_interface
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.gm.fingerprints import FINGERPRINTS
-from opendbc.car.gm.values import CAMERA_ACC_CAR, CAR, CC_ONLY_CAR, DBC, GM_RX_OFFSET, CruiseButtons, GMFlags, GMSafetyFlags
+from opendbc.car.gm.values import CAMERA_ACC_CAR, CAR, CC_ONLY_CAR, DBC, GM_RX_OFFSET, CarControllerParams, CruiseButtons, GMFlags, GMSafetyFlags
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from openpilot.common.params import Params
 
@@ -63,6 +64,31 @@ class TestGMFingerprint:
 
 
 class TestGMInterface:
+  def test_bolt_acc_pedal_pid_accel_limits_keep_full_negative_authority(self):
+    cp = SimpleNamespace(
+      enableGasInterceptorDEPRECATED=True,
+      flags=GMFlags.PEDAL_LONG.value,
+      carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+    )
+
+    accel_min, accel_max = gm_interface.CarInterface.get_pid_accel_limits(cp, 4.73, 0.0)
+
+    assert accel_min == pytest.approx(CarControllerParams.ACCEL_MIN)
+    assert accel_max == pytest.approx(np.interp(4.73, [0.0, 1.5, 4.0, 8.0, 15.0],
+                                                [0.54, 0.74, 1.03, 1.46, CarControllerParams.ACCEL_MAX]))
+
+  def test_bolt_cc_pedal_pid_accel_limits_remain_regen_limited(self):
+    cp = SimpleNamespace(
+      enableGasInterceptorDEPRECATED=True,
+      flags=GMFlags.PEDAL_LONG.value,
+      carFingerprint=CAR.CHEVROLET_BOLT_CC_2022_2023,
+    )
+
+    accel_min, _ = gm_interface.CarInterface.get_pid_accel_limits(cp, 4.73, 0.0)
+
+    assert accel_min == pytest.approx(np.interp(4.73, [0.0, 1.5, 4.0, 8.0, 15.0, 30.0],
+                                                [-0.93, -1.28, -1.98, -2.58, -2.86, -2.95]))
+
   def test_missing_hard_cruise_signal_defaults_to_init(self):
     assert get_hard_cruise_buttons({"ACCButtons": CruiseButtons.RES_ACCEL}) == CruiseButtons.INIT
     assert get_hard_cruise_buttons({"ACCButtonsHard": CruiseButtons.DECEL_SET}) == CruiseButtons.DECEL_SET
@@ -88,12 +114,15 @@ class TestGMInterface:
 
     old_testing_ground = gm_interface.testing_ground
     gm_interface.testing_ground = SimpleNamespace(use_2=True)
+    params = Params()
+    params.put_bool("GMPedalLongitudinal", True)
 
     try:
       car_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, fingerprint, [], alpha_long=False, is_release=False, docs=False,
                                            starpilot_toggles=_test_starpilot_toggles())
     finally:
       gm_interface.testing_ground = old_testing_ground
+      params.remove("GMPedalLongitudinal")
 
     if pedal_present:
       assert list(car_params.longitudinalTuning.kpV) == pytest.approx([0.10, 0.072, 0.05, 0.04])
@@ -136,6 +165,26 @@ class TestGMInterface:
     assert list(car_params.longitudinalTuning.kiBP) == pytest.approx([0.0, 5.0, 15.0, 35.0])
     assert list(car_params.longitudinalTuning.kiV) == pytest.approx([0.28, 0.26, 0.20, 0.16])
 
+  def test_blazer_uses_earlier_stronger_low_speed_stop_tune(self):
+    CarInterface = interfaces[CAR.CHEVROLET_BLAZER]
+    fingerprint = _empty_fingerprint()
+    fingerprint[0] = FINGERPRINTS[CAR.CHEVROLET_BLAZER][0].copy()
+    fingerprint[0][0x2FF] = 8  # SASCM present so alpha-long can enable on this platform
+
+    car_params = CarInterface.get_params(CAR.CHEVROLET_BLAZER, fingerprint, [], alpha_long=True, is_release=False,
+                                         docs=False, starpilot_toggles=_test_starpilot_toggles())
+
+    assert car_params.openpilotLongitudinalControl
+    assert list(car_params.longitudinalTuning.kpBP) == pytest.approx([0.0, 4.0, 12.0, 35.0])
+    assert list(car_params.longitudinalTuning.kpV) == pytest.approx([0.09, 0.075, 0.055, 0.04])
+    assert list(car_params.longitudinalTuning.kiBP) == pytest.approx([0.0, 4.0, 12.0, 35.0])
+    assert list(car_params.longitudinalTuning.kiV) == pytest.approx([0.03, 0.04, 0.055, 0.07])
+    assert car_params.minEnableSpeed == pytest.approx(5 * CV.KPH_TO_MS)
+    assert car_params.stoppingDecelRate == pytest.approx(1.2)
+    assert car_params.vEgoStopping == pytest.approx(0.35)
+    assert car_params.vEgoStarting == pytest.approx(0.35)
+    assert car_params.stopAccel == pytest.approx(-0.40)
+
   def test_volt_gateway_without_accel_pos_uses_brake_pedal_message(self):
     CarInterface = interfaces[CAR.CHEVROLET_VOLT]
     fingerprint = _empty_fingerprint()
@@ -166,6 +215,25 @@ class TestGMInterface:
 
     assert car_params.openpilotLongitudinalControl
     assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value
+
+  def test_volt_one_pedal_sets_stock_hold_safety_bit_without_auto_hold(self):
+    CarInterface = interfaces[CAR.CHEVROLET_VOLT_ASCM]
+    fingerprint = _empty_fingerprint()
+    fingerprint[0][0x2FF] = 8
+
+    params = Params()
+    try:
+      params.put_bool("GMAutoHold", False)
+      params.put_bool("VoltOnePedalMode", True)
+      car_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, fingerprint, [], alpha_long=True, is_release=False,
+                                           docs=False, starpilot_toggles=_test_starpilot_toggles())
+    finally:
+      params.remove("GMAutoHold")
+      params.remove("VoltOnePedalMode")
+
+    assert car_params.openpilotLongitudinalControl
+    assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value
+    assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_PANDA_3D1_SCHED.value
 
   @parameterized.expand(VOLT_CARS)
   def test_volt_bsm_is_enabled_without_fingerprint_match(self, car_model):
@@ -213,14 +281,17 @@ class TestGMInterface:
     params = Params()
     toggles = _test_starpilot_toggles()
     try:
+      params.put_bool("GMPedalLongitudinal", True)
       params.put_bool("RemapCancelToDistance", True)
       car_params = CarInterface.get_params(CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL, fingerprint, [], alpha_long=False,
                                            is_release=False, docs=False, starpilot_toggles=toggles)
     finally:
+      params.remove("GMPedalLongitudinal")
       params.remove("RemapCancelToDistance")
 
     assert car_params.alternativeExperience & ALTERNATIVE_EXPERIENCE.GM_REMAP_CANCEL_TO_DISTANCE
     assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_BOLT_2022_PEDAL.value
+    assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value
 
   def test_cadillac_xt5_sdgm_sascm_gates_alpha_long(self):
     CarInterface = interfaces[CAR.CADILLAC_XT5]

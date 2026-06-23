@@ -133,7 +133,11 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def get_pid_accel_limits(CP, current_speed, cruise_speed):
     if CP.enableGasInterceptorDEPRECATED and bool(CP.flags & GMFlags.PEDAL_LONG.value):
-      if CP.carFingerprint in BOLT_PEDAL_LONG_CARS:
+      if CP.carFingerprint == CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL:
+        accel_min = CarControllerParams.ACCEL_MIN
+        accel_max = np.interp(current_speed, [0.0, 1.5, 4.0, 8.0, 15.0],
+                              [0.54, 0.74, 1.03, 1.46, CarControllerParams.ACCEL_MAX])
+      elif CP.carFingerprint in BOLT_PEDAL_LONG_CARS:
         accel_min = np.interp(current_speed, [0.0, 1.5, 4.0, 8.0, 15.0, 30.0],
                               [-0.93, -1.28, -1.98, -2.58, -2.86, -2.95])
         accel_max = np.interp(current_speed, [0.0, 1.5, 4.0, 8.0, 15.0],
@@ -217,6 +221,10 @@ class CarInterface(CarInterfaceBase):
       gm_auto_hold = params.get_bool("GMAutoHold")
     except UnknownKeyName:
       gm_auto_hold = False
+    try:
+      volt_one_pedal_mode = params.get_bool("VoltOnePedalMode")
+    except UnknownKeyName:
+      volt_one_pedal_mode = False
 
     ret.brand = "gm"
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.gm)]
@@ -519,7 +527,15 @@ class CarInterface(CarInterfaceBase):
       if not ret.openpilotLongitudinalControl:
         ret.minEnableSpeed = -1.
       if candidate == CAR.CHEVROLET_BLAZER:
+        ret.longitudinalTuning.kpBP = [0.0, 4.0, 12.0, 35.0]
+        ret.longitudinalTuning.kpV = [0.09, 0.075, 0.055, 0.040]
+        ret.longitudinalTuning.kiBP = [0.0, 4.0, 12.0, 35.0]
+        ret.longitudinalTuning.kiV = [0.03, 0.04, 0.055, 0.07]
         ret.minEnableSpeed = 5 * CV.KPH_TO_MS
+        ret.stoppingDecelRate = 1.2
+        ret.vEgoStopping = 0.35
+        ret.vEgoStarting = 0.35
+        ret.stopAccel = -0.40
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
     elif candidate == CAR.BUICK_BABYENCLAVE:
@@ -667,8 +683,8 @@ class CarInterface(CarInterfaceBase):
     if remote_start_boots_comma:
       ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_REMOTE_START_BOOTS_COMMA.value
 
-    volt_stock_auto_hold_safety = (
-      gm_auto_hold and
+    volt_stock_friction_brake_safety = (
+      (gm_auto_hold or volt_one_pedal_mode) and
       candidate in {
         CAR.CHEVROLET_VOLT,
         CAR.CHEVROLET_VOLT_2019,
@@ -676,12 +692,27 @@ class CarInterface(CarInterfaceBase):
         CAR.CHEVROLET_VOLT_CAMERA,
       }
     )
-    if volt_stock_auto_hold_safety:
-      # Reuse the paddle-scheduler safety bit as a Volt auto-hold marker on
-      # non-pedal paths. Hold can run while OP longitudinal is configured but
-      # not currently active, so the bit must be present regardless of the
-      # current long-control mode.
+    if volt_stock_friction_brake_safety:
+      # Reuse the paddle-scheduler safety bit as a Volt stock friction-brake
+      # marker on non-pedal paths. Both auto hold and one-pedal can run while
+      # OP longitudinal is configured but not currently active, so the bit must
+      # be present regardless of the current long-control mode.
       ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value
+
+    volt_stock_one_pedal_safety = (
+      volt_one_pedal_mode and
+      candidate in {
+        CAR.CHEVROLET_VOLT,
+        CAR.CHEVROLET_VOLT_2019,
+        CAR.CHEVROLET_VOLT_ASCM,
+        CAR.CHEVROLET_VOLT_CAMERA,
+      }
+    )
+    if volt_stock_one_pedal_safety:
+      # Reuse the 3D1 scheduler bit as a Volt one-pedal marker on non-pedal
+      # ACC paths. The bit is ignored by the actual 3D1 scheduler unless the
+      # car is on a pedal-long CC-only path, so this stays isolated from Bolt.
+      ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_PANDA_3D1_SCHED.value
 
     use_panda_3d1_sched = (
       ret.openpilotLongitudinalControl and

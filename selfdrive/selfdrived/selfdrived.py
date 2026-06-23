@@ -25,6 +25,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
+from openpilot.selfdrive.selfdrived.alert_sound import filter_forcing_stop_alert_sound
 
 from openpilot.system.version import get_build_metadata
 from openpilot.system.hardware import HARDWARE
@@ -210,6 +211,7 @@ class SelfdriveD:
     self.display_timer = 0
     self.last_below_steer_speed_alert_time = -float("inf")
     self.last_steer_saturated_alert_time = -float("inf")
+    self.forcing_stop_chime_played = False
 
     self.starpilot_events_prev = []
 
@@ -753,7 +755,12 @@ class SelfdriveD:
     fpss.alertSize = self.starpilot_AM.current_alert.alert_size
     fpss.alertStatus = self.starpilot_AM.current_alert.alert_status
     fpss.alertType = self.starpilot_AM.current_alert.alert_type
-    fpss.alertSound = self.starpilot_AM.current_alert.audible_alert
+    fpss.alertSound, self.forcing_stop_chime_played = filter_forcing_stop_alert_sound(
+      fpss.alertType,
+      self.starpilot_AM.current_alert.audible_alert,
+      bool(self.sm["starpilotPlan"].forcingStop),
+      self.forcing_stop_chime_played,
+    )
 
     self.pm.send('starpilotSelfdriveState', fpss_msg)
 

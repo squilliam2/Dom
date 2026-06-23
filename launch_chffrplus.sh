@@ -122,7 +122,6 @@ mods = [
   "msgq.ipc_pyx",
   "msgq.visionipc.visionipc_pyx",
   "openpilot.common.transformations.transformations",
-  "openpilot.selfdrive.modeld.models.commonmodel_pyx",
   "openpilot.selfdrive.pandad.pandad_api_impl",
   "openpilot.selfdrive.controls.lib.lateral_mpc_lib.c_generated_code.acados_ocp_solver_pyx",
   "openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.c_generated_code.acados_ocp_solver_pyx",
@@ -137,12 +136,11 @@ for mod in mods:
 
 repo_root = Path.cwd().parents[1]
 required_files = [
-  repo_root / "selfdrive/modeld/models/driving_vision_metadata.pkl",
-  repo_root / "selfdrive/modeld/models/driving_policy_metadata.pkl",
-  repo_root / "selfdrive/modeld/models/driving_vision_tinygrad.pkl",
-  repo_root / "selfdrive/modeld/models/driving_policy_tinygrad.pkl",
+  repo_root / "selfdrive/modeld/models/driving_tinygrad.pkl",
   repo_root / "selfdrive/modeld/models/dmonitoring_model_metadata.pkl",
   repo_root / "selfdrive/modeld/models/dmonitoring_model_tinygrad.pkl",
+  repo_root / "selfdrive/modeld/models/dm_warp_1928x1208_tinygrad.pkl",
+  repo_root / "selfdrive/modeld/models/dm_warp_1344x760_tinygrad.pkl",
   repo_root / "selfdrive/pandad/pandad_api_impl.so",
   repo_root / "selfdrive/controls/lib/lateral_mpc_lib/c_generated_code/acados_ocp_solver_pyx.so",
   repo_root / "selfdrive/controls/lib/lateral_mpc_lib/c_generated_code/libacados_ocp_solver_lat.so",

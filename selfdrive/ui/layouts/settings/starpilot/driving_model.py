@@ -21,11 +21,6 @@ from openpilot.starpilot.assets.model_manager import (
   is_builtin_model_key,
   model_key_aliases,
 )
-from openpilot.starpilot.common.model_versions import (
-  is_tinygrad_model_version,
-  uses_combined_driving_artifacts,
-  uses_split_off_policy_artifacts,
-)
 from openpilot.starpilot.common.starpilot_variables import MODELS_PATH, update_starpilot_toggles
 from openpilot.system.ui.lib.application import FontWeight, MouseEvent, MousePos, gui_app
 from openpilot.system.ui.lib.multilang import tr
@@ -75,7 +70,7 @@ ROW_RADIUS = AETHER_LIST_METRICS.row_radius
 ACTION_WIDTH = AETHER_LIST_METRICS.action_width
 BUTTON_HEIGHT = AETHER_LIST_METRICS.header_button_height
 FADE_HEIGHT = AETHER_LIST_METRICS.fade_height
-DRIVING_MODEL_METRICS = replace(AETHER_LIST_METRICS, header_height=210)
+DRIVING_MODEL_METRICS = replace(AETHER_LIST_METRICS, header_height=244)
 CONFIRM_TIMEOUT_SECONDS = 3.0
 TRANSITION_SECONDS = 0.24
 PANEL_STYLE = DEFAULT_PANEL_STYLE
@@ -286,10 +281,10 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
   def _draw_header(self, rect: rl.Rectangle):
     draw_settings_panel_header(rect, tr("Driving Models"), self._controller.header_description_text(), subtitle_size=24)
 
-    current_label_rect = rl.Rectangle(rect.x, rect.y + 96, 150, 22)
+    current_label_rect = rl.Rectangle(rect.x, rect.y + 130, 150, 22)
     gui_label(current_label_rect, tr("Current Model"), 20, AetherListColors.MUTED, FontWeight.MEDIUM)
 
-    current_value_rect = rl.Rectangle(rect.x + 150, rect.y + 94, rect.width * 0.44, 24)
+    current_value_rect = rl.Rectangle(rect.x + 150, rect.y + 128, rect.width * 0.44, 24)
     gui_label(current_value_rect, self._controller._current_model_name, 22, AetherListColors.HEADER, FontWeight.MEDIUM)
 
     right_panel_w = min(390, rect.width * 0.35)
@@ -675,38 +670,11 @@ class StarPilotDrivingModelLayout(_SettingsPage):
       return True
 
     files = on_disk_files if on_disk_files is not None else self._load_on_disk_files()
-    if f"{model_key}.thneed" in files:
-      return True
-
-    if is_tinygrad_model_version(version):
-      required_files = set(self._required_files_for_version(model_key, version))
-      return required_files.issubset(files)
-
-    if version == "v7":
-      return f"{model_key}.pkl" in files
-
-    return any(file.startswith(f"{model_key}.") or file.startswith(f"{model_key}_") for file in files)
+    return f"{model_key}_driving_tinygrad.pkl" in files
 
   def _required_files_for_version(self, key: str, version: str) -> list[str]:
-    if uses_combined_driving_artifacts(version):
-      return [f"{key}_driving_tinygrad.pkl"]
-
-    files = [
-      f"{key}_driving_policy_tinygrad.pkl",
-      f"{key}_driving_vision_tinygrad.pkl",
-      f"{key}_driving_policy_metadata.pkl",
-      f"{key}_driving_vision_metadata.pkl",
-    ]
-
-    if uses_split_off_policy_artifacts(version):
-      files.extend(
-        [
-          f"{key}_driving_off_policy_tinygrad.pkl",
-          f"{key}_driving_off_policy_metadata.pkl",
-        ]
-      )
-
-    return files
+    del version
+    return [f"{key}_driving_tinygrad.pkl"]
 
   def _ensure_default_model_visible(self):
     default_key = self._default_model_key()

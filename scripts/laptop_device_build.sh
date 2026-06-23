@@ -492,11 +492,6 @@ run_larch64_build() {
   # it is backend-captured and should come from device/QCOM-compatible artifacts.
   echo "==> Build pass 2/2: required runtime artifacts"
   run_larch64_scons "${jobs}" \
-    selfdrive/modeld/models/dmonitoring_model_metadata.pkl \
-    selfdrive/modeld/models/driving_vision_metadata.pkl \
-    selfdrive/modeld/models/driving_policy_metadata.pkl \
-    selfdrive/modeld/models/driving_vision_tinygrad.pkl \
-    selfdrive/modeld/models/driving_policy_tinygrad.pkl \
     rednose/helpers/ekf_sym_pyx.so \
     common/params_pyx.so \
     common/transformations/transformations.so \

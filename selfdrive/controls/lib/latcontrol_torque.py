@@ -632,29 +632,13 @@ KIA_EV6_LOW_SPEED_CENTER_TAPER_SPEED_MAX = 8.5
 KIA_EV6_LOW_SPEED_CENTER_TAPER_SPEED_WIDTH = 1.4
 
 VOLT_PLEXY_LATERAL_TESTING_GROUND_ID = testing_ground.id_7
-VOLT_PLEXY_FF_GAIN_LEFT = 0.12
-VOLT_PLEXY_FF_GAIN_RIGHT = 0.07
-VOLT_PLEXY_FF_ONSET = 0.10
-VOLT_PLEXY_FF_ONSET_WIDTH = 0.06
-VOLT_PLEXY_FF_CUTOFF = 1.35
-VOLT_PLEXY_FF_CUTOFF_WIDTH = 0.24
-VOLT_PLEXY_TRANSITION_SPEED = 10.5
-VOLT_PLEXY_PHASE_SCALE = 0.10
-VOLT_PLEXY_TURN_IN_BOOST_LEFT = 0.22
-VOLT_PLEXY_TURN_IN_BOOST_RIGHT = 0.24
-VOLT_PLEXY_UNWIND_TAPER_LEFT = 0.22
-VOLT_PLEXY_UNWIND_TAPER_RIGHT = 0.56
-VOLT_PLEXY_FRICTION_MULT = 1.04
-VOLT_PLEXY_FRICTION_LAT_RISE = 0.22
-VOLT_PLEXY_FRICTION_JERK_RISE = 0.24
-VOLT_PLEXY_TURN_IN_THRESHOLD_REDUCTION_LEFT = 0.16
-VOLT_PLEXY_TURN_IN_THRESHOLD_REDUCTION_RIGHT = 0.12
-VOLT_PLEXY_UNWIND_THRESHOLD_INCREASE_LEFT = 0.15
-VOLT_PLEXY_UNWIND_THRESHOLD_INCREASE_RIGHT = 0.34
-VOLT_PLEXY_TURN_IN_FRICTION_BOOST_LEFT = 0.08
-VOLT_PLEXY_TURN_IN_FRICTION_BOOST_RIGHT = 0.06
-VOLT_PLEXY_UNWIND_FRICTION_REDUCTION_LEFT = 0.16
-VOLT_PLEXY_UNWIND_FRICTION_REDUCTION_RIGHT = 0.40
+VOLT_PLEXY_FF_EXTRA_MULT_LEFT = 1.10
+VOLT_PLEXY_FF_EXTRA_MULT_RIGHT = 1.22
+VOLT_PLEXY_FRICTION_SCALE_MULT_LEFT = 1.04
+VOLT_PLEXY_FRICTION_SCALE_MULT_RIGHT = 1.08
+VOLT_PLEXY_FRICTION_THRESHOLD_MULT_LEFT = 0.95
+VOLT_PLEXY_FRICTION_THRESHOLD_MULT_RIGHT = 0.93
+VOLT_PLEXY_CENTER_TAPER_REDUCTION_MULT = 0.80
 PRIUS_TRANSITION_SPEED = 10.0
 PRIUS_PHASE_SCALE = 0.09
 PRIUS_FF_GAIN_LEFT = 0.12
@@ -2023,72 +2007,34 @@ def volt_plexy_lateral_testing_ground_active() -> bool:
   return testing_ground.use(VOLT_PLEXY_LATERAL_TESTING_GROUND_ID)
 
 
-def _volt_plexy_sigmoid(x: float) -> float:
-  return _sigmoid(x)
-
-
-def _volt_plexy_low_speed_factor(v_ego: float) -> float:
-  return 1.0 / (1.0 + (max(v_ego, 0.0) / VOLT_PLEXY_TRANSITION_SPEED) ** 2)
-
-
-def _volt_plexy_transition_phase(desired_lateral_accel: float, desired_lateral_jerk: float) -> float:
-  return math.tanh((desired_lateral_accel * desired_lateral_jerk) / VOLT_PLEXY_PHASE_SCALE)
-
-
 def _volt_plexy_side_value(desired_lateral_accel: float, left_value: float, right_value: float) -> float:
   return left_value if desired_lateral_accel >= 0.0 else right_value
 
 
-def _volt_plexy_transition_envelope(v_ego: float, desired_lateral_accel: float, desired_lateral_jerk: float) -> float:
-  lat_factor = 1.0 - math.exp(-abs(desired_lateral_accel) / VOLT_PLEXY_FRICTION_LAT_RISE)
-  jerk_factor = 1.0 - math.exp(-abs(desired_lateral_jerk) / VOLT_PLEXY_FRICTION_JERK_RISE)
-  return _volt_plexy_low_speed_factor(v_ego) * lat_factor * jerk_factor
-
-
 def get_volt_plexy_ff_scale(desired_lateral_accel: float, desired_lateral_jerk: float, v_ego: float) -> float:
-  if desired_lateral_accel == 0.0:
-    return 1.0
-
-  gain = _volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_FF_GAIN_LEFT, VOLT_PLEXY_FF_GAIN_RIGHT)
-  abs_lateral_accel = abs(desired_lateral_accel)
-  onset = _volt_plexy_sigmoid((abs_lateral_accel - VOLT_PLEXY_FF_ONSET) / VOLT_PLEXY_FF_ONSET_WIDTH)
-  cutoff = _volt_plexy_sigmoid((VOLT_PLEXY_FF_CUTOFF - abs_lateral_accel) / VOLT_PLEXY_FF_CUTOFF_WIDTH)
-  extra_scale = gain * onset * cutoff
-  phase = _volt_plexy_transition_phase(desired_lateral_accel, desired_lateral_jerk)
-  turn_in_weight = max(phase, 0.0)
-  unwind_weight = max(-phase, 0.0)
-  low_speed_factor = _volt_plexy_low_speed_factor(v_ego)
-  turn_in_boost = 1.0 + (_volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_TURN_IN_BOOST_LEFT, VOLT_PLEXY_TURN_IN_BOOST_RIGHT) *
-                          turn_in_weight * low_speed_factor)
-  unwind_taper = 1.0 - (_volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_UNWIND_TAPER_LEFT, VOLT_PLEXY_UNWIND_TAPER_RIGHT) *
-                         unwind_weight * (0.35 + 0.65 * low_speed_factor))
-  return 1.0 + (extra_scale * turn_in_boost * max(unwind_taper, 0.0))
+  standard_scale = get_volt_standard_ff_scale(desired_lateral_accel, desired_lateral_jerk, v_ego)
+  extra_scale = standard_scale - 1.0
+  extra_mult = _volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_FF_EXTRA_MULT_LEFT, VOLT_PLEXY_FF_EXTRA_MULT_RIGHT)
+  return 1.0 + (extra_scale * extra_mult)
 
 
 def get_volt_plexy_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
-  transition_envelope = _volt_plexy_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
-  phase = _volt_plexy_transition_phase(desired_lateral_accel, desired_lateral_jerk)
-  turn_in_weight = max(phase, 0.0)
-  unwind_weight = max(-phase, 0.0)
-  threshold_scale = 1.0 - (_volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_TURN_IN_THRESHOLD_REDUCTION_LEFT, VOLT_PLEXY_TURN_IN_THRESHOLD_REDUCTION_RIGHT) *
-                           transition_envelope * turn_in_weight)
-  threshold_scale += (_volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_UNWIND_THRESHOLD_INCREASE_LEFT, VOLT_PLEXY_UNWIND_THRESHOLD_INCREASE_RIGHT) *
-                      transition_envelope * unwind_weight)
-  return base_threshold * min(max(threshold_scale, 0.84), 1.14)
+  standard_threshold = get_volt_standard_friction_threshold(v_ego, desired_lateral_accel, desired_lateral_jerk)
+  threshold_mult = _volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_FRICTION_THRESHOLD_MULT_LEFT, VOLT_PLEXY_FRICTION_THRESHOLD_MULT_RIGHT)
+  return standard_threshold * threshold_mult
 
 
 def get_volt_plexy_friction_scale(v_ego: float, desired_lateral_accel: float, desired_lateral_jerk: float) -> float:
-  transition_envelope = _volt_plexy_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
-  phase = _volt_plexy_transition_phase(desired_lateral_accel, desired_lateral_jerk)
-  turn_in_weight = max(phase, 0.0)
-  unwind_weight = max(-phase, 0.0)
-  friction_scale = VOLT_PLEXY_FRICTION_MULT
-  friction_scale += (_volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_TURN_IN_FRICTION_BOOST_LEFT, VOLT_PLEXY_TURN_IN_FRICTION_BOOST_RIGHT) *
-                     transition_envelope * turn_in_weight)
-  friction_scale -= (_volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_UNWIND_FRICTION_REDUCTION_LEFT, VOLT_PLEXY_UNWIND_FRICTION_REDUCTION_RIGHT) *
-                     transition_envelope * unwind_weight)
-  return min(max(friction_scale, 0.90), 1.12)
+  standard_scale = get_volt_standard_friction_scale(v_ego, desired_lateral_accel, desired_lateral_jerk)
+  friction_extra = standard_scale - 1.0
+  friction_mult = _volt_plexy_side_value(desired_lateral_accel, VOLT_PLEXY_FRICTION_SCALE_MULT_LEFT, VOLT_PLEXY_FRICTION_SCALE_MULT_RIGHT)
+  return 1.0 + (friction_extra * friction_mult)
+
+
+def get_volt_plexy_center_taper_scale(desired_lateral_accel: float, v_ego: float) -> float:
+  standard_scale = get_volt_standard_center_taper_scale(desired_lateral_accel, v_ego)
+  standard_reduction = 1.0 - standard_scale
+  return 1.0 - (standard_reduction * VOLT_PLEXY_CENTER_TAPER_REDUCTION_MULT)
 
 
 class LatControlTorque(LatControl):
@@ -2131,7 +2077,6 @@ class LatControlTorque(LatControl):
     self.is_kia_forte = CP.carFingerprint in KIA_FORTE_CARS
     self.is_kia_ev6 = CP.carFingerprint in KIA_EV6_CARS
     self.is_civic_bosch_modified = CP.carFingerprint == HONDA_CAR.HONDA_CIVIC_BOSCH and bool(CP.flags & HondaFlags.EPS_MODIFIED)
-    self.is_volt_cc = CP.carFingerprint == GM_CAR.CHEVROLET_VOLT_CC
     self.is_silverado = CP.carFingerprint in SILVERADO_CARS
     if self.is_ioniq_6:
       self.low_speed_reset_threshold = min(self.low_speed_reset_threshold, IONIQ_6_LOW_SPEED_PID_RESET_SPEED)
@@ -2268,9 +2213,10 @@ class LatControlTorque(LatControl):
       kia_niro_phev_2022_active = self.is_kia_niro_phev_2022
       kia_forte_active = self.is_kia_forte
       kia_ev6_test_active = self.is_kia_ev6 and kia_ev6_lateral_testing_ground_active()
-      volt_plexy_test_active = self.is_volt_cc and volt_plexy_lateral_testing_ground_active()
+      volt_plexy_test_active = self.is_volt_standard and volt_plexy_lateral_testing_ground_active()
       ioniq_5_center_taper = get_ioniq_5_center_taper_scale(setpoint, CS.vEgo) if ioniq_5_active else 1.0
       volt_standard_center_taper = get_volt_standard_center_taper_scale(setpoint, CS.vEgo) if volt_standard_test_active else 1.0
+      volt_plexy_center_taper = get_volt_plexy_center_taper_scale(setpoint, CS.vEgo) if volt_plexy_test_active else 1.0
       ioniq_ev_old_center_taper = get_ioniq_ev_old_center_taper_scale(setpoint, CS.vEgo) if ioniq_ev_old_active else 1.0
       ioniq_6_center_taper = get_ioniq_6_center_taper_scale(setpoint, CS.vEgo) if ioniq_6_active else 1.0
       sonata_center_taper = get_sonata_center_taper_scale(setpoint, CS.vEgo) if sonata_active else 1.0
@@ -2344,9 +2290,10 @@ class LatControlTorque(LatControl):
       elif self.is_silverado:
         ff *= silverado_center_taper
       elif volt_plexy_test_active:
-        ff *= get_volt_plexy_ff_scale(setpoint, desired_lateral_jerk, CS.vEgo)
+        ff *= get_volt_plexy_ff_scale(setpoint, desired_lateral_jerk, CS.vEgo) * volt_plexy_center_taper
         friction_threshold = get_volt_plexy_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
         friction_scale = get_volt_plexy_friction_scale(CS.vEgo, setpoint, desired_lateral_jerk)
+        friction_scale = 1.0 + ((friction_scale - 1.0) * volt_plexy_center_taper)
       elif self.is_civic_bosch_modified:
         ff *= get_civic_bosch_modified_b_ff_scale(setpoint, desired_lateral_jerk, CS.vEgo) * civic_bosch_modified_a_center_taper
         friction_threshold = CIVIC_BOSCH_MODIFIED_B_FIXED_FRICTION_THRESHOLD
@@ -2379,6 +2326,8 @@ class LatControlTorque(LatControl):
                                                                   output_torque, CS.vEgo)
       elif volt_standard_test_active:
         output_torque *= volt_standard_center_taper
+      elif volt_plexy_test_active:
+        output_torque *= volt_plexy_center_taper
       elif kia_ev6_test_active:
         output_torque *= kia_ev6_low_speed_center_taper
       elif self.is_silverado:

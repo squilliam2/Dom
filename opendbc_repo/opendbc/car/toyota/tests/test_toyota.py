@@ -61,6 +61,24 @@ class TestToyotaInterfaces:
     assert car_params.flags & ToyotaFlags.AUTO_BRAKE_HOLD.value
     assert car_params.alternativeExperience & ALTERNATIVE_EXPERIENCE.ALLOW_AEB
 
+  def test_prius_openpilot_long_uses_hybrid_long_defaults(self):
+    car_params = CarInterface.get_params(
+      CAR.TOYOTA_PRIUS,
+      {0: {0x2FF: 8}},
+      [],
+      alpha_long=False,
+      is_release=False,
+      docs=False,
+      starpilot_toggles=SimpleNamespace(),
+    )
+
+    assert car_params.openpilotLongitudinalControl
+    assert car_params.flags & ToyotaFlags.HYBRID.value
+    assert car_params.flags & ToyotaFlags.RAISED_ACCEL_LIMIT.value
+    assert abs(car_params.longitudinalActuatorDelay - 0.05) < 1e-6
+    assert abs(car_params.vEgoStopping - 0.25) < 1e-6
+    assert abs(car_params.vEgoStarting - 0.25) < 1e-6
+
   def test_essential_ecus(self, subtests):
     # Asserts standard ECUs exist for each platform
     common_ecus = {Ecu.fwdRadar, Ecu.fwdCamera}

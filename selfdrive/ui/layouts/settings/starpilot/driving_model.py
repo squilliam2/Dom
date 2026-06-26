@@ -58,6 +58,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   init_list_panel,
   draw_interactive_rect,
   resolve_interactive_target,
+  wrap_text,
 )
 
 
@@ -70,7 +71,7 @@ ROW_RADIUS = AETHER_LIST_METRICS.row_radius
 ACTION_WIDTH = AETHER_LIST_METRICS.action_width
 BUTTON_HEIGHT = AETHER_LIST_METRICS.header_button_height
 FADE_HEIGHT = AETHER_LIST_METRICS.fade_height
-DRIVING_MODEL_METRICS = replace(AETHER_LIST_METRICS, header_height=244)
+DRIVING_MODEL_METRICS = replace(AETHER_LIST_METRICS, header_height=0)
 CONFIRM_TIMEOUT_SECONDS = 3.0
 TRANSITION_SECONDS = 0.24
 PANEL_STYLE = DEFAULT_PANEL_STYLE
@@ -121,6 +122,7 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
         lambda: self._controller.cancel_active_download() if self._controller._is_download_active() else self._controller.download_all_missing(),
         enabled=lambda: self._controller.primary_header_button_state()[1],
         emphasized=True,
+        accent_color=rl.Color(139, 92, 246, 92),
       )
     )
     self._secondary_header_button = self._child(
@@ -264,6 +266,10 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
     self._shell_rect = frame.shell
     self._scroll_rect = scroll_rect
 
+    self._primary_header_button.set_parent_rect(scroll_rect)
+    self._secondary_header_button.set_parent_rect(scroll_rect)
+    self._random_model_button.set_parent_rect(scroll_rect)
+
     self._draw_header(frame.header)
     self._content_height = self._measure_content_height(content_width)
     self._scroll_panel.set_enabled(lambda: not self._controller._is_download_active())
@@ -279,28 +285,22 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
     draw_list_scroll_fades(scroll_rect, self._content_height, self._scroll_offset, AetherListColors.PANEL_BG, fade_height=FADE_HEIGHT)
 
   def _draw_header(self, rect: rl.Rectangle):
-    draw_settings_panel_header(rect, tr("Driving Models"), self._controller.header_description_text(), subtitle_size=24)
+    pass
 
-    current_label_rect = rl.Rectangle(rect.x, rect.y + 130, 150, 22)
-    gui_label(current_label_rect, tr("Current Model"), 20, AetherListColors.MUTED, FontWeight.MEDIUM)
+  def _draw_relocated_header(self, x: float, y: float, width: float):
+    # Buttons placed horizontally
+    btn_gap = 12.0
+    btn_w = (width - 16.0 - btn_gap * 2) / 3.0
 
-    current_value_rect = rl.Rectangle(rect.x + 150, rect.y + 128, rect.width * 0.44, 24)
-    gui_label(current_value_rect, self._controller._current_model_name, 22, AetherListColors.HEADER, FontWeight.MEDIUM)
-
-    right_panel_w = min(390, rect.width * 0.35)
-    btn_gap = 10
-    stack_y = rect.y + 8
-    right_x = rect.x + rect.width - right_panel_w
-
-    primary_rect = rl.Rectangle(right_x, stack_y, right_panel_w, BUTTON_HEIGHT)
-    secondary_rect = rl.Rectangle(right_x, stack_y + BUTTON_HEIGHT + btn_gap, right_panel_w, BUTTON_HEIGHT)
-    random_rect = rl.Rectangle(right_x, stack_y + (BUTTON_HEIGHT + btn_gap) * 2, right_panel_w, BUTTON_HEIGHT)
+    primary_rect = rl.Rectangle(x + 8, y, btn_w, BUTTON_HEIGHT)
+    secondary_rect = rl.Rectangle(x + 8 + btn_w + btn_gap, y, btn_w, BUTTON_HEIGHT)
+    random_rect = rl.Rectangle(x + 8 + (btn_w + btn_gap) * 2, y, btn_w, BUTTON_HEIGHT)
 
     self._primary_header_button.render(primary_rect)
     self._secondary_header_button.render(secondary_rect)
     self._random_model_button.render(random_rect)
 
-    # LED indicator drawn on top of the randomizer button
+    # LED indicator
     led_x = int(random_rect.x + random_rect.width - 26)
     led_y = int(random_rect.y + random_rect.height / 2)
     randomizer_on = self._controller._params.get_bool("ModelRandomizer")
@@ -308,9 +308,10 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
 
   def _measure_content_height(self, width: float) -> float:
     sections = self._build_sections(width)
+    RELOCATED_HEADER_HEIGHT = 74.0
     if not sections:
-      return 260
-    return max(sum(height for _key, height in sections) - SECTION_GAP, 0.0)
+      return 260 + RELOCATED_HEADER_HEIGHT
+    return max(sum(height for _key, height in sections) - SECTION_GAP, 0.0) + RELOCATED_HEADER_HEIGHT
 
   def _build_sections(self, width: float) -> list[tuple[str, float]]:
     sections: list[tuple[str, float]] = []
@@ -338,6 +339,10 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
     utility_rows = self._controller.utility_rows()
 
     y = rect.y + self._scroll_offset
+    RELOCATED_HEADER_HEIGHT = 74.0
+    self._draw_relocated_header(rect.x, y, width)
+    y += RELOCATED_HEADER_HEIGHT
+
     if not installed and not available and not utility_rows:
       self._draw_empty_state(rl.Rectangle(rect.x, y + 36, width, 200))
       return
@@ -365,7 +370,10 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
     )
 
   def _draw_model_section(self, x: float, y: float, width: float, title: str, entries: list[ModelCatalogEntry]) -> float:
-    draw_section_header(rl.Rectangle(x, y, width, SECTION_HEADER_HEIGHT), title, style=PANEL_STYLE)
+    trailing = ""
+    if title == tr("On Device"):
+      trailing = tr("Current: {}").format(self._controller._current_model_name)
+    draw_section_header(rl.Rectangle(x, y, width, SECTION_HEADER_HEIGHT), title, trailing_text=trailing, style=PANEL_STYLE)
     y += SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
 
     group_rect = rl.Rectangle(x, y, width, len(entries) * ROW_HEIGHT)

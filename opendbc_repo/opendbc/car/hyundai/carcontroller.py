@@ -4,7 +4,7 @@ import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, make_tester_present_msg, rate_limit, structs
 from opendbc.car.common.filter_simple import FirstOrderFilter
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_steer_angle_limits_vm, common_fault_avoidance
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_steer_angle_limits_vm, common_fault_avoidance, get_max_angle_delta_vm
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.hyundai import hyundaicanfd, hyundaican
 from opendbc.car.hyundai.hyundaicanfd import CanBus
@@ -64,6 +64,10 @@ REDNECK_BUTTON_COPIES_TIME = 7
 REDNECK_BUTTON_COPIES_TIME_IMPERIAL = [REDNECK_BUTTON_COPIES_TIME + 3, 70]
 REDNECK_BUTTON_COPIES_TIME_METRIC = [REDNECK_BUTTON_COPIES_TIME, 40]
 ANGLE_SAFETY_BASELINE_MODEL = str(CAR.KIA_SPORTAGE_HEV_2026)
+DEFAULT_ANGLE_SMOOTHING_VEGO_BP = [5.0, 10.0, 20.0]
+DEFAULT_ANGLE_SMOOTHING_ALPHA_V = [0.2, 0.1, 0.0]
+KIA_EV9_ANGLE_SMOOTHING_VEGO_BP = [0.0, 8.5, 11.0, 13.8, 18.0]
+KIA_EV9_ANGLE_SMOOTHING_ALPHA_V = [0.05, 0.1, 0.3, 0.6, 1.0]
 
 
 def egmp_dynamic_longitudinal_tuning(CP) -> bool:
@@ -218,6 +222,22 @@ def update_genesis_g90_longitudinal_tuning(state: GenesisG90LongitudinalTuningSt
 def get_baseline_safety_cp():
   from opendbc.car.hyundai.interface import CarInterface
   return CarInterface.get_non_essential_params(ANGLE_SAFETY_BASELINE_MODEL)
+
+
+def get_angle_smoothing_alpha(CP, v_ego: float) -> float:
+  if CP.carFingerprint == CAR.KIA_EV9:
+    return float(np.interp(v_ego, KIA_EV9_ANGLE_SMOOTHING_VEGO_BP, KIA_EV9_ANGLE_SMOOTHING_ALPHA_V))
+  return float(np.interp(v_ego, DEFAULT_ANGLE_SMOOTHING_VEGO_BP, DEFAULT_ANGLE_SMOOTHING_ALPHA_V))
+
+
+def apply_steer_angle_limits_vm_checked(apply_angle: float, apply_angle_last: float, v_ego_raw: float,
+                                        steering_angle: float, lat_active: bool, limits, VM: VehicleModel) -> float | None:
+  new_apply_angle = apply_steer_angle_limits_vm(apply_angle, apply_angle_last, v_ego_raw, steering_angle, lat_active, limits, VM)
+  v_ego_raw = max(v_ego_raw, 1.0)
+  max_angle_delta = min(get_max_angle_delta_vm(v_ego_raw, VM, limits), limits.ANGLE_LIMITS.MAX_ANGLE_RATE)
+  safety_violation = lat_active and not np.isclose(new_apply_angle,
+                                                   rate_limit(new_apply_angle, apply_angle_last, -max_angle_delta, max_angle_delta))
+  return None if safety_violation else new_apply_angle
 
 
 def compute_torque_reduction_gain(steering_torque, v_ego, lat_active, last_gain):
@@ -382,15 +402,16 @@ class CarController(CarControllerBase):
                                     -self.params.ANGLE_LIMITS.STEER_ANGLE_MAX,
                                     self.params.ANGLE_LIMITS.STEER_ANGLE_MAX))
 
-      self.angle_filter.update_alpha(float(np.interp(CS.out.vEgo, [5.0, 10.0, 20.0], [0.2, 0.1, 0.0])))
+      self.angle_filter.update_alpha(get_angle_smoothing_alpha(self.CP, CS.out.vEgo))
       desired_angle = self.angle_filter.update(desired_angle)
 
-      apply_angle = apply_steer_angle_limits_vm(desired_angle, self.apply_angle_last, v_ego_raw,
-                                                CS.out.steeringAngleDeg, CC.latActive, self.params, self.VM)
+      angle_limit_fn = apply_steer_angle_limits_vm_checked if self.CP.carFingerprint == CAR.KIA_EV9 else apply_steer_angle_limits_vm
+      apply_angle = angle_limit_fn(desired_angle, self.apply_angle_last, v_ego_raw,
+                                   CS.out.steeringAngleDeg, CC.latActive, self.params, self.VM)
 
       if str(self.CP.carFingerprint) != ANGLE_SAFETY_BASELINE_MODEL:
-        apply_angle = apply_steer_angle_limits_vm(apply_angle or desired_angle, self.apply_angle_last, v_ego_raw,
-                                                  CS.out.steeringAngleDeg, CC.latActive, self.params, self.BASELINE_VM)
+        apply_angle = angle_limit_fn(apply_angle or desired_angle, self.apply_angle_last, v_ego_raw,
+                                     CS.out.steeringAngleDeg, CC.latActive, self.params, self.BASELINE_VM)
 
       apply_torque = compute_torque_reduction_gain(CS.out.steeringTorque, v_ego_raw, CC.latActive, self.apply_torque_last)
       apply_steer_req = CC.latActive and apply_torque != 0.0
@@ -650,7 +671,8 @@ class CarController(CarControllerBase):
         # and stops publishing object tracks when it disappears. Spoof it periodically on
         # PT bus so the radar keeps tracking.
         if self.CP.carFingerprint in CANFD_RADAR_LIVE_LONGITUDINAL_CAR and self.frame % 4 == 0:
-          can_sends.append(hyundaicanfd.create_accelerator_brake_alt_spoof(0, self.frame // 4, CS.out.brakePressed, CS.out.gasPressed))
+          can_sends.append(hyundaicanfd.create_accelerator_brake_alt_spoof(0, self.frame // 4, CS.out.brakePressed,
+                                                                            CS.out.gasPressed, self.CP.carFingerprint))
       elif not ccnc_non_hda2:
         can_sends.extend(hyundaicanfd.create_fca_warning_light(self.packer, self.CAN, self.frame))
       if self.CP.carFingerprint == CAR.HYUNDAI_IONIQ_6 and self.frame % 5 == 0:

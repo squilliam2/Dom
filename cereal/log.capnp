@@ -130,14 +130,6 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     userBookmark @95;
     excessiveActuation @96;
     audioFeedback @97;
-    lateralManeuver @98;
-    pedalCruiseEnabled @99;
-    pedalCruiseDisabled @100;
-    pedalMaxRegen @101;
-    teslaCCEngaged @102;
-    teslaCCDisengaged @103;
-    teslaCCNotArmed @104;
-    pedalNotCalibrated @105;
 
     soundsUnavailableDEPRECATED @47;
   }
@@ -1095,7 +1087,7 @@ struct ModelDataV2 {
   confidence @23: ConfidenceClass;
 
   # Model perceived motion
-  temporalPose @21 :Pose;
+  temporalPoseDEPRECATED @21 :Pose;
 
   # e2e lateral planner
   action @26: Action;
@@ -1244,10 +1236,6 @@ struct DriverAssistance {
   rightLaneDeparture @1 :Bool;
 
   # FCW, AEB, etc. will go here
-}
-
-struct LateralManeuverPlan {
-  desiredCurvature @0 :Float32;  # 1/m
 }
 
 struct LongitudinalPlan @0xe00b5b3eba12876c {
@@ -2179,7 +2167,6 @@ struct DriverStateV2 {
     rightBlinkProb @8 :Float32;
     sunglassesProb @9 :Float32;
     phoneProb @13 :Float32;
-    sleepProb @14 :Float32;
     notReadyProbDEPRECATED @12 :List(Float32);
     occludedProbDEPRECATED @10 :Float32;
     readyProbDEPRECATED @11 :List(Float32);
@@ -2614,7 +2601,6 @@ struct Event {
     userBookmark @93 :UserBookmark;
     bookmarkButton @148 :UserBookmark;
     audioFeedback @149 :AudioFeedback;
-    lateralManeuverPlan @150 :LateralManeuverPlan;
 
     # *********** debug ***********
     testJoystick @52 :Joystick;
@@ -2644,12 +2630,12 @@ struct Event {
     starpilotCarState @109 :Custom.StarPilotCarState;
     starpilotDeviceState @110 :Custom.StarPilotDeviceState;
     starpilotModelV2 @111 :Custom.StarPilotModelDataV2;
-    starpilotOnroadEvents @112 :List(Custom.StarPilotOnroadEvent);
+    starpilotOnroadEvents @112 :Custom.StarPilotOnroadEvents;
     starpilotPlan @113 :Custom.StarPilotPlan;
     starpilotRadarState @114 :Custom.StarPilotRadarState;
     starpilotSelfdriveState @115 :Custom.StarPilotSelfdriveState;
     customReserved9 @116 :Custom.CustomReserved9;
-    customReserved10 @136 :Custom.CustomReserved10;
+    lateralManeuverPlan @136 :Custom.LateralManeuverPlan;
     customReserved11 @137 :Custom.CustomReserved11;
     customReserved12 @138 :Custom.CustomReserved12;
     customReserved13 @139 :Custom.CustomReserved13;

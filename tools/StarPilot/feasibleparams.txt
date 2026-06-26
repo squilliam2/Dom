@@ -114,6 +114,7 @@ ForceTorqueController
 FrogsGoMoosTweak
 GMDashSpoofOffsets
 GMPedalLongitudinal
+IgnoreIgnitionLine
 GoatScream
 GoatScreamCriticalAlerts
 GreenLightAlert

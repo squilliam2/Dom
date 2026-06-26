@@ -90,6 +90,15 @@ class TestLogReader:
     sr = SegmentRange(identifier)
     assert str(sr) == expected
 
+  @parameterized.expand([
+    (f"{TEST_ROUTE}/13/14", f"{TEST_ROUTE}/0:1"),
+    (f"{TEST_ROUTE}/13/14/a", f"{TEST_ROUTE}/0:1/a"),
+    (f"https://connect.comma.ai/{TEST_ROUTE}/13/14", f"{TEST_ROUTE}/0:1"),
+    (f"https://connect.comma.ai/{TEST_ROUTE}/13/14/a", f"{TEST_ROUTE}/0:1/a"),
+  ])
+  def test_parse_indirect_accepts_second_window_route_style(self, identifier, expected):
+    assert parse_indirect(identifier) == expected
+
   @pytest.mark.parametrize("cache_enabled", [True, False])
   def test_direct_parsing(self, mocker, cache_enabled):
     file_exists_mock = mocker.patch("openpilot.tools.lib.filereader.file_exists")

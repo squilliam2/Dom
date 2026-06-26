@@ -173,6 +173,7 @@ StarPilotVehiclesPanel::StarPilotVehiclesPanel(StarPilotSettingsWindow *parent, 
     {"GMToggles", tr("General Motors Settings"), tr("<b>StarPilot features for General Motors vehicles.</b>"), ""},
     {"GMPedalLongitudinal", tr("Use Pedal For Longitudinal"), tr("<b>Use the pedal interceptor for full longitudinal control</b> on supported GM vehicles."), ""},
     {"GMDashSpoofOffsets", tr("Apply Offsets To Dash Spoof"), tr("<b>On GM pedal-long cars, add the configured set-speed offset</b> to the spoofed dash set speed so it matches the on-screen set speed."), ""},
+    {"IgnoreIgnitionLine", tr("Use CAN Ignition Only"), tr("<b>Use CAN ignition only and ignore the physical ignition line in Panda firmware.</b><br><br>Requires a Panda flash. Use this only on vehicles with reliable CAN ignition when the harness box reports false ignition."), ""},
     {"LongPitch", tr("Smooth Pedal Response on Hills"), tr("<b>Smoothen acceleration and braking</b> when driving downhill/uphill."), ""},
     {"RemoteStartBootsComma", tr("Remote Start Boots comma"), tr("<b>Use the remote-start GM panda firmware at boot.</b><br><br>Required for GM remote-start startup signal behavior."), ""},
     {"RemapCancelToDistance", tr("Remap Cancel Button"), tr("<b>On pedal-interceptor Bolts, treat the steering-wheel CANCEL button as an extra mappable button.</b>"), ""},
@@ -300,24 +301,28 @@ StarPilotVehiclesPanel::StarPilotVehiclesPanel(StarPilotSettingsWindow *parent, 
     });
   }
 
-  ParamControl *remoteStartToggle = static_cast<ParamControl*>(toggles["RemoteStartBootsComma"]);
-  QObject::connect(remoteStartToggle, &ToggleControl::toggleFlipped, [parent, remoteStartToggle, this](bool state) {
-    const QString prompt = tr("Remote Start requires a Panda firmware update. Flash the Panda now?");
-    if (!StarPilotConfirmationDialog::yesorno(prompt, this)) {
-      params.putBool("RemoteStartBootsComma", !state);
-      remoteStartToggle->refresh();
-      return;
-    }
-
-    std::thread([parent, this]() {
-      parent->keepScreenOn = true;
-      params_memory.putBool("FlashPanda", true);
-      while (params_memory.getBool("FlashPanda")) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  auto connectPandaFlashToggle = [parent, this](const QString &key, const QString &prompt) {
+    ParamControl *toggle = static_cast<ParamControl*>(toggles[key]);
+    QObject::connect(toggle, &ToggleControl::toggleFlipped, [parent, key, prompt, toggle, this](bool state) {
+      if (!StarPilotConfirmationDialog::yesorno(prompt, this)) {
+        params.putBool(key.toStdString(), !state);
+        toggle->refresh();
+        return;
       }
-      Hardware::reboot();
-    }).detach();
-  });
+
+      std::thread([parent, this]() {
+        parent->keepScreenOn = true;
+        params_memory.putBool("FlashPanda", true);
+        while (params_memory.getBool("FlashPanda")) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        Hardware::reboot();
+      }).detach();
+    });
+  };
+
+  connectPandaFlashToggle("IgnoreIgnitionLine", tr("CAN Ignition Only requires a Panda firmware update. Flash the Panda now?"));
+  connectPandaFlashToggle("RemoteStartBootsComma", tr("Remote Start requires a Panda firmware update. Flash the Panda now?"));
 
   openDescriptions(forceOpenDescriptions, toggles);
 

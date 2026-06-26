@@ -332,12 +332,10 @@ class LongControl:
     if a_target >= pedal_regen_limit:
       return feedforward
 
-    # Preserve the existing pedal/interceptor shaping up to the known regen
-    # envelope, then restore full-gain feedforward only for the extra decel
-    # that must be satisfied by friction blending.
-    pedal_component = pedal_regen_limit * self.feedforward_gain
-    friction_component = a_target - pedal_regen_limit
-    return pedal_component + friction_component
+    friction_gap = pedal_regen_limit - a_target
+    gain_restore = float(interp(friction_gap, [0.0, 0.25, 0.75], [0.0, 0.6, 1.0]))
+    effective_gain = self.feedforward_gain + ((1.0 - self.feedforward_gain) * gain_restore)
+    return a_target * effective_gain
 
   def update(self, active, CS, a_target, should_stop, accel_limits, starpilot_toggles):
     """Update longitudinal control. This updates the state machine and runs a PID loop"""

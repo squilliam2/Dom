@@ -171,14 +171,14 @@ class AppearanceManagerView(AetherSettingsView):
                 )
             },
             {
-                "title": tr("Developer & Beta Metrics"),
+                "title": tr("Advanced Metrics"),
                 "desc": tr("Adjust radar plots, lead vehicle info, and stop sign metrics."),
                 "icon": "sound",
                 "color": "#8B5CF6",
                 "on_click": lambda: gui_app.push_widget(
                     AetherCategoryTileView(
                         self._controller,
-                        tr("Developer & Beta Metrics"),
+                        tr("Advanced Metrics"),
                         self._controller._dev_rows,
                         color="#8B5CF6",
                         subtitle=tr("Adjust radar plots, lead vehicle info, and stop sign metrics."),
@@ -208,24 +208,9 @@ class AppearanceManagerView(AetherSettingsView):
         margin_x = 12.0
         margin_top = 16.0
         margin_bottom = 16.0
-        header_h = 125.0
-        gap_after_header = 16.0
 
-        # Draw the header at the top of rect:
-        header_rect = rl.Rectangle(rect.x + margin_x, rect.y + margin_top, rect.width - margin_x * 2, header_h)
-        self._draw_header(header_rect)
-
-        # Draw a nice separator line under the header:
-        divider_y = rect.y + margin_top + header_h + 8.0
-        rl.draw_line_ex(
-            rl.Vector2(rect.x + margin_x, divider_y),
-            rl.Vector2(rect.x + rect.width - margin_x, divider_y),
-            2.0,
-            rl.Color(255, 255, 255, 16)
-        )
-
-        # Compute remaining scroll rect:
-        grid_top = divider_y + gap_after_header
+        # Compute remaining scroll rect starting directly from the top
+        grid_top = rect.y + margin_top
         grid_h = rect.y + rect.height - grid_top - margin_bottom
 
         self._scroll_rect = rl.Rectangle(rect.x + margin_x, grid_top, rect.width - margin_x * 2, grid_h)
@@ -491,7 +476,7 @@ class StarPilotAppearanceLayout(_SettingsPage):
                        on_click=self._show_startup_alert_selector),
         ]
 
-        # ═══ 6. Developer & Beta Metrics ═══
+        # ═══ 6. Advanced Metrics ═══
         self._dev_rows = [
             SettingRow("DeveloperSidebar", "toggle", tr_noop("Developer Sidebar"),
                        subtitle=tr_noop("Driving metrics panel on the right"),

@@ -50,6 +50,7 @@ from opendbc.car.gm.carcontroller import (
   get_lka_steering_cmd_counter,
   get_volt_one_pedal_target_decel,
   get_testing_ground_1_brake_switch_bias,
+  get_acc_dashboard_status_active,
   get_stock_cc_active_for_cancel,
   shape_truck_positive_accel,
   should_use_fixed_stopping_brake,
@@ -310,6 +311,20 @@ def test_ascm_int_cars_do_not_send_radar_status():
 
   assert not should_send_adas_status(SimpleNamespace(carFingerprint=CAR.BUICK_LACROSSE_ASCM, **common), is_kaofui_car=True)
   assert not should_send_adas_status(SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_ASCM, **common), is_kaofui_car=True)
+
+
+def test_lacrosse_ascm_marks_acc_dashboard_active_for_aol_only():
+  cc = SimpleNamespace(enabled=False, latActive=True)
+
+  assert get_acc_dashboard_status_active(SimpleNamespace(carFingerprint=CAR.BUICK_LACROSSE_ASCM), cc)
+  assert not get_acc_dashboard_status_active(SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_ASCM), cc)
+  assert not get_acc_dashboard_status_active(SimpleNamespace(carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023), cc)
+
+
+def test_acc_dashboard_status_active_for_normal_enabled_cars():
+  cc = SimpleNamespace(enabled=True, latActive=False)
+
+  assert get_acc_dashboard_status_active(SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_ASCM), cc)
 
 
 def test_volt_auto_hold_requires_toggle_supported_non_cc_only_volt_and_stock_safety():
@@ -666,6 +681,20 @@ def test_friction_brake_mode_uses_near_stop_hold_mode_for_volt_auto_hold():
 
   assert get_friction_brake_mode(120, False, True, False, CP, allow_near_stop_mode=True) == 0xb
   assert get_friction_brake_mode(120, False, True, True, CP, allow_near_stop_mode=True) == 0xd
+
+
+def test_friction_brake_mode_uses_stock_bolt_unwind_for_pedal_print_when_enabled():
+  CP = SimpleNamespace(carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL)
+
+  assert get_friction_brake_mode(0, False, True, False, CP) == 0x1
+  assert get_friction_brake_mode(0, True, True, False, CP) == 0x9
+
+
+def test_friction_brake_mode_keeps_bolt_pedal_braking_mode_unchanged():
+  CP = SimpleNamespace(carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL)
+
+  assert get_friction_brake_mode(120, True, False, False, CP) == 0xa
+  assert get_friction_brake_mode(120, True, True, True, CP) == 0xd
 
 
 def test_calc_pedal_command_small_accel_deadband_keeps_creep_target_stable():

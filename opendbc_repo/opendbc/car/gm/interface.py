@@ -532,10 +532,10 @@ class CarInterface(CarInterfaceBase):
         ret.longitudinalTuning.kiBP = [0.0, 4.0, 12.0, 35.0]
         ret.longitudinalTuning.kiV = [0.03, 0.04, 0.055, 0.07]
         ret.minEnableSpeed = 5 * CV.KPH_TO_MS
-        ret.stoppingDecelRate = 1.2
+        ret.stoppingDecelRate = 1.0
         ret.vEgoStopping = 0.35
         ret.vEgoStarting = 0.35
-        ret.stopAccel = -0.40
+        ret.stopAccel = -0.30
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
     elif candidate == CAR.BUICK_BABYENCLAVE:

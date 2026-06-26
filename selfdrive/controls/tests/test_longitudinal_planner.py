@@ -3039,6 +3039,36 @@ def test_identical_radar_duplicate_cruise_hold_skips_clear_pullaway():
   assert sticky is None
 
 
+def test_identical_radar_duplicate_cruise_bias_penalizes_near_target_follow():
+  v_ego = 23.8
+  t_follow = 1.15
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=35.8, v_lead=23.2, a_lead=0.02, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=35.8, v_lead=23.2, a_lead=0.02, radar=True, model_prob=1.0)
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+
+  bias = planner.mpc.get_identical_radar_duplicate_cruise_bias(lead_one, lead_two, v_ego, t_follow)
+
+  assert bias > 0.0
+
+
+def test_identical_radar_duplicate_cruise_bias_skips_far_pullaway_follow():
+  v_ego = 23.8
+  t_follow = 1.15
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=52.0, v_lead=25.5, a_lead=0.08, radar=True, model_prob=1.0)
+  lead_two = make_lead(status=True, d_rel=52.0, v_lead=25.5, a_lead=0.08, radar=True, model_prob=1.0)
+  lead_one.radarTrackId = 2493
+  lead_two.radarTrackId = 2493
+
+  bias = planner.mpc.get_identical_radar_duplicate_cruise_bias(lead_one, lead_two, v_ego, t_follow)
+
+  assert bias == 0.0
+
+
 def test_near_duplicate_lead_source_hysteresis_skips_distinct_leads():
   v_ego = 27.0
   CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
@@ -3050,6 +3080,65 @@ def test_near_duplicate_lead_source_hysteresis_skips_distinct_leads():
 
   assert lead_0_bias == 0.0
   assert lead_1_bias == 0.0
+
+
+def test_duplicate_vision_comfort_lead_prefers_centered_candidate_before_closer_offset_candidate():
+  v_ego = 25.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=44.8, v_lead=24.2, a_lead=-0.03, radar=False, model_prob=0.99, y_rel=0.10)
+  lead_two = make_lead(status=True, d_rel=44.2, v_lead=24.0, a_lead=-0.04, radar=False, model_prob=0.99, y_rel=1.05)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  selected = planner.get_duplicate_vision_comfort_lead(v_ego)
+
+  assert selected is lead_one
+  assert planner.duplicate_vision_comfort_lead_source == "lead0"
+
+
+def test_duplicate_vision_comfort_lead_latches_source_until_duplicate_cluster_resolves():
+  v_ego = 25.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=44.8, v_lead=24.2, a_lead=-0.03, radar=False, model_prob=0.99, y_rel=0.10)
+  lead_two = make_lead(status=True, d_rel=44.2, v_lead=24.0, a_lead=-0.04, radar=False, model_prob=0.99, y_rel=1.05)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  initial = planner.get_duplicate_vision_comfort_lead(v_ego)
+
+  lead_one.yRel = 1.25
+  lead_two.yRel = 0.05
+  lead_one.dRel = 44.4
+  lead_two.dRel = 44.5
+  latched = planner.get_duplicate_vision_comfort_lead(v_ego)
+
+  assert initial is lead_one
+  assert latched is lead_one
+  assert planner.duplicate_vision_comfort_lead_source == "lead0"
+
+
+def test_duplicate_vision_comfort_lead_resets_when_duplicate_cluster_clears():
+  v_ego = 25.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=44.8, v_lead=24.2, a_lead=-0.03, radar=False, model_prob=0.99, y_rel=0.10)
+  lead_two = make_lead(status=True, d_rel=44.2, v_lead=24.0, a_lead=-0.04, radar=False, model_prob=0.99, y_rel=1.05)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  assert planner.get_duplicate_vision_comfort_lead(v_ego) is lead_one
+
+  lead_two.dRel = 49.5
+  assert planner.get_duplicate_vision_comfort_lead(v_ego) is None
+  assert planner.duplicate_vision_comfort_lead_source is None
 
 
 def test_near_duplicate_lead_transition_target_damps_same_source_sign_flip():

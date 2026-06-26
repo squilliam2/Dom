@@ -94,6 +94,38 @@ def get_starpilot_alert_filters(current_alert_types: list[str], clear_event_type
   return starpilot_alert_types, starpilot_clear_event_types
 
 
+def add_tesla_preap_starpilot_events(CP, CS, FPCS, starpilot_events: Events, prev_pedal_long_active: bool) -> bool:
+  if CP.brand != "tesla" or CP.carFingerprint != "TESLA_MODEL_S_PREAP":
+    return False
+
+  if CP.pcmCruise:
+    if getattr(FPCS, 'teslaCCEngaged', False):
+      starpilot_events.add(StarPilotEventName.teslaCCEngaged)
+    if getattr(FPCS, 'teslaCCDisengaged', False):
+      starpilot_events.add(StarPilotEventName.teslaCCDisengaged)
+    if getattr(FPCS, 'teslaCCNotArmed', False):
+      starpilot_events.add(StarPilotEventName.teslaCCNotArmed)
+    return False
+
+  from opendbc.car.tesla.preap.nap_conf import nap_conf
+  if not nap_conf.pedal_calibrated:
+    starpilot_events.add(StarPilotEventName.pedalNotCalibrated)
+
+  if not CP.openpilotLongitudinalControl:
+    return False
+
+  pedal_long_active = bool(CS.cruiseState.enabled and getattr(FPCS, 'pedalLongActive', False))
+  if pedal_long_active and not prev_pedal_long_active:
+    starpilot_events.add(StarPilotEventName.pedalCruiseEnabled)
+  elif prev_pedal_long_active and not pedal_long_active:
+    starpilot_events.add(StarPilotEventName.pedalCruiseDisabled)
+
+  if getattr(FPCS, 'pedalMaxRegen', False):
+    starpilot_events.add(StarPilotEventName.pedalMaxRegen)
+
+  return pedal_long_active
+
+
 class SelfdriveD:
   def __init__(self, CP=None):
     self.params = Params()
@@ -263,7 +295,7 @@ class SelfdriveD:
       self.startup_event = None
 
     if self.sm.recv_frame['lateralManeuverPlan'] > 0:
-      self.events.add(EventName.lateralManeuver)
+      self.starpilot_events.add(StarPilotEventName.lateralManeuver)
       self.startup_event = None
     elif self.sm.recv_frame['alertDebug'] > 0:
       self.events.add(EventName.longitudinalManeuver)
@@ -294,7 +326,7 @@ class SelfdriveD:
       return
 
     # Block resume if cruise never previously enabled
-    resume_pressed = any(be.type in (ButtonType.accelCruise, ButtonType.accelHardCruise, ButtonType.resumeCruise) for be in CS.buttonEvents)
+    resume_pressed = any(be.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be in CS.buttonEvents)
     if not self.CP.pcmCruise and CS.vCruise > 250 and resume_pressed:
       self.events.add(EventName.resumeBlocked)
 
@@ -314,21 +346,9 @@ class SelfdriveD:
           self.last_below_steer_speed_alert_time = now
       self.events.add_from_msg(car_events)
 
-      if (self.CP.brand == "tesla"
-          and self.CP.carFingerprint == "TESLA_MODEL_S_PREAP"
-          and self.CP.openpilotLongitudinalControl
-          and not self.CP.pcmCruise):
-        pedal_long_active = bool(CS.cruiseState.enabled and getattr(CS, 'pedalLongActive', False))
-        if pedal_long_active and not self.prev_pedal_long_active:
-          self.events.add(EventName.pedalCruiseEnabled)
-        elif self.prev_pedal_long_active and not pedal_long_active:
-          self.events.add(EventName.pedalCruiseDisabled)
-        self.prev_pedal_long_active = pedal_long_active
-
-        if getattr(CS, 'pedalMaxRegen', False):
-          self.events.add(EventName.pedalMaxRegen)
-      else:
-        self.prev_pedal_long_active = False
+      self.prev_pedal_long_active = add_tesla_preap_starpilot_events(
+        self.CP, CS, self.sm['starpilotCarState'], self.starpilot_events, self.prev_pedal_long_active
+      )
 
       if (getattr(self.starpilot_toggles, "nostalgia_mode", False) and
           self.CP.openpilotLongitudinalControl and
@@ -765,9 +785,9 @@ class SelfdriveD:
     self.pm.send('starpilotSelfdriveState', fpss_msg)
 
     if (self.sm.frame % int(1. / DT_CTRL) == 0) or (self.starpilot_events.names != self.starpilot_events_prev):
-      fpce_send = messaging.new_message('starpilotOnroadEvents', len(self.starpilot_events))
+      fpce_send = messaging.new_message('starpilotOnroadEvents')
       fpce_send.valid = True
-      fpce_send.starpilotOnroadEvents = self.starpilot_events.to_msg()
+      fpce_send.starpilotOnroadEvents.events = self.starpilot_events.to_msg()
       self.pm.send('starpilotOnroadEvents', fpce_send)
     self.starpilot_events_prev = self.starpilot_events.names.copy()
 

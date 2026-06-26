@@ -1378,6 +1378,7 @@ class StarPilotVariables:
       "GMDashSpoofOffsets",
       condition=toggle.car_make == "gm" and toggle.has_pedal,
     )
+    toggle.ignore_ignition_line = self.get_value("IgnoreIgnitionLine", condition=toggle.car_make == "gm")
     toggle.long_pitch = self.get_value(
       "LongPitch",
       condition=toggle.openpilot_longitudinal and toggle.car_make == "gm",

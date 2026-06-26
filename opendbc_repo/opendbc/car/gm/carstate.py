@@ -33,7 +33,7 @@ AUTO_HOLD_REGEN_RELEASE_COOLDOWN_S = 1.0
 
 BUTTONS_DICT = {CruiseButtons.RES_ACCEL: ButtonType.accelCruise, CruiseButtons.DECEL_SET: ButtonType.decelCruise,
                 CruiseButtons.MAIN: ButtonType.mainCruise, CruiseButtons.CANCEL: ButtonType.cancel}
-HARD_BUTTONS_DICT = {CruiseButtons.RES_ACCEL: ButtonType.accelHardCruise, CruiseButtons.DECEL_SET: ButtonType.decelHardCruise}
+HARD_BUTTONS_DICT = {CruiseButtons.RES_ACCEL: ButtonType.accelCruise, CruiseButtons.DECEL_SET: ButtonType.decelCruise}
 NORMAL_CRUISE_BUTTONS = (CruiseButtons.RES_ACCEL, CruiseButtons.DECEL_SET)
 
 
@@ -96,8 +96,8 @@ class CarState(CarStateBase):
     if not self.CP.pcmCruise:
       for b in buttonEvents:
         # The ECM allows enabling on falling edge of set, but only rising edge of resume
-        if (b.type in (ButtonType.accelCruise, ButtonType.accelHardCruise) and b.pressed) or \
-          (b.type in (ButtonType.decelCruise, ButtonType.decelHardCruise) and not b.pressed):
+        if (b.type == ButtonType.accelCruise and b.pressed) or \
+          (b.type == ButtonType.decelCruise and not b.pressed):
           return True
     return False
 
@@ -410,6 +410,8 @@ class CarState(CarStateBase):
       ret.lowSpeedAlert = True
 
     fp_ret = custom.StarPilotCarState.new_message()
+    fp_ret.accelHardCruise = self.hard_cruise_buttons == CruiseButtons.RES_ACCEL or prev_hard_cruise_buttons == CruiseButtons.RES_ACCEL
+    fp_ret.decelHardCruise = self.hard_cruise_buttons == CruiseButtons.DECEL_SET or prev_hard_cruise_buttons == CruiseButtons.DECEL_SET
     if bolt_cancel_button and self.cruise_buttons == CruiseButtons.CANCEL:
       fp_ret.cancelPressed = True
     fp_ret.sportGear = pt_cp.vl["SportMode"]["SportMode"] == 1

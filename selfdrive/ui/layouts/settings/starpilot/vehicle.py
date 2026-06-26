@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import threading
+import time
+
 import pyray as rl
 
 from openpilot.system.hardware import HARDWARE
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import DialogResult, Widget
-from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
+from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
 from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
@@ -29,6 +32,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   _draw_rounded_fill,
   _draw_rounded_stroke,
   draw_status_badges,
+  wrap_text,
 )
 from openpilot.selfdrive.ui.lib.starpilot_state import starpilot_state
 from openpilot.selfdrive.ui.lib.fingerprint_catalog import (
@@ -75,7 +79,7 @@ CUSTOM_METRICS = AetherListMetrics(
   panel_padding_x=16,
   panel_padding_top=16,
   panel_padding_bottom=12,
-  header_height=198,
+  header_height=0,
   section_gap=12,
   section_header_height=28,
   section_header_gap=8,
@@ -102,7 +106,7 @@ class VehicleSettingsManagerView(PanelManagerView):
     self._controller = controller
     self._shell_rect = rl.Rectangle(0, 0, 0, 0)
 
-    self._toggle_grid = TileGrid(columns=2, padding=12, min_tile_width=100)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=180.0)
     self.register_page_grid(self._toggle_grid)
 
     self._last_make = ""
@@ -144,9 +148,15 @@ class VehicleSettingsManagerView(PanelManagerView):
       })
     if cs.isGM and cs.hasOpenpilotLongitudinal:
       toggles.append({
+        "title": tr("CAN Ignition Only"),
+        "subtitle": tr("Use Panda firmware that ignores the physical ignition line and starts only from CAN ignition."),
+        "get_state": lambda: self._controller._params.get_bool("IgnoreIgnitionLine"),
+        "set_state": lambda s: self._controller._on_panda_firmware_toggle("IgnoreIgnitionLine", tr("CAN Ignition Only requires a Panda firmware update.")),
+      })
+      toggles.append({
         "title": tr("Remote Start Panda"),
         "get_state": lambda: self._controller._params.get_bool("RemoteStartBootsComma"),
-        "set_state": lambda s: self._controller._on_toggle("RemoteStartBootsComma"),
+        "set_state": lambda s: self._controller._on_panda_firmware_toggle("RemoteStartBootsComma", tr("Remote Start requires a Panda firmware update.")),
       })
     if cs.isGM and cs.isVolt and not cs.hasSNG:
       toggles.append({
@@ -235,13 +245,7 @@ class VehicleSettingsManagerView(PanelManagerView):
       self._controller._on_select(value)
 
   def _draw_header(self, rect: rl.Rectangle):
-    draw_settings_panel_header(rect, tr("Vehicle Settings"),
-                                tr("Configure vehicle fingerprint, driving features, and steering controls."),
-                                subtitle_size=22)
-
-    summary_y = rect.y + 78 + self.HEADER_SUBTITLE_HEIGHT + self.HEADER_SUMMARY_GAP
-    summary_rect = rl.Rectangle(rect.x, summary_y, rect.width, min(self.HEADER_CARD_HEIGHT, rect.y + rect.height - summary_y))
-    self._draw_summary_card(summary_rect)
+    pass
 
   def _draw_summary_card(self, rect: rl.Rectangle):
     draw_soft_card(rect, PANEL_STYLE.surface_fill, PANEL_STYLE.surface_border)
@@ -310,6 +314,7 @@ class VehicleSettingsManagerView(PanelManagerView):
   def _measure_content_height(self, width: float) -> float:
     self._check_rebuild_grid()
     cs = starpilot_state.car_state
+    RELOCATED_HEADER_HEIGHT = 112.0
 
     # Left Column heights
     identity_rows = 2
@@ -332,8 +337,17 @@ class VehicleSettingsManagerView(PanelManagerView):
         tiles_height = SECTION_GAP + self._section_block_height(tiles_content_h + 24)
 
     if self._uses_two_columns(width):
-      return self._compute_two_column_height(left_h)
-    return left_h + tiles_height
+      column_w = self._column_width(width)
+      tiles_content_h = self.measure_page_grid_height(self._toggle_grid, column_w - 24)
+      right_natural_container_h = tiles_content_h + 24
+      left_natural_content_h = identity_h + SECTION_GAP + SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP + steering_h + RELOCATED_HEADER_HEIGHT
+
+      max_container_h = max(left_natural_content_h, right_natural_container_h)
+      self._vehicle_max_container_h = max_container_h
+      self._vehicle_section_gap = max(SECTION_GAP, (max_container_h - RELOCATED_HEADER_HEIGHT) - (identity_h + steering_h + SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP))
+
+      return self._compute_two_column_height(max_container_h + SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP)
+    return left_h + tiles_height + RELOCATED_HEADER_HEIGHT
 
   def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
     self._interactive_rects.clear()
@@ -343,6 +357,16 @@ class VehicleSettingsManagerView(PanelManagerView):
   def _draw_panel_content(self, y: float, x: float, width: float):
     self._check_rebuild_grid()
     cs = starpilot_state.car_state
+
+    # Relocated Header elements drawn at the top of the left column
+    col_w = self._column_width(width) if self._uses_two_columns(width) else width
+
+    # 1. Draw Summary Card
+    summary_rect = rl.Rectangle(x, y, col_w, 100.0)
+    self._draw_summary_card(summary_rect)
+
+    RELOCATED_HEADER_HEIGHT = 112.0
+    y += RELOCATED_HEADER_HEIGHT
 
     identity_rows = [
       {"target_id": "select:CarMake", "type": "select", "title": tr("Car Make"),
@@ -378,7 +402,7 @@ class VehicleSettingsManagerView(PanelManagerView):
         self._draw_row(row_rect, row, is_last=index == len(identity_rows) - 1)
       curr_y += len(identity_rows) * ROW_HEIGHT
 
-      curr_y += SECTION_GAP
+      curr_y += self._vehicle_section_gap
       draw_section_header(rl.Rectangle(x, curr_y, column_w, SECTION_HEADER_HEIGHT), tr("Steering Controls"), style=PANEL_STYLE)
       curr_y += SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
       container_rect = rl.Rectangle(x, curr_y, column_w, len(steering_rows) * ROW_HEIGHT)
@@ -390,8 +414,7 @@ class VehicleSettingsManagerView(PanelManagerView):
       # Right Column: Features
       if self._toggle_grid.tiles:
         rx = x + column_w + self.COLUMN_GAP
-        left_h = curr_y - y
-        self._draw_two_column_tile_grid(self._toggle_grid, rx, y, column_w, left_h, title=tr("Features"), style=PANEL_STYLE)
+        self._draw_two_column_tile_grid(self._toggle_grid, rx, y - RELOCATED_HEADER_HEIGHT, column_w, self._vehicle_max_container_h, title=tr("Features"), style=PANEL_STYLE)
     else:
       # Single Column Stacked Layout
       draw_section_header(rl.Rectangle(x, y, width, SECTION_HEADER_HEIGHT), tr("Vehicle Identity"), style=PANEL_STYLE)
@@ -550,6 +573,29 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
     starpilot_state.update(force=True)
     if param_key == "ForceFingerprint":
       self._manager_view._rebuild_toggle_grid()
+
+  def _on_panda_firmware_toggle(self, param_key: str, prompt: str):
+    current = self._params.get_bool(param_key) if self._params.get(param_key) is not None else False
+    new_state = not current
+
+    def flash_and_reboot():
+      self._params_memory.put_bool("FlashPanda", True)
+      while self._params_memory.get_bool("FlashPanda"):
+        time.sleep(0.1)
+      HARDWARE.reboot()
+
+    def on_confirm(res):
+      if res != DialogResult.CONFIRM:
+        starpilot_state.update(force=True)
+        self._manager_view._rebuild_toggle_grid()
+        return
+      self._params.put_bool(param_key, new_state)
+      threading.Thread(target=flash_and_reboot, daemon=True).start()
+      starpilot_state.update(force=True)
+      self._manager_view._rebuild_toggle_grid()
+      gui_app.push_widget(alert_dialog(tr("Panda flashing started. Device will reboot when finished.")))
+
+    gui_app.push_widget(ConfirmDialog(prompt, tr("Flash"), callback=on_confirm))
 
   def _on_select(self, key: str):
     if key in ("CarMake", "CarModel") and not self._params.get_bool("ForceFingerprint"):

@@ -559,6 +559,61 @@ class TestHyundaiCanfdLKASteeringLongEV(HyundaiLongitudinalBase, TestHyundaiCanf
     return self.packer.make_can_msg_safety("SCC_CONTROL", 1, values)
 
 
+class TestHyundaiCanfdLKASteeringAltAngleLongEV(HyundaiLongitudinalBase, TestHyundaiCanfdAngleSteering):
+
+  TX_MSGS = [[0x110, 0], [0x1CF, 1], [0x362, 0], [0x51, 0], [0x100, 0], [0x730, 1], [0x12a, 1], [0x160, 1],
+             [0x1ba, 1], [0x1e0, 1], [0x1e5, 1], [0x31a, 1], [0x3b5, 1], [0x3c1, 1],
+             [0x1a0, 1], [0x1ea, 1], [0x200, 1], [0x345, 1], [0x1da, 1]]
+
+  RELAY_MALFUNCTION_ADDRS = {0: (0x110, 0x362), 1: (0x1a0,)}  # LKAS_ALT, CAM_0x362, SCC_CONTROL
+  FWD_BLACKLISTED_ADDRS = {0: MRR35_RADAR_TRACK_ADDRS, 2: [0x110, 0x362]}
+
+  DISABLED_ECU_UDS_MSG = (0x730, 1)
+  DISABLED_ECU_ACTUATION_MSG = (0x1a0, 1)
+
+  PT_BUS = 1
+  SCC_BUS = 1
+  BUTTONS_TX_BUS = 1
+  STEER_MSG = "LKAS_ALT"
+  GAS_MSG = ("ACCELERATOR", "ACCELERATOR_PEDAL")
+  SAFETY_PARAM = HyundaiSafetyFlags.CANFD_LKA_STEERING | HyundaiSafetyFlags.CANFD_LKA_STEERING_ALT | \
+    HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.LONG | HyundaiSafetyFlags.EV_GAS
+
+  def _angle_cmd_msg(self, angle, enabled, increment_timer=True, gain_raw=250):
+    if increment_timer:
+      self.safety.set_timer(self.angle_cmd_cnt * int(1e6 / self.LATERAL_FREQUENCY))
+      self.angle_cmd_cnt += 1
+
+    values = {
+      "LKA_MODE": 0,
+      "LKA_AVAILABLE": 3 if enabled else 0,
+      "LKA_WARNING": 0,
+      "LKA_ICON": 2 if enabled else 1,
+      "FCA_SYSWARN": 0,
+      "TORQUE_REQUEST": 0,
+      "STEER_REQ": 0,
+      "LFA_BUTTON": 0,
+      "LKA_ASSIST": 0,
+      "DAMP_FACTOR": 100,
+      "LKAS_ANGLE_ACTIVE": 2 if enabled else 1,
+      "HAS_LANE_SAFETY": 0,
+      "ADAS_StrAnglReqVal": angle,
+      "ADAS_ACIAnglTqRedcGainVal": gain_raw * 0.004 if enabled or gain_raw != 250 else 0.0,
+    }
+    return self.packer.make_can_msg_safety("LKAS_ALT", 0, values)
+
+  def _accel_msg(self, accel, aeb_req=False, aeb_decel=0):
+    values = {
+      "aReqRaw": accel,
+      "aReqValue": accel,
+    }
+    return self.packer.make_can_msg_safety("SCC_CONTROL", 1, values)
+
+  def _tx_acc_state_msg(self, main_on):
+    values = {"MainMode_ACC": int(main_on), "ACCMode": 0}
+    return self.packer.make_can_msg_safety("SCC_CONTROL", 1, values)
+
+
 # Tests longitudinal for ICE, hybrid, EV cars with LFA steering
 class TestHyundaiCanfdLFASteeringLongBase(HyundaiLongitudinalBase, TestHyundaiCanfdLFASteeringBase):
 

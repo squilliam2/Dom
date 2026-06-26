@@ -183,7 +183,7 @@ def get_friction_brake_mode(apply_brake, enabled, near_stop, at_full_stop, CP, a
   mode = 0x1
 
   # TODO: Understand this better. Volts and ICE Camera ACC cars are 0x1 when enabled with no brake
-  if enabled and CP.carFingerprint in (CAR.CHEVROLET_BOLT_ACC_2022_2023,):
+  if enabled and CP.carFingerprint in (CAR.CHEVROLET_BOLT_ACC_2022_2023, CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL):
     mode = 0x9
 
   if apply_brake > 0:

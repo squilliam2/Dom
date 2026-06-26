@@ -378,6 +378,7 @@ NEAR_DUPLICATE_LEAD_TRANSITION_MIN_DELTA_A = 0.35
 NEAR_DUPLICATE_LEAD_TRANSITION_POSITIVE_STEP = 0.22
 NEAR_DUPLICATE_LEAD_TRANSITION_NEGATIVE_STEP = 0.32
 NEAR_DUPLICATE_LEAD_TRANSITION_SIGN_CROSS_STEP = 0.18
+DUPLICATE_VISION_COMFORT_LEAD_CENTER_TIE_MARGIN = 0.35
 DUPLICATE_SLOW_LEAD_BRAKE_HOLD_MIN_SPEED = 12.0
 DUPLICATE_SLOW_LEAD_BRAKE_HOLD_MIN_MODEL_PROB = 0.95
 DUPLICATE_SLOW_LEAD_BRAKE_HOLD_MIN_PREV_DECEL = 0.35
@@ -602,6 +603,7 @@ class LongitudinalPlanner:
     self.lead_depart_accel_hold_floor = None
     self.spacious_follow_cap_bypass_until = 0.0
     self.post_departure_follow_settle_until = 0.0
+    self.duplicate_vision_comfort_lead_source = None
 
     if self.is_preap:
       try:
@@ -624,10 +626,14 @@ class LongitudinalPlanner:
   @staticmethod
   def get_model_speed_error(model_msg, v_ego):
     try:
-      if len(model_msg.temporalPose.trans):
-        return float(np.clip(model_msg.temporalPose.trans[0] - v_ego, -5.0, 5.0))
+      temporal_pose = model_msg.temporalPoseDEPRECATED
     except AttributeError:
-      pass
+      try:
+        temporal_pose = model_msg.temporalPose
+      except AttributeError:
+        return 0.0
+    if len(temporal_pose.trans):
+      return float(np.clip(temporal_pose.trans[0] - v_ego, -5.0, 5.0))
     return 0.0
 
   @staticmethod
@@ -1762,6 +1768,44 @@ class LongitudinalPlanner:
     if self.lead_two.status:
       return self.lead_two
     return None
+
+  def get_duplicate_vision_comfort_lead(self, v_ego):
+    if not (self.lead_one.status and self.lead_two.status):
+      self.duplicate_vision_comfort_lead_source = None
+      return None
+
+    if bool(getattr(self.lead_one, "radar", False)) or bool(getattr(self.lead_two, "radar", False)):
+      self.duplicate_vision_comfort_lead_source = None
+      return None
+
+    if not self.mpc.leads_are_near_duplicates(self.lead_one, self.lead_two, v_ego):
+      self.duplicate_vision_comfort_lead_source = None
+      return None
+
+    lead_sources = {
+      "lead0": self.lead_one,
+      "lead1": self.lead_two,
+    }
+    latched_lead = lead_sources.get(self.duplicate_vision_comfort_lead_source)
+    if latched_lead is not None and latched_lead.status:
+      return latched_lead
+
+    min_center_offset = min(abs(float(getattr(lead, "yRel", 0.0))) for lead in lead_sources.values())
+    centered_sources = [
+      (source, lead) for source, lead in lead_sources.items()
+      if abs(float(getattr(lead, "yRel", 0.0))) <= min_center_offset + DUPLICATE_VISION_COMFORT_LEAD_CENTER_TIE_MARGIN
+    ]
+    selected_source, selected_lead = min(
+      centered_sources,
+      key=lambda item: (
+        float(item[1].dRel),
+        float(item[1].vLead),
+        -max(0.0, -float(getattr(item[1], "aLeadK", 0.0))),
+        abs(float(getattr(item[1], "yRel", 0.0))),
+      ),
+    )
+    self.duplicate_vision_comfort_lead_source = selected_source
+    return selected_lead
 
   def lead_is_spacious_brake_cap_window(self, lead, v_ego, base_t_follow):
     if lead is None or not lead.status or v_ego < STEADY_FOLLOW_SMOOTHING_MIN_SPEED:
@@ -2915,6 +2959,8 @@ class LongitudinalPlanner:
         effective_t_follow,
         allow_optional_far_lead_logic=True,
       )
+    duplicate_vision_comfort_lead = self.get_duplicate_vision_comfort_lead(scene_v_ego) if allow_complex_follow_logic else None
+    comfort_follow_lead = duplicate_vision_comfort_lead if duplicate_vision_comfort_lead is not None and follow_control_lead is not None else follow_control_lead
     if allow_complex_follow_logic and follow_control_lead is not None and not panic_bypass:
       if not output_should_stop and not vision_low_speed_stop_active:
         tracked_vision_model_brake_floor = self.get_tracked_vision_model_brake_floor(
@@ -2946,7 +2992,9 @@ class LongitudinalPlanner:
           self.a_desired = max(self.a_desired, low_speed_transition_brake_cap)
           output_a_target = max(output_a_target, low_speed_transition_brake_cap)
 
-    comfort_lead = self.lead_two if self.mpc.source == 'lead1' and self.lead_two.status else self.lead_one
+    comfort_lead = duplicate_vision_comfort_lead if duplicate_vision_comfort_lead is not None else (
+      self.lead_two if self.mpc.source == 'lead1' and self.lead_two.status else self.lead_one
+    )
     if allow_complex_follow_logic and comfort_lead is not None and not panic_bypass:
       far_lead_brake_cap = self.get_far_lead_brake_cap(comfort_lead, scene_v_ego, effective_t_follow)
       if far_lead_brake_cap is not None:
@@ -2964,9 +3012,9 @@ class LongitudinalPlanner:
         self.a_desired = max(self.a_desired, tracked_vision_model_brake_cap)
         output_a_target = max(output_a_target, tracked_vision_model_brake_cap)
 
-    if allow_complex_follow_logic and follow_control_lead is not None and not panic_bypass and not output_should_stop and not vision_low_speed_stop_active:
+    if allow_complex_follow_logic and comfort_follow_lead is not None and not panic_bypass and not output_should_stop and not vision_low_speed_stop_active:
       matched_follow_transition_target = self.get_matched_follow_transition_target(
-        follow_control_lead,
+        comfort_follow_lead,
         scene_v_ego,
         effective_t_follow,
         prev_output_a_target,
@@ -3014,9 +3062,9 @@ class LongitudinalPlanner:
           self.a_desired = max(self.a_desired, duplicate_slow_lead_brake_hold_target)
         output_a_target = duplicate_slow_lead_brake_hold_target
 
-    if allow_complex_follow_logic and follow_control_lead is not None and not panic_bypass and not output_should_stop and not vision_low_speed_stop_active:
+    if allow_complex_follow_logic and comfort_follow_lead is not None and not panic_bypass and not output_should_stop and not vision_low_speed_stop_active:
       cruise_tracking_lead_accel_cap = self.get_cruise_tracking_lead_accel_cap(
-        follow_control_lead,
+        comfort_follow_lead,
         scene_v_ego,
         effective_t_follow,
         self.mpc.source,
@@ -3027,7 +3075,7 @@ class LongitudinalPlanner:
         output_a_target = min(output_a_target, cruise_tracking_lead_accel_cap)
 
       cruise_tracking_lead_transition_target = self.get_cruise_tracking_lead_accel_transition_target(
-        follow_control_lead,
+        comfort_follow_lead,
         scene_v_ego,
         effective_t_follow,
         prev_output_a_target,
@@ -3039,7 +3087,7 @@ class LongitudinalPlanner:
         output_a_target = min(output_a_target, cruise_tracking_lead_transition_target)
 
       mild_follow_zero_cross_guard_target = self.get_mild_follow_zero_cross_guard_target(
-        follow_control_lead,
+        comfort_follow_lead,
         scene_v_ego,
         effective_t_follow,
         prev_output_a_target,

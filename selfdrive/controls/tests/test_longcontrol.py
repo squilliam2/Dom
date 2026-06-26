@@ -493,11 +493,27 @@ def test_bolt_acc_pedal_friction_feedforward_restores_full_gain_beyond_regen_env
   CP.longitudinalTuning.kfDEPRECATED = 0.20
 
   lc = LongControl(CP)
-  pedal_regen_limit = float(longcontrol.interp(4.73, longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_BP,
-                                               longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_V))
-  expected = pedal_regen_limit * 0.20 + (-3.22 - pedal_regen_limit)
 
-  assert lc._get_longitudinal_feedforward(-3.22, 4.73) == pytest.approx(expected)
+  assert lc._get_longitudinal_feedforward(-3.22, 4.73) == pytest.approx(-3.22)
+
+
+def test_bolt_acc_pedal_friction_feedforward_blends_back_in_for_small_friction_request():
+  CP = make_longcontrol_cp(
+    brand="gm",
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+  )
+  CP.longitudinalTuning.kfDEPRECATED = 0.20
+
+  lc = LongControl(CP)
+  pedal_regen_limit = float(longcontrol.interp(20.0, longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_BP,
+                                               longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_V))
+  a_target = pedal_regen_limit - 0.10
+  gain_restore = float(longcontrol.interp(0.10, [0.0, 0.25, 0.75], [0.0, 0.6, 1.0]))
+  expected = a_target * (0.20 + ((1.0 - 0.20) * gain_restore))
+
+  assert lc._get_longitudinal_feedforward(a_target, 20.0) == pytest.approx(expected)
 
 
 def test_bolt_cc_pedal_friction_feedforward_remains_fully_scaled_by_kf():

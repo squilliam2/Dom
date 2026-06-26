@@ -43,7 +43,7 @@ CUSTOM_METRICS = AetherListMetrics(
   panel_padding_x=16,
   panel_padding_top=16,
   panel_padding_bottom=12,
-  header_height=198,
+  header_height=0,
   section_gap=12,
   section_header_height=28,
   section_header_gap=8,
@@ -83,7 +83,7 @@ class SteeringManagerView(PanelManagerView):
     self._controller = controller
     self._shell_rect = rl.Rectangle(0, 0, 0, 0)
 
-    self._toggle_grid = TileGrid(columns=2, padding=12, min_tile_width=100)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=180.0)
     self._toggle_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
     self._child(self._toggle_grid)
 
@@ -103,9 +103,7 @@ class SteeringManagerView(PanelManagerView):
       self._controller._on_select(value)
 
   def _draw_header(self, rect: rl.Rectangle):
-    draw_settings_panel_header(rect, tr("Steering"),
-                                tr("Fine-tune lateral control, lane changes, and steering behavior."),
-                                subtitle_size=22)
+    pass
 
   def _build_toggle_defs(self) -> list[dict]:
     p = self._controller._params

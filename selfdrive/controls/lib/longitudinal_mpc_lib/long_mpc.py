@@ -99,6 +99,12 @@ IDENTICAL_RADAR_DUPLICATE_CRUISE_HOLD_MAX_HEADWAY_ABOVE_TARGET = 0.40
 IDENTICAL_RADAR_DUPLICATE_CRUISE_HOLD_MAX_LEAD_BRAKE = 0.25
 IDENTICAL_RADAR_DUPLICATE_CRUISE_HOLD_MAX_PULLAWAY_SPEED = 1.5
 IDENTICAL_RADAR_DUPLICATE_CRUISE_HOLD_MAX_CRUISE_ADVANTAGE = 10.0
+IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MIN_SPEED = 15.0
+IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_HEADWAY_ABOVE_TARGET = 0.55
+IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MIN_HEADWAY_BELOW_TARGET = -0.15
+IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_LEAD_BRAKE = 0.25
+IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_PULLAWAY_SPEED = 0.75
+IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX = 10.0
 
 # Function to get parameter value based on current speed
 def get_speed_based_param(speed_mph, param_array):
@@ -722,6 +728,37 @@ class LongitudinalMpc:
 
     return prev_source
 
+  def get_identical_radar_duplicate_cruise_bias(self, lead_one, lead_two, v_ego, t_follow):
+    if float(v_ego) < IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MIN_SPEED:
+      return 0.0
+    if not self.leads_share_identical_radar_track(lead_one, lead_two):
+      return 0.0
+
+    lead = lead_one if lead_one.status else lead_two
+    if lead is None or not lead.status:
+      return 0.0
+
+    actual_headway = float(lead.dRel) / max(float(v_ego), 1e-3)
+    headway_margin = actual_headway - float(t_follow)
+    if headway_margin < IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MIN_HEADWAY_BELOW_TARGET:
+      return 0.0
+    if headway_margin > IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_HEADWAY_ABOVE_TARGET:
+      return 0.0
+
+    lead_brake = max(0.0, -float(getattr(lead, "aLeadK", 0.0)))
+    if lead_brake > IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_LEAD_BRAKE:
+      return 0.0
+
+    lead_delta = float(lead.vLead) - float(v_ego)
+    if lead_delta > IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_PULLAWAY_SPEED:
+      return 0.0
+
+    return float(np.interp(
+      headway_margin,
+      [IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MIN_HEADWAY_BELOW_TARGET, 0.0, IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX_HEADWAY_ABOVE_TARGET],
+      [IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX, IDENTICAL_RADAR_DUPLICATE_CRUISE_BIAS_MAX * 0.85, 0.0],
+    ))
+
   def set_accel_limits(self, min_a, max_a):
     # TODO this sets a max accel limit, but the minimum limit is only for cruise decel
     # needs refactor
@@ -769,7 +806,16 @@ class LongitudinalMpc:
       if optional_far_lead_comfort and tracking_lead and lead_one.status:
         desired_gap = desired_follow_distance(v_ego, lead_one.vLead, t_follow)
         closing_speed = max(0.0, v_ego - lead_one.vLead)
-        cruise_obstacle += get_tracked_lead_catchup_bias(v_ego, lead_one.dRel, desired_gap, closing_speed, v_cruise=v_cruise)
+        cruise_obstacle += get_tracked_lead_catchup_bias(
+          v_ego,
+          lead_one.dRel,
+          desired_gap,
+          closing_speed,
+          v_cruise=v_cruise,
+          y_rel=float(getattr(lead_one, "yRel", 0.0)),
+        )
+      if optional_far_lead_comfort:
+        cruise_obstacle += self.get_identical_radar_duplicate_cruise_bias(lead_one, lead_two, v_ego, t_follow)
       if optional_far_lead_comfort:
         lead_0_bias, lead_1_bias = self.get_near_duplicate_lead_source_hysteresis(prev_source, lead_one, lead_two, v_ego)
         lead_0_obstacle = lead_0_obstacle + lead_0_bias

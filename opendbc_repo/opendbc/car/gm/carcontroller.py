@@ -59,6 +59,9 @@ VOLT_ONE_PEDAL_DECEL_RATE_LIMIT_DOWN = 0.8 * DT_CTRL * 4
 VOLT_ONE_PEDAL_ACCEL_PITCH_FACTOR_BP = [4.0, 8.0]
 VOLT_ONE_PEDAL_ACCEL_PITCH_FACTOR_V = [0.4, 1.0]
 VOLT_ONE_PEDAL_ACCEL_PITCH_FACTOR_INCLINE_V = [0.2, 1.0]
+VOLT_ONE_PEDAL_LIFT_BRAKE_BP = [0.0, CarControllerParams.NEAR_STOP_BRAKE_PHASE, 2.0 * CV.MPH_TO_MS]
+VOLT_ONE_PEDAL_LIFT_BRAKE_V = [AUTO_HOLD_MIN_BRAKE, AUTO_HOLD_MIN_BRAKE, 20.0]
+VOLT_ONE_PEDAL_LIFT_BRAKE_FRAMES = 8
 TRUCK_LONG_SMOOTH_CARS = {
   CAR.CHEVROLET_SILVERADO,
   CAR.CHEVROLET_SILVERADO_CC,
@@ -108,6 +111,13 @@ def should_send_acc_dashboard_status(CP, dash_speed_spoof_active):
     bool(getattr(CP, "flags", 0) & GMFlags.NO_CAMERA.value)
   )
   return status_car and (dash_speed_spoof_active or volt_camera_no_camera)
+
+
+def get_acc_dashboard_status_active(CP, CC):
+  if CC.enabled:
+    return True
+
+  return CP.carFingerprint == CAR.BUICK_LACROSSE_ASCM and CC.latActive
 
 
 def get_acc_dashboard_fcw_alert(hud_alert, CS):
@@ -244,6 +254,13 @@ def get_auto_hold_stop_threshold(CP, auto_hold_engaged: bool) -> float:
 
 def get_volt_one_pedal_target_decel(v_ego: float) -> float:
   return float(np.interp(v_ego, VOLT_ONE_PEDAL_DECEL_BP, VOLT_ONE_PEDAL_DECEL_V))
+
+
+def get_volt_one_pedal_lift_brake(v_ego: float) -> int:
+  if v_ego > VOLT_ONE_PEDAL_LIFT_BRAKE_BP[-1]:
+    return 0
+
+  return int(round(np.interp(v_ego, VOLT_ONE_PEDAL_LIFT_BRAKE_BP, VOLT_ONE_PEDAL_LIFT_BRAKE_V)))
 
 
 def should_activate_volt_one_pedal(one_pedal_ready: bool, cruise_main: bool, long_active: bool,
@@ -412,6 +429,8 @@ class CarController(CarControllerBase):
     )
     self.volt_one_pedal_decel = 0.0
     self.volt_one_pedal_brake = 0
+    self.volt_one_pedal_lift_frames = 0
+    self.volt_one_pedal_gas_pressed_last = False
     try:
       self.gm_auto_hold_enabled = self.params_.get_bool("GMAutoHold")
     except UnknownKeyName:
@@ -422,6 +441,7 @@ class CarController(CarControllerBase):
     self.volt_one_pedal_pid.reset()
     self.volt_one_pedal_decel = min(0.0, float(self.aego))
     self.volt_one_pedal_brake = 0
+    self.volt_one_pedal_lift_frames = 0
 
   def _update_volt_one_pedal_brake(self, CC, CS):
     pitch_accel = 0.0
@@ -449,6 +469,9 @@ class CarController(CarControllerBase):
       0,
       self.params.MAX_BRAKE,
     )))
+    if self.volt_one_pedal_lift_frames > 0:
+      self.volt_one_pedal_brake = max(self.volt_one_pedal_brake, get_volt_one_pedal_lift_brake(CS.out.vEgo))
+      self.volt_one_pedal_lift_frames -= 1
 
   def calc_pedal_command(self, accel: float, long_active: bool, v_ego: float):
     if not long_active:
@@ -616,6 +639,11 @@ class CarController(CarControllerBase):
       CS.out.gearShifter,
       float(getattr(CS, "one_pedal_drive_time", 0.0)),
     )
+    if volt_one_pedal_active and self.volt_one_pedal_gas_pressed_last and not CS.out.gasPressed:
+      if CS.out.vEgo < VOLT_ONE_PEDAL_LIFT_BRAKE_BP[-1]:
+        self.volt_one_pedal_lift_frames = VOLT_ONE_PEDAL_LIFT_BRAKE_FRAMES
+    elif CS.out.gasPressed or not volt_one_pedal_active:
+      self.volt_one_pedal_lift_frames = 0
 
     if self.frame % 4 == 0:
       if volt_one_pedal_active:
@@ -625,6 +653,7 @@ class CarController(CarControllerBase):
       if not self.CP.openpilotLongitudinalControl:
         self.apply_gas = 0
         self.apply_brake = self.volt_one_pedal_brake if volt_one_pedal_active else 0
+    self.volt_one_pedal_gas_pressed_last = CS.out.gasPressed
 
     stock_hold_apply_brake = max(self.apply_brake if self.CP.openpilotLongitudinalControl else 0, self.volt_one_pedal_brake)
 
@@ -966,7 +995,8 @@ class CarController(CarControllerBase):
           # cannot linger after a disengage or main-off event.
           if should_send_bolt_acc_pedal_friction:
             can_sends.append(gmcan.create_friction_brake_command(
-              self.packer_ch, friction_brake_bus, experiment_brake, idx, False, near_stop, at_full_stop, self.CP))
+              self.packer_ch, friction_brake_bus, experiment_brake, idx, bolt_acc_pedal_friction_main_on,
+              near_stop, at_full_stop, self.CP))
         if self.CP.carFingerprint not in CC_ONLY_CAR:
           friction_brake_bus = get_friction_brake_bus(self.CP)
           # GM Camera exceptions
@@ -1016,7 +1046,8 @@ class CarController(CarControllerBase):
 
         if should_send_acc_dashboard_status(self.CP, dash_speed_spoof_active):
           fcw_alert = get_acc_dashboard_fcw_alert(hud_alert, CS)
-          can_sends.append(gmcan.create_acc_dashboard_command(self.packer_pt, CanBus.POWERTRAIN, CC.enabled,
+          acc_dashboard_status_active = get_acc_dashboard_status_active(self.CP, CC)
+          can_sends.append(gmcan.create_acc_dashboard_command(self.packer_pt, CanBus.POWERTRAIN, acc_dashboard_status_active,
                                                               hud_v_cruise * CV.MS_TO_KPH, hud_control, fcw_alert))
 
       # Radar needs to know current speed and yaw rate (50hz),

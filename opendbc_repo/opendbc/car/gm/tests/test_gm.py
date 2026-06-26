@@ -12,6 +12,7 @@ from opendbc.car.gm.carstate import CarState as GMCarState, get_hard_cruise_butt
 from opendbc.car.gm.carcontroller import (
   VisualAlert,
   get_acc_dashboard_fcw_alert,
+  get_volt_one_pedal_lift_brake,
   should_send_acc_dashboard_status,
   should_send_cc_button_spam,
   should_spoof_dash_speed,
@@ -165,7 +166,7 @@ class TestGMInterface:
     assert list(car_params.longitudinalTuning.kiBP) == pytest.approx([0.0, 5.0, 15.0, 35.0])
     assert list(car_params.longitudinalTuning.kiV) == pytest.approx([0.28, 0.26, 0.20, 0.16])
 
-  def test_blazer_uses_earlier_stronger_low_speed_stop_tune(self):
+  def test_blazer_uses_softer_low_speed_stop_hold_tune(self):
     CarInterface = interfaces[CAR.CHEVROLET_BLAZER]
     fingerprint = _empty_fingerprint()
     fingerprint[0] = FINGERPRINTS[CAR.CHEVROLET_BLAZER][0].copy()
@@ -180,10 +181,10 @@ class TestGMInterface:
     assert list(car_params.longitudinalTuning.kiBP) == pytest.approx([0.0, 4.0, 12.0, 35.0])
     assert list(car_params.longitudinalTuning.kiV) == pytest.approx([0.03, 0.04, 0.055, 0.07])
     assert car_params.minEnableSpeed == pytest.approx(5 * CV.KPH_TO_MS)
-    assert car_params.stoppingDecelRate == pytest.approx(1.2)
+    assert car_params.stoppingDecelRate == pytest.approx(1.0)
     assert car_params.vEgoStopping == pytest.approx(0.35)
     assert car_params.vEgoStarting == pytest.approx(0.35)
-    assert car_params.stopAccel == pytest.approx(-0.40)
+    assert car_params.stopAccel == pytest.approx(-0.30)
 
   def test_volt_gateway_without_accel_pos_uses_brake_pedal_message(self):
     CarInterface = interfaces[CAR.CHEVROLET_VOLT]
@@ -349,6 +350,11 @@ class TestGMCarController:
     cp = SimpleNamespace(openpilotLongitudinalControl=True, enableGasInterceptorDEPRECATED=False)
 
     assert should_spoof_dash_speed(cp, SimpleNamespace(disable_openpilot_long=False))
+
+  def test_volt_one_pedal_lift_brake_seeds_low_speed_braking(self):
+    assert get_volt_one_pedal_lift_brake(2.1 * CV.MPH_TO_MS) == 0
+    assert get_volt_one_pedal_lift_brake(2.0 * CV.MPH_TO_MS) == 20
+    assert get_volt_one_pedal_lift_brake(0.10) == 80
 
   def test_volt_camera_no_camera_sends_acc_dashboard_without_dash_spoof(self):
     cp = SimpleNamespace(carFingerprint=CAR.CHEVROLET_VOLT_CAMERA, flags=GMFlags.NO_CAMERA.value)

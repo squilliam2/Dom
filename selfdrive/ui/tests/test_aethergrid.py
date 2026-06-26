@@ -414,6 +414,21 @@ class TestAethergridContracts(unittest.TestCase):
     h = grid.measure_height(500)
     self.assertEqual(h, 740)
 
+  def test_tile_grid_measure_height_with_min_max_clamping(self):
+    mod = _import_aethergrid()
+    grid = mod.TileGrid(columns=2, padding=10, tile_height=None, min_tile_height=100.0, max_tile_height=150.0)
+    for _ in range(5):
+      grid.add_tile(RenderSpy())
+
+    h = grid.measure_height(500)
+    self.assertEqual(h, 790)
+
+    spy = RenderSpy()
+    grid.add_tile(spy)
+    grid.render(mod.rl.Rectangle(0, 0, 500, 1000))
+    self.assertTrue(spy.rects)
+    self.assertEqual(spy.rects[0].height, 150.0)
+
   def test_tile_grid_measure_height_default_fallback(self):
     mod = _import_aethergrid()
     grid = mod.TileGrid(columns=2, padding=10, tile_height=None)
@@ -421,7 +436,7 @@ class TestAethergridContracts(unittest.TestCase):
       grid.add_tile(RenderSpy())
 
     h = grid.measure_height(500)
-    self.assertEqual(h, 690)
+    self.assertEqual(h, 940)
 
   def test_tile_grid_render_top_left_aligned_with_tile_height(self):
     mod = _import_aethergrid()

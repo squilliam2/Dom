@@ -516,12 +516,6 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
                                        "Ensure road ahead is clear"),
   },
 
-  EventName.lateralManeuver: {
-    ET.WARNING: longitudinal_maneuver_alert,
-    ET.PERMANENT: NormalPermanentAlert("Lateral Maneuver Mode",
-                                       "Ensure road ahead is clear"),
-  },
-
   EventName.selfdriveInitializing: {
     ET.NO_ENTRY: NoEntryAlert("System Initializing"),
   },
@@ -920,11 +914,6 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.NO_ENTRY: NoEntryAlert("Calibration in Progress"),
   },
 
-  EventName.pedalNotCalibrated: {
-    ET.PERMANENT: NormalPermanentAlert("Pedal Not Calibrated", "Check Calibration"),
-    ET.NO_ENTRY: NoEntryAlert("Pedal Not Calibrated: Check Calibration"),
-  },
-
   EventName.calibrationRecalibrating: {
     ET.PERMANENT: calibration_incomplete_alert,
     ET.SOFT_DISABLE: soft_disable_alert("Device Remount Detected: Recalibrating"),
@@ -1131,50 +1120,6 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.WARNING: personality_changed_alert,
   },
 
-  EventName.pedalCruiseEnabled: {
-    ET.WARNING: Alert(
-      "Pedal Cruise Engaged",
-      "",
-      AlertStatus.normal, AlertSize.small,
-      Priority.LOW, VisualAlert.none, AudibleAlert.engage, 0.8),
-  },
-
-  EventName.pedalCruiseDisabled: {
-    ET.WARNING: Alert(
-      "Pedal Cruise Disengaged",
-      "",
-      AlertStatus.normal, AlertSize.small,
-      Priority.LOW, VisualAlert.none, AudibleAlert.disengage, 0.8),
-  },
-
-  EventName.pedalMaxRegen: {
-    ET.WARNING: Alert(
-      "Max Regen Being Used",
-      "",
-      AlertStatus.userPrompt, AlertSize.small,
-      Priority.HIGH, VisualAlert.steerRequired, AudibleAlert.prompt, 2.),
-  },
-
-  EventName.teslaCCEngaged: {
-    ET.WARNING: Alert(
-      "Tesla Cruise Engaged",
-      "",
-      AlertStatus.normal, AlertSize.small,
-      Priority.LOW, VisualAlert.none, AudibleAlert.engage, 0.8),
-  },
-
-  EventName.teslaCCDisengaged: {
-    ET.WARNING: Alert(
-      "Tesla Cruise Disengaged",
-      "",
-      AlertStatus.normal, AlertSize.small,
-      Priority.LOW, VisualAlert.none, AudibleAlert.disengage, 0.8),
-  },
-
-  EventName.teslaCCNotArmed: {
-    ET.PERMANENT: NormalPermanentAlert("Arm Stock Cruise to Enable Speed Control"),
-  },
-
   EventName.userBookmark: {
     ET.PERMANENT: NormalPermanentAlert("Bookmark Saved", duration=1.5),
   },
@@ -1195,6 +1140,12 @@ STARPILOT_EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
 
   StarPilotEventName.customStartupAlert: {
     ET.PERMANENT: custom_startup_alert,
+  },
+
+  StarPilotEventName.lateralManeuver: {
+    ET.WARNING: longitudinal_maneuver_alert,
+    ET.PERMANENT: NormalPermanentAlert("Lateral Maneuver Mode",
+                                       "Ensure road ahead is clear"),
   },
 
   StarPilotEventName.forcingStop: {
@@ -1301,6 +1252,55 @@ STARPILOT_EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
 
   StarPilotEventName.lkasDisable: {
     ET.PERMANENT: EngagementAlert(AudibleAlert.disengage),
+  },
+
+  StarPilotEventName.pedalNotCalibrated: {
+    ET.PERMANENT: NormalPermanentAlert("Pedal Not Calibrated", "Check Calibration"),
+    ET.NO_ENTRY: NoEntryAlert("Pedal Not Calibrated: Check Calibration"),
+  },
+
+  StarPilotEventName.pedalCruiseEnabled: {
+    ET.WARNING: Alert(
+      "Pedal Cruise Engaged",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.engage, 0.8),
+  },
+
+  StarPilotEventName.pedalCruiseDisabled: {
+    ET.WARNING: Alert(
+      "Pedal Cruise Disengaged",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.disengage, 0.8),
+  },
+
+  StarPilotEventName.pedalMaxRegen: {
+    ET.WARNING: Alert(
+      "Max Regen Being Used",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.HIGH, VisualAlert.steerRequired, AudibleAlert.prompt, 2.),
+  },
+
+  StarPilotEventName.teslaCCEngaged: {
+    ET.WARNING: Alert(
+      "Tesla Cruise Engaged",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.engage, 0.8),
+  },
+
+  StarPilotEventName.teslaCCDisengaged: {
+    ET.WARNING: Alert(
+      "Tesla Cruise Disengaged",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.disengage, 0.8),
+  },
+
+  StarPilotEventName.teslaCCNotArmed: {
+    ET.PERMANENT: NormalPermanentAlert("Arm Stock Cruise to Enable Speed Control"),
   },
 
   StarPilotEventName.turningLeft: {

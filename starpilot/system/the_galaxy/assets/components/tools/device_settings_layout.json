@@ -2481,6 +2481,13 @@
         "ui_type": "toggle"
       },
       {
+        "key": "IgnoreIgnitionLine",
+        "label": "Use CAN Ignition Only",
+        "description": "Use Panda firmware that ignores the physical ignition line and starts from CAN ignition only.\n\nRequires a Panda flash. Use this only on vehicles with reliable CAN ignition when the harness box reports false ignition.",
+        "data_type": "bool",
+        "ui_type": "toggle"
+      },
+      {
         "key": "LongPitch",
         "label": "Smooth Pedal Response on Hills",
         "description": "Smoothen acceleration and braking when driving downhill/uphill.",

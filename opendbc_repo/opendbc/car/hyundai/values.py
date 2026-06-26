@@ -739,7 +739,7 @@ class CAR(Platforms):
       HyundaiCarDocs("Kia EV6 (without HDA II) 2022-24", "Highway Driving Assist", car_parts=CarParts.common([CarHarness.hyundai_l])),
       HyundaiCarDocs("Kia EV6 (with HDA II) 2022-24", "Highway Driving Assist II", car_parts=CarParts.common([CarHarness.hyundai_p]))
     ],
-    CarSpecs(mass=2055, wheelbase=2.9, steerRatio=16, tireStiffnessFactor=0.65),
+    CarSpecs(mass=2055, wheelbase=2.9, steerRatio=14.25, tireStiffnessFactor=0.65),
     flags=HyundaiFlags.EV,
     radar_dbc=HYUNDAI_MRR30_RADAR_DBC,
   )
@@ -747,7 +747,7 @@ class CAR(Platforms):
     [
       HyundaiCarDocs("Kia EV6 (with HDA I) 2025", "Highway Driving Assist I", car_parts=CarParts.common([CarHarness.hyundai_p]))
     ],
-    CarSpecs(mass=2055, wheelbase=2.9, steerRatio=16, tireStiffnessFactor=0.65),
+    CarSpecs(mass=2055, wheelbase=2.9, steerRatio=14.26, tireStiffnessFactor=0.65),
     flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING,
     radar_dbc=HYUNDAI_MRR30_RADAR_DBC,
   )
@@ -1129,7 +1129,9 @@ CANFD_RADAR_SCC_CAR = CAR.with_flags(HyundaiFlags.RADAR_SCC)  # TODO: merge with
 # CAN-FD cars with ADAS ECUs that work with the communication-control path.
 CANFD_SECURITYACCESS_CAR = {CAR.HYUNDAI_IONIQ_5, CAR.HYUNDAI_IONIQ_6, CAR.HYUNDAI_KONA_EV_2ND_GEN}
 CANFD_UNSUPPORTED_LONGITUDINAL_CAR = CAR.with_flags(HyundaiFlags.CANFD_NO_RADAR_DISABLE) - CANFD_SECURITYACCESS_CAR  # TODO: merge with UNSUPPORTED_LONGITUDINAL_CAR
-CANFD_RADAR_LIVE_LONGITUDINAL_CAR = {CAR.HYUNDAI_IONIQ_5, CAR.HYUNDAI_IONIQ_6, CAR.KIA_EV6, CAR.GENESIS_GV60_EV_1ST_GEN}
+CANFD_ANGLE_LONGITUDINAL_CAR = {CAR.KIA_EV9}
+CANFD_RADAR_LIVE_LONGITUDINAL_CAR = {CAR.HYUNDAI_IONIQ_5, CAR.HYUNDAI_IONIQ_6, CAR.KIA_EV6, CAR.GENESIS_GV60_EV_1ST_GEN,
+                                     CAR.KIA_EV9}
 RADAR_LIVE_LONGITUDINAL_CAR = CANFD_RADAR_LIVE_LONGITUDINAL_CAR | {
   CAR.HYUNDAI_IONIQ,
   CAR.HYUNDAI_KONA_EV_2022,

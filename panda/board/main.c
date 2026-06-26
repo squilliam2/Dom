@@ -27,7 +27,19 @@
 #include "board/obj/gitversion.h"
 
 #include "board/can_comms.h"
+
+static bool panda_ignition_line(void);
+
 #include "board/main_comms.h"
+
+
+static bool panda_ignition_line(void) {
+  #ifdef PANDA_IGNORE_IGNITION_LINE
+  return false;
+  #else
+  return harness_check_ignition();
+  #endif
+}
 
 
 // ********************* Serial debugging *********************
@@ -176,7 +188,7 @@ static void tick_handler(void) {
       const bool recent_heartbeat = heartbeat_counter == 0U;
 
       // tick drivers at 1Hz
-      bool started = harness_check_ignition() || ignition_can;
+      bool started = panda_ignition_line() || ignition_can;
       bootkick_tick(started, recent_heartbeat);
 
       // increase heartbeat counter and cap it at the uint32 limit

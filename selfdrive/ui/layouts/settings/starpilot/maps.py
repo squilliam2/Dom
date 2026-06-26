@@ -40,6 +40,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   draw_soft_card,
   init_list_panel,
   _point_hits,
+  wrap_text,
 )
 from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanel
 from openpilot.starpilot.common.maps_catalog import (
@@ -85,7 +86,7 @@ STATUS_REMOVE_HEIGHT = 40
 STATUS_METRIC_GAP = 18
 STATUS_SELECTION_CHIP_HEIGHT = 30
 PANEL_STYLE = DEFAULT_PANEL_STYLE
-MAPS_METRICS = replace(AETHER_LIST_METRICS, header_height=274)
+MAPS_METRICS = replace(AETHER_LIST_METRICS, header_height=0)
 
 COUNTRIES_SECTION = next(section for section in MAPS_CATALOG if section["key"] == "countries")
 STATES_SECTION = next(section for section in MAPS_CATALOG if section["key"] == "states")
@@ -1115,12 +1116,21 @@ class StarPilotMapsLayout(StarPilotPanel):
     return tr("Ready to download {}.").format(self._selection_preview_text())
 
   def _measure_content_height(self, width: float) -> float:
-    return self._browser_card._measure_height(width)
+    RELOCATED_HEADER_HEIGHT = 156.0
+    return self._browser_card._measure_height(width) + RELOCATED_HEADER_HEIGHT
 
   def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
     self._browser_card.set_parent_rect(rect)
+    self._status_card.set_parent_rect(rect)
 
     y = rect.y + self._scroll_offset
+
+    # 1. Draw Status Card
+    status_rect = rl.Rectangle(rect.x, y, width, 144.0)
+    self._status_card.render(status_rect)
+
+    RELOCATED_HEADER_HEIGHT = 156.0
+    y += RELOCATED_HEADER_HEIGHT
 
     browser_height = self._browser_card._measure_height(width)
     self._browser_card.render(rl.Rectangle(rect.x, y, width, browser_height))
@@ -1129,13 +1139,7 @@ class StarPilotMapsLayout(StarPilotPanel):
     self.set_rect(rect)
     frame, scroll_rect, content_width = init_list_panel(rect, PANEL_STYLE, MAPS_METRICS)
 
-    hdr = frame.header
-    draw_settings_panel_header(hdr, tr("Map Data"), tr("Use offline maps for speed-limit control and keep only the regions you need."),
-                                max_title_width=1.0, max_subtitle_width=0.60)
-
-    header_status_y = hdr.y + 82 + HEADER_SUBTITLE_HEIGHT + 12
-    header_status_rect = rl.Rectangle(hdr.x, header_status_y, hdr.width, hdr.y + hdr.height - header_status_y - HEADER_BOTTOM_GAP)
-    self._status_card.render(header_status_rect)
+    self._status_card.set_parent_rect(scroll_rect)
 
     scroll_content_rect = rl.Rectangle(scroll_rect.x, scroll_rect.y, scroll_rect.width, scroll_rect.height)
     self._content_height = self._measure_content_height(content_width)

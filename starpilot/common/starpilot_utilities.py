@@ -173,26 +173,43 @@ def extract_zip(zip_file, extract_path):
   print(f"Extraction completed!")
 
 
+def get_selected_panda_firmware_name(app_fn, remote_start, ignore_ignition_line):
+  if not remote_start and not ignore_ignition_line:
+    return app_fn
+
+  h7 = app_fn == "panda_h7.bin.signed"
+  name_parts = ["panda_h7" if h7 else "panda"]
+  if remote_start:
+    name_parts.append("remote")
+  if ignore_ignition_line:
+    name_parts.append("can_ignition_only")
+  return "_".join(name_parts) + ".bin.signed"
+
+
 def flash_panda(params_memory):
   params = Params()
   try:
     remote_start = params.get_bool("RemoteStartBootsComma")
   except Exception:
     remote_start = False
+  try:
+    ignore_ignition_line = params.get_bool("IgnoreIgnitionLine")
+  except Exception:
+    ignore_ignition_line = False
 
   for serial in Panda.list():
     try:
       with Panda(serial=serial) as panda:
         print(f"Flashing Panda {serial}")
         flash_fn = None
-        if remote_start:
-          app_fn = panda.get_mcu_type().config.app_fn
-          remote_fn = "panda_h7_remote.bin.signed" if app_fn == "panda_h7.bin.signed" else "panda_remote.bin.signed"
-          candidate = os.path.join(FW_PATH, remote_fn)
+        app_fn = panda.get_mcu_type().config.app_fn
+        selected_fn = get_selected_panda_firmware_name(app_fn, remote_start, ignore_ignition_line)
+        if selected_fn != app_fn:
+          candidate = os.path.join(FW_PATH, selected_fn)
           if os.path.isfile(candidate):
             flash_fn = candidate
           else:
-            print(f"Remote-start panda firmware missing: {candidate}. Falling back to default firmware.")
+            print(f"Selected panda firmware missing: {candidate}. Falling back to default firmware.")
         panda.flash(fn=flash_fn)
     except Exception as exception:
       print(f"Failed to flash Panda {serial}: {exception}")

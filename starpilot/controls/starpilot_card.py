@@ -18,6 +18,8 @@ from openpilot.starpilot.common.favorite_slots import toggle_favorite_slot
 from openpilot.starpilot.common.starpilot_utilities import is_FrogsGoMoo
 from openpilot.starpilot.common.starpilot_variables import ERROR_LOGS_PATH, GearShifter, NON_DRIVING_GEARS
 
+SONATA_AOL_LOW_SPEED_PRIME_MS = 30 * 0.44704
+
 class StarPilotCard:
   @staticmethod
   def _button_type_raw(button_event) -> int:
@@ -38,6 +40,12 @@ class StarPilotCard:
       bool(hyundai_flags & HyundaiFlags.NON_SCC)
     )
     self.hyundai_aol_needs_engagement = self.CP.brand == "hyundai" and not (hyundai_flags & HyundaiFlags.CANFD) and not kia_forte_non_scc
+    self.sonata_hybrid_stock_scc = (
+      self.CP.brand == "hyundai" and
+      getattr(self.CP, "carFingerprint", None) == HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID and
+      getattr(self.CP, "pcmCruise", True)
+    )
+    self.sonata_hybrid_scc_primed = False
     self.hyundai_aol_ready = False
     self.prev_active = False
     self.prev_cruise_enabled = False
@@ -117,9 +125,15 @@ class StarPilotCard:
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
+        self.sonata_hybrid_scc_primed = False
         self.always_on_lateral_allowed = False
       elif carState.cruiseState.enabled:
         self.hyundai_aol_ready = True
+        if self.sonata_hybrid_stock_scc:
+          self.sonata_hybrid_scc_primed = True
+
+    if self.sonata_hybrid_stock_scc and not carState.cruiseState.available and not carState.cruiseState.enabled:
+      self.sonata_hybrid_scc_primed = False
 
     # Hyundai CAN cars should keep driver button intent stable even when cruise
     # availability flickers at low speed.
@@ -167,6 +181,8 @@ class StarPilotCard:
     self.always_on_lateral_enabled = self.always_on_lateral_allowed and self.always_on_lateral_set
     self.always_on_lateral_enabled &= carState.gearShifter not in NON_DRIVING_GEARS
     self.always_on_lateral_enabled &= not self.hyundai_aol_needs_engagement or self.hyundai_aol_ready
+    if self.sonata_hybrid_stock_scc and carState.vEgo < SONATA_AOL_LOW_SPEED_PRIME_MS:
+      self.always_on_lateral_enabled &= carState.cruiseState.enabled or (carState.cruiseState.available and self.sonata_hybrid_scc_primed)
     self.always_on_lateral_enabled &= sm["starpilotPlan"].lateralCheck
     self.always_on_lateral_enabled &= sm["liveCalibration"].calPerc >= 1
     self.always_on_lateral_enabled &= (ET.IMMEDIATE_DISABLE not in sm["selfdriveState"].alertType + sm["starpilotSelfdriveState"].alertType) or self.frogs_go_moo

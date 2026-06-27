@@ -82,7 +82,7 @@ def make_toggles(**overrides):
   return SimpleNamespace(**defaults)
 
 
-def make_car_state(available=False, enabled=False, button_events=None):
+def make_car_state(available=False, enabled=False, button_events=None, v_ego=15.0):
   return SimpleNamespace(
     buttonEvents=button_events or [],
     cruiseState=SimpleNamespace(available=available, enabled=enabled),
@@ -90,7 +90,7 @@ def make_car_state(available=False, enabled=False, button_events=None):
     brakePressed=False,
     gasPressed=False,
     standstill=False,
-    vEgo=15.0,
+    vEgo=v_ego,
   )
 
 
@@ -202,6 +202,51 @@ def test_sonata_hybrid_lkas_button_disables_aol_without_scc_main(monkeypatch, tm
   assert ret.alwaysOnLateralEnabled is False
 
 
+def test_sonata_hybrid_low_speed_lkas_waits_for_scc_prime_then_survives_cancel(monkeypatch, tmp_path):
+  monkeypatch.setattr(spc, "Params", FakeParams)
+  monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
+  monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
+
+  card = spc.StarPilotCard(
+    SimpleNamespace(brand="hyundai", carFingerprint=spc.HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID),
+    SimpleNamespace(alternativeExperience=spc.ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL),
+  )
+
+  starpilot_car_state = SimpleNamespace(distancePressed=False)
+  sm = make_sm()
+  toggles = make_toggles(always_on_lateral=True, always_on_lateral_lkas=True)
+
+  ret = card.update(
+    make_car_state(available=False, enabled=False, v_ego=10.0,
+                   button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)]),
+    starpilot_car_state,
+    sm,
+    toggles,
+  )
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is False
+
+  ret = card.update(make_car_state(available=True, enabled=True, v_ego=10.0),
+                    starpilot_car_state, sm, toggles)
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is True
+
+  ret = card.update(
+    make_car_state(available=True, enabled=False, v_ego=8.0,
+                   button_events=[SimpleNamespace(type=spc.ButtonType.cancel, pressed=True)]),
+    starpilot_car_state,
+    sm,
+    toggles,
+  )
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is True
+
+  ret = card.update(make_car_state(available=False, enabled=False, v_ego=10.0),
+                    starpilot_car_state, sm, toggles)
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is False
+
+
 def test_sonata_hybrid_main_cruise_button_toggles_aol_without_scc_main(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
@@ -218,6 +263,41 @@ def test_sonata_hybrid_main_cruise_button_toggles_aol_without_scc_main(monkeypat
   toggles = make_toggles(always_on_lateral=True, main_cruise_aol_toggle=True)
 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is True
+
+
+def test_sonata_hybrid_low_speed_main_cruise_waits_for_scc_prime(monkeypatch, tmp_path):
+  monkeypatch.setattr(spc, "Params", FakeParams)
+  monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
+  monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
+
+  card = spc.StarPilotCard(
+    SimpleNamespace(brand="hyundai", carFingerprint=spc.HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID),
+    SimpleNamespace(alternativeExperience=spc.ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL),
+  )
+
+  starpilot_car_state = SimpleNamespace(distancePressed=False)
+  sm = make_sm()
+  toggles = make_toggles(always_on_lateral=True, main_cruise_aol_toggle=True)
+
+  ret = card.update(
+    make_car_state(available=False, enabled=False, v_ego=10.0,
+                   button_events=[SimpleNamespace(type=spc.ButtonType.mainCruise, pressed=True)]),
+    starpilot_car_state,
+    sm,
+    toggles,
+  )
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is False
+
+  ret = card.update(make_car_state(available=True, enabled=False, v_ego=10.0),
+                    starpilot_car_state, sm, toggles)
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is False
+
+  ret = card.update(make_car_state(available=True, enabled=True, v_ego=10.0),
+                    starpilot_car_state, sm, toggles)
   assert ret.alwaysOnLateralAllowed is True
   assert ret.alwaysOnLateralEnabled is True
 

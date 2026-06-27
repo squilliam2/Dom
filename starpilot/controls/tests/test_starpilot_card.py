@@ -157,7 +157,7 @@ def test_hyundai_lkas_button_can_toggle_aol_before_normal_engagement(monkeypatch
   assert ret.pauseLateral is False
 
 
-def test_sonata_hybrid_lkas_button_arms_aol_but_waits_for_scc_main(monkeypatch, tmp_path):
+def test_sonata_hybrid_lkas_button_toggles_aol_without_scc_main(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -175,17 +175,10 @@ def test_sonata_hybrid_lkas_button_arms_aol_but_waits_for_scc_main(monkeypatch, 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
 
   assert ret.alwaysOnLateralAllowed is True
-  assert ret.alwaysOnLateralEnabled is False
-
-  car_state.buttonEvents = []
-  car_state.cruiseState.available = True
-  ret = card.update(car_state, starpilot_car_state, sm, toggles)
-
-  assert ret.alwaysOnLateralAllowed is True
   assert ret.alwaysOnLateralEnabled is True
 
 
-def test_sonata_hybrid_lkas_button_keeps_steering_off_when_scc_main_is_off(monkeypatch, tmp_path):
+def test_sonata_hybrid_lkas_button_disables_aol_without_scc_main(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -205,11 +198,11 @@ def test_sonata_hybrid_lkas_button_keeps_steering_off_when_scc_main_is_off(monke
   lkas_state = make_car_state(available=False, enabled=False, button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)])
   ret = card.update(lkas_state, starpilot_car_state, sm, toggles)
 
-  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralAllowed is False
   assert ret.alwaysOnLateralEnabled is False
 
 
-def test_sonata_hybrid_main_cruise_button_waits_for_scc_main_on_edge(monkeypatch, tmp_path):
+def test_sonata_hybrid_main_cruise_button_toggles_aol_without_scc_main(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -225,18 +218,11 @@ def test_sonata_hybrid_main_cruise_button_waits_for_scc_main_on_edge(monkeypatch
   toggles = make_toggles(always_on_lateral=True, main_cruise_aol_toggle=True)
 
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
-  assert ret.alwaysOnLateralAllowed is False
-  assert ret.alwaysOnLateralEnabled is False
-
-  car_state.buttonEvents = []
-  car_state.cruiseState.available = True
-  ret = card.update(car_state, starpilot_car_state, sm, toggles)
-
   assert ret.alwaysOnLateralAllowed is True
   assert ret.alwaysOnLateralEnabled is True
 
 
-def test_sonata_hybrid_main_cruise_button_disables_aol_before_scc_main_turns_off(monkeypatch, tmp_path):
+def test_sonata_hybrid_main_cruise_button_disables_aol(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)

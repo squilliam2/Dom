@@ -1,7 +1,7 @@
-from cereal import car
+from cereal import log
 
 
-AudibleAlert = car.CarControl.HUDControl.AudibleAlert
+AudibleAlert = log.SelfdriveState.AudibleAlert
 
 
 def filter_forcing_stop_alert_sound(alert_type, audible_alert, forcing_stop, chime_played):

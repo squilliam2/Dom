@@ -32,7 +32,7 @@ VOLUME_BASE = 20
 if HARDWARE.get_device_type() in ("tici", "tizi"):
   VOLUME_BASE = 10
 
-AudibleAlert = car.CarControl.HUDControl.AudibleAlert
+AudibleAlert = log.SelfdriveState.AudibleAlert
 
 StarPilotAudibleAlert = custom.StarPilotCarControl.HUDControl.AudibleAlert
 
@@ -46,6 +46,8 @@ sound_list: dict[int, tuple[str, int | None, float]] = {
   AudibleAlert.prompt: ("prompt.wav", 1, MAX_VOLUME),
   AudibleAlert.promptRepeat: ("prompt.wav", None, MAX_VOLUME),
   AudibleAlert.promptDistracted: ("prompt_distracted.wav", None, MAX_VOLUME),
+
+  AudibleAlert.preAlert: ("pre_alert.wav", 1, MAX_VOLUME),
 
   AudibleAlert.warningSoft: ("warning_soft.wav", None, MAX_VOLUME),
   AudibleAlert.warningImmediate: ("warning_immediate.wav", None, MAX_VOLUME),

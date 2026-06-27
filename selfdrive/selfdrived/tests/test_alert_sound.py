@@ -1,9 +1,9 @@
-from cereal import car
+from cereal import log
 
 from openpilot.selfdrive.selfdrived.alert_sound import filter_forcing_stop_alert_sound
 
 
-AudibleAlert = car.CarControl.HUDControl.AudibleAlert
+AudibleAlert = log.SelfdriveState.AudibleAlert
 
 
 def test_forcing_stop_chimes_once_during_standstill_flicker():

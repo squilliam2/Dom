@@ -12,6 +12,7 @@ from openpilot.selfdrive.ui.mici.onroad.driver_state import DriverStateRenderer
 from openpilot.selfdrive.ui.mici.onroad.hud_renderer import HudRenderer
 from openpilot.selfdrive.ui.mici.onroad.model_renderer import ModelRenderer
 from openpilot.selfdrive.ui.mici.onroad.confidence_ball import ConfidenceBall
+from openpilot.selfdrive.ui.mici.onroad.sidebar_widgets import MiciSidebarWidgets
 from openpilot.selfdrive.ui.mici.onroad.starpilot_status import (
   ENGAGED_COLOR,
   EXPERIMENTAL_COLOR,
@@ -483,6 +484,7 @@ class AugmentedRoadView(CameraView):
     self._alert_renderer = AlertRenderer()
     self._driver_state_renderer = DriverStateRenderer()
     self._confidence_ball = ConfidenceBall()
+    self._sidebar_widgets = MiciSidebarWidgets(self._confidence_ball)
     self._min_steer_speed_banner = MinSteerSpeedBanner()
     self._standstill_timer = StandstillTimerOverlay()
     self._favorite_slots = self._child(FavoriteSlotsOverlay())
@@ -623,7 +625,10 @@ class AugmentedRoadView(CameraView):
     # Custom UI extension point - add custom overlays here
     # Use self._content_rect for positioning within camera bounds
     if draw_road_overlays:
-      self._confidence_ball.render(self.rect)
+      if ui_state.params.get_bool("StockConfidenceBallWidget") and not self._sidebar_widgets.demo_active:
+        self._confidence_ball.render(self.rect)
+      else:
+        self._sidebar_widgets.render(self.rect)
     if draw_hud_controls and (camera_view_none or is_driver_stream or not in_reverse):
       self._favorite_slots.render(self._content_rect)
     if camera_view_none or is_driver_stream or not in_reverse:

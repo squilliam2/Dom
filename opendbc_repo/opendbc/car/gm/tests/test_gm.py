@@ -138,6 +138,28 @@ class TestGMInterface:
       assert not car_params.startingState
       assert car_params.startAccel == pytest.approx(0.0)
 
+  def test_volt_ascm_sascm_stock_long_sets_marker_only_with_alpha_long_off(self):
+    CarInterface = interfaces[CAR.CHEVROLET_VOLT_ASCM]
+    fingerprint = _empty_fingerprint()
+    fingerprint[0][0x2FF] = 8  # SASCM detected
+
+    stock_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, fingerprint, [], alpha_long=False,
+                                           is_release=False, docs=False, starpilot_toggles=_test_starpilot_toggles())
+    alpha_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, fingerprint, [], alpha_long=True,
+                                           is_release=False, docs=False, starpilot_toggles=_test_starpilot_toggles())
+
+    assert not stock_params.openpilotLongitudinalControl
+    assert stock_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
+    assert alpha_params.openpilotLongitudinalControl
+    assert not alpha_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
+
+  def test_volt_ascm_stock_long_marker_requires_sascm(self):
+    CarInterface = interfaces[CAR.CHEVROLET_VOLT_ASCM]
+    car_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, _empty_fingerprint(), [], alpha_long=False,
+                                         is_release=False, docs=False, starpilot_toggles=_test_starpilot_toggles())
+
+    assert not car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
+
   def test_volt_cc_sparse_fingerprint_without_camera_sets_no_camera(self):
     CarInterface = interfaces[CAR.CHEVROLET_VOLT_CC]
     fingerprint = {

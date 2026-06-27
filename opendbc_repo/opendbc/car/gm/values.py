@@ -172,6 +172,9 @@ class GMSafetyFlags(IntFlag):
   HW_SDGM = 1024
   FLAG_GM_BOLT_2017 = 2048
   FLAG_GM_BOLT_2022_PEDAL = 4096
+  # Context-specific alias for Volt ASCM + SASCM stock ACC. The Bolt pedal
+  # meaning remains active only on pedal/no-ACC paths in panda safety.
+  FLAG_GM_VOLT_ASCM_STOCK_ACC = 4096
   FLAG_GM_REMOTE_START_BOOTS_COMMA = 8192
   FLAG_GM_PANDA_3D1_SCHED = 16384
   FLAG_GM_PANDA_PADDLE_SCHED = 32768

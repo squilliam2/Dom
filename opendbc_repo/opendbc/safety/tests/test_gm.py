@@ -297,6 +297,20 @@ def test_gm_ascm_int_stock_cam_f1_rx_pinning():
   assert not safety.safety_config_valid()
 
 
+def test_gm_volt_ascm_stock_acc_marker_blocks_camera_acc_status_forwarding():
+  safety = libsafety_py.libsafety
+  stock_ascm_int = GMSafetyFlags.HW_CAM | GMSafetyFlags.HW_ASCM_INT
+  marked_volt_ascm = stock_ascm_int | GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC
+
+  safety.set_safety_hooks(CarParams.SafetyModel.gm, stock_ascm_int)
+  safety.init_tests()
+  assert safety.safety_fwd_hook(2, 0x370) == 0
+
+  safety.set_safety_hooks(CarParams.SafetyModel.gm, marked_volt_ascm)
+  safety.init_tests()
+  assert safety.safety_fwd_hook(2, 0x370) == -1
+
+
 def test_gm_ascm_int_long_no_accel_pos_uses_stock_cam_rx_checks():
   safety = libsafety_py.libsafety
   safety.set_safety_hooks(CarParams.SafetyModel.gm, GMSafetyFlags.HW_CAM | GMSafetyFlags.HW_CAM_LONG |

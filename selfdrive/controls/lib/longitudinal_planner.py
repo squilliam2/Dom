@@ -220,6 +220,9 @@ LEAD_CATCHUP_ACCEL_MIN_EGO = 8.0
 LEAD_CATCHUP_ACCEL_MIN_LEAD_DELTA = -0.5
 LEAD_CATCHUP_ACCEL_MAX_GAP_BUFFER_MIN = 4.0
 LEAD_CATCHUP_ACCEL_MAX_GAP_BUFFER_GAIN = 0.15
+RADAR_MATCHED_FOLLOW_PULLAWAY_BYPASS_MIN_LEAD_DELTA = 0.10
+RADAR_MATCHED_FOLLOW_PULLAWAY_BYPASS_MIN_LEAD_ACCEL = 0.12
+RADAR_MATCHED_FOLLOW_PULLAWAY_BYPASS_MIN_HEADWAY_MARGIN = 0.18
 RADAR_MATCHED_FOLLOW_CATCHUP_CAP_BUFFER_MARGIN = 0.75
 RADAR_MATCHED_FOLLOW_CATCHUP_HOLD_CAP = 0.04
 RADAR_MATCHED_FOLLOW_CATCHUP_HOLD_MAX_GAP_ERROR = 0.75
@@ -1505,7 +1508,18 @@ class LongitudinalPlanner:
       tracking_lead_active and
       self.lead_is_matched_follow_window(lead, v_ego, t_follow)
     )
+    actual_headway = float(lead.dRel) / max(float(v_ego), 1e-3)
+    headway_margin = actual_headway - float(t_follow)
     if radar_matched_follow_active and gap_error > (gap_buffer - RADAR_MATCHED_FOLLOW_CATCHUP_CAP_BUFFER_MARGIN):
+      return None
+
+    if (
+      radar_matched_follow_active and
+      current_source in ("lead0", "lead1") and
+      lead_delta >= RADAR_MATCHED_FOLLOW_PULLAWAY_BYPASS_MIN_LEAD_DELTA and
+      float(getattr(lead, "aLeadK", 0.0)) >= RADAR_MATCHED_FOLLOW_PULLAWAY_BYPASS_MIN_LEAD_ACCEL and
+      headway_margin >= RADAR_MATCHED_FOLLOW_PULLAWAY_BYPASS_MIN_HEADWAY_MARGIN
+    ):
       return None
 
     if (radar_matched_follow_active and current_source == "cruise" and

@@ -2106,6 +2106,14 @@
         "parent_key": "QOLVisuals"
       },
       {
+        "key": "StockConfidenceBallWidget",
+        "label": "Stock Confidence Ball Widget",
+        "description": "Use the original moving confidence ball on the small comma 4 UI instead of the fixed confidence, CEM/CCM, and personality sidebar.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "QOLVisuals"
+      },
+      {
         "key": "SimpleMode",
         "label": "Simple Mode",
         "description": "Use a more stock-like presentation by hiding most branch-specific UI, theme, sound, and alert styling. This only changes presentation and does not change driving behavior.",

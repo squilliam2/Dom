@@ -39,6 +39,7 @@ class StarPilotCard:
       getattr(self.CP, "carFingerprint", None) in (HYUNDAI_CAR.KIA_FORTE_2019_NON_SCC, HYUNDAI_CAR.KIA_FORTE_2021_NON_SCC) and
       bool(hyundai_flags & HyundaiFlags.NON_SCC)
     )
+    self.hyundai_lkas_aol_requires_engagement = getattr(self.CP, "carFingerprint", None) == HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID
     self.hyundai_aol_needs_engagement = self.CP.brand == "hyundai" and not (hyundai_flags & HyundaiFlags.CANFD) and not kia_forte_non_scc
     self.sonata_hybrid_stock_scc = (
       self.CP.brand == "hyundai" and
@@ -121,15 +122,23 @@ class StarPilotCard:
   def update(self, carState, starpilotCarState, sm, starpilot_toggles):
     self.switchback_mode_enabled = self.params_memory.get_bool("SwitchbackModeEnabled")
     button_event_types = [self._button_type_raw(be) for be in carState.buttonEvents]
+    sonata_hybrid_cruise_ready = self.hyundai_lkas_aol_requires_engagement and carState.cruiseState.available
+    hyundai_lkas_aol_can_toggle = (
+      not self.hyundai_lkas_aol_requires_engagement or
+      self.hyundai_aol_ready or
+      sm["selfdriveState"].active or
+      carState.cruiseState.enabled or
+      sonata_hybrid_cruise_ready
+    )
 
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
         self.sonata_hybrid_scc_primed = False
         self.always_on_lateral_allowed = False
-      elif carState.cruiseState.enabled:
+      elif sm["selfdriveState"].active or carState.cruiseState.enabled or sonata_hybrid_cruise_ready:
         self.hyundai_aol_ready = True
-        if self.sonata_hybrid_stock_scc:
+        if self.sonata_hybrid_stock_scc and carState.cruiseState.enabled:
           self.sonata_hybrid_scc_primed = True
 
     if self.sonata_hybrid_stock_scc and not carState.cruiseState.available and not carState.cruiseState.enabled:
@@ -141,6 +150,8 @@ class StarPilotCard:
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
       for be, be_type in zip(carState.buttonEvents, button_event_types, strict=False):
         if be_type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
+          if not hyundai_lkas_aol_can_toggle:
+            continue
           aol_button_pressed = True
           if self.hyundai_aol_needs_engagement:
             self.hyundai_aol_ready = True

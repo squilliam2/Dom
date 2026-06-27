@@ -327,9 +327,18 @@ def get_bolt_acc_pedal_friction_brake(apply_brake, full_brake_accel, v_ego, para
   full_brake_accel = min(full_brake_accel, -0.1)
   legacy_full_scale = max(-params.ACCEL_MIN, 0.1)
   corrected_scale = legacy_full_scale / max(-full_brake_accel, 0.1)
-  speed_gain = float(np.interp(v_ego, [0.0, 10.0, 25.0], [1.0, 1.15, 1.3]))
+  speed_gain = float(np.interp(v_ego, [0.0, 8.0, 15.0, 25.0], [1.0, 1.08, 1.2, 1.35]))
+  onset_gain = float(np.interp(
+    apply_brake,
+    [0.0, 5.0, 20.0, 60.0, 120.0, 240.0, params.MAX_BRAKE],
+    [0.0, 1.8, 1.65, 1.4, 1.22, 1.08, 1.0],
+  ))
 
-  return int(round(np.clip(apply_brake * corrected_scale * speed_gain, 0, params.MAX_BRAKE)))
+  shaped_brake = apply_brake * corrected_scale * speed_gain * onset_gain
+  minimum_brake = float(np.interp(v_ego, [0.0, 6.0, 8.0, 12.0, 18.0, 25.0], [0.0, 0.0, 4.0, 10.0, 20.0, 28.0]))
+  shaped_brake = max(shaped_brake, minimum_brake)
+
+  return int(round(np.clip(shaped_brake, 0, params.MAX_BRAKE)))
 
 
 def shape_bolt_acc_pedal_low_speed_friction(apply_brake: int, v_ego: float, stopping: bool, active: bool):
@@ -383,6 +392,16 @@ def get_bolt_acc_pedal_friction_command_state(apply_brake: int, cruise_main_on: 
   return command_brake, release_frames, should_send
 
 
+def get_interceptor_sng_gas_cmd(CP, interceptor_gas_cmd: float, accel: float, params, maneuver_mode: bool) -> float:
+  if maneuver_mode:
+    return max(interceptor_gas_cmd, float(np.interp(accel, [0.0, 1.0, 2.0], [params.SNG_INTERCEPTOR_GAS, 0.11, 0.16])))
+
+  if supports_bolt_acc_pedal_friction_experiment(CP):
+    return max(interceptor_gas_cmd, params.SNG_INTERCEPTOR_GAS)
+
+  return params.SNG_INTERCEPTOR_GAS
+
+
 def should_use_fixed_stopping_brake(CP, near_stop: bool, stopping: bool, resume: bool) -> bool:
   if not (near_stop and stopping and not resume):
     return False
@@ -401,7 +420,7 @@ class CarController(CarControllerBase):
     self.last_button_frame = 0
     self.cancel_counter = 0
 
-    self.lka_steering_cmd_counter = 0
+    self.lka_steering_cmd_counter = -1
     self.lka_icon_status_last = (False, False)
 
     self.params = CarControllerParams(self.CP)
@@ -817,20 +836,17 @@ class CarController(CarControllerBase):
       # - on startup, first few msgs are blocked
       # - until we're in sync with camera so counters align when relay closes, preventing a fault.
       #   openpilot can subtly drift, so this is activated throughout a drive to stay synced
-      out_of_sync = self.lka_steering_cmd_counter % 4 != (CS.cam_lka_steering_cmd_counter + 1) % 4
+      next_lka_steering_cmd_counter = get_lka_steering_cmd_counter(self.lka_steering_cmd_counter, CS)
+      out_of_sync = next_lka_steering_cmd_counter % 4 != (CS.cam_lka_steering_cmd_counter + 1) % 4
       if CS.loopback_lka_steering_cmd_ts_nanos == 0 or out_of_sync:
         steer_step = self.params.STEER_STEP
 
-    self.lka_steering_cmd_counter += 1 if CS.loopback_lka_steering_cmd_updated else 0
+    self.lka_steering_cmd_counter = get_lka_steering_cmd_counter(self.lka_steering_cmd_counter, CS)
 
     # Avoid GM EPS faults when transmitting messages too close together: skip this transmit if we
     # received the ASCMLKASteeringCmd loopback confirmation too recently
     last_lka_steer_msg_ms = (now_nanos - CS.loopback_lka_steering_cmd_ts_nanos) * 1e-6
     if (self.frame - self.last_steer_frame) >= steer_step and last_lka_steer_msg_ms > MIN_STEER_MSG_INTERVAL_MS:
-      # Initialize ASCMLKASteeringCmd counter using the camera until we get a msg on the bus
-      if CS.loopback_lka_steering_cmd_ts_nanos == 0:
-        self.lka_steering_cmd_counter = CS.pt_lka_steering_cmd_counter + 1
-
       if CC.latActive:
         new_torque = int(round(actuators.torque * self.params.STEER_MAX))
         apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.params)
@@ -845,6 +861,7 @@ class CarController(CarControllerBase):
       self.apply_torque_last = apply_torque
       idx = self.lka_steering_cmd_counter % 4
       can_sends.append(gmcan.create_steering_control(self.packer_pt, CanBus.POWERTRAIN, apply_torque, idx, CC.latActive))
+      self.lka_steering_cmd_counter = (idx + 1) % 4
 
     if should_spoof_ecm_cruise_status(self.CP) and self.frame % 4 == 0:
       can_sends.append(gmcan.create_ecm_cruise_control_command(
@@ -971,9 +988,9 @@ class CarController(CarControllerBase):
           self.apply_gas > self.params.INACTIVE_REGEN and
           use_interceptor_sng_launch(self.CP, CS, maneuver_sng_launch)
         ):
-          interceptor_gas_cmd = self.params.SNG_INTERCEPTOR_GAS
-          if maneuver_sng_launch:
-            interceptor_gas_cmd = max(interceptor_gas_cmd, float(np.interp(actuators.accel, [0.0, 1.0, 2.0], [self.params.SNG_INTERCEPTOR_GAS, 0.11, 0.16])))
+          interceptor_gas_cmd = get_interceptor_sng_gas_cmd(
+            self.CP, interceptor_gas_cmd, actuators.accel, self.params, maneuver_sng_launch,
+          )
           self.apply_brake = 0
           self.apply_gas = self.params.INACTIVE_REGEN
 

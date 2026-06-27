@@ -27,12 +27,13 @@ env_var_truthy() {
 usage() {
   cat <<'EOF'
 Usage:
-  ./onroad [jobs] (--c3 | --c4 | --raybig | --all | --replay-only) [-nav] [--prefix name] <route-or-replay-args...>
+  ./onroad [jobs] (--c3 | --c4 | --raybig | --all | --replay-only) [-nav] [--mici-widget-demo] [--prefix name] <route-or-replay-args...>
 
 Examples:
   ./onroad --c3 <route>
   ./onroad --c4 <route> --start 30
   ./onroad --c4 -nav <route>
+  ./onroad --c4 --mici-widget-demo --demo
   ./onroad --all <route>
   ./onroad --replay-only --demo --no-vipc --no-loop
 
@@ -41,6 +42,7 @@ Notes:
   - A private comma connect route still requires tools/lib/auth.py before replay can download it.
   - Use multiple UI flags together if you want more than one desktop UI at once.
   - -nav injects a fake navigation demo stream and blocks replay from publishing navInstruction/navRoute.
+  - --mici-widget-demo makes the small C4 sidebar cycle through widget states for visual review.
 EOF
 }
 
@@ -56,6 +58,7 @@ UI_TARGETS=()
 LEGACY_UI_SELECTION=""
 REPLAY_ONLY=0
 NAV_DEMO=0
+MICI_WIDGET_DEMO=0
 REPLAY_PID=""
 NAV_PID=""
 UI_PIDS=()
@@ -89,6 +92,10 @@ parse_args() {
         ;;
       -nav|--nav)
         NAV_DEMO=1
+        shift
+        ;;
+      --mici-widget-demo|--widget-demo)
+        MICI_WIDGET_DEMO=1
         shift
         ;;
       --ui)
@@ -315,6 +322,7 @@ prepare_env() {
   export SP_RAYBIG_FAKE_WIFI=0
   export SP_ALLOW_DESKTOP_FAKE_WIFI=0
   export SP_ONROAD_NAV_DEMO="${NAV_DEMO}"
+  export SP_MICI_WIDGET_DEMO="${MICI_WIDGET_DEMO}"
 
   if [[ "$(uname -s)" == "Darwin" ]] || env_var_truthy "${ZMQ:-0}"; then
     export OPENPILOT_ZMQ_NAMESPACE="${PREFIX_ARG:-${OPENPILOT_ZMQ_NAMESPACE:-desktop-onroad-$$}}"

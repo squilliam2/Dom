@@ -157,7 +157,7 @@ def test_hyundai_lkas_button_can_toggle_aol_before_normal_engagement(monkeypatch
   assert ret.pauseLateral is False
 
 
-def test_sonata_hybrid_lkas_button_toggles_aol_without_scc_main(monkeypatch, tmp_path):
+def test_sonata_hybrid_lkas_button_toggles_aol_with_scc_main_available(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -167,7 +167,7 @@ def test_sonata_hybrid_lkas_button_toggles_aol_without_scc_main(monkeypatch, tmp
     SimpleNamespace(alternativeExperience=spc.ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL),
   )
 
-  car_state = make_car_state(available=False, enabled=False, button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)])
+  car_state = make_car_state(available=True, enabled=False, button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)])
   starpilot_car_state = SimpleNamespace(distancePressed=False)
   sm = make_sm()
   toggles = make_toggles(always_on_lateral=True, always_on_lateral_lkas=True)
@@ -192,8 +192,8 @@ def test_sonata_hybrid_lkas_button_disables_aol_without_scc_main(monkeypatch, tm
   sm = make_sm()
   toggles = make_toggles(always_on_lateral=True, always_on_lateral_lkas=True)
 
-  engaged_state = make_car_state(available=True, enabled=True)
-  card.update(engaged_state, starpilot_car_state, sm, toggles)
+  cruise_main_state = make_car_state(available=True, enabled=False)
+  card.update(cruise_main_state, starpilot_car_state, sm, toggles)
 
   lkas_state = make_car_state(available=False, enabled=False, button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)])
   ret = card.update(lkas_state, starpilot_car_state, sm, toggles)
@@ -217,7 +217,7 @@ def test_sonata_hybrid_low_speed_lkas_waits_for_scc_prime_then_survives_cancel(m
   toggles = make_toggles(always_on_lateral=True, always_on_lateral_lkas=True)
 
   ret = card.update(
-    make_car_state(available=False, enabled=False, v_ego=10.0,
+    make_car_state(available=True, enabled=False, v_ego=10.0,
                    button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)]),
     starpilot_car_state,
     sm,

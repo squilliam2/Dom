@@ -66,6 +66,7 @@ REDNECK_BUTTON_COPIES_TIME_METRIC = [REDNECK_BUTTON_COPIES_TIME, 40]
 ANGLE_SAFETY_BASELINE_MODEL = str(CAR.KIA_SPORTAGE_HEV_2026)
 DEFAULT_ANGLE_SMOOTHING_VEGO_BP = [5.0, 10.0, 20.0]
 DEFAULT_ANGLE_SMOOTHING_ALPHA_V = [0.2, 0.1, 0.0]
+EV9_HIGH_ANGLE_CONTROL_LIMIT = MAX_ANGLE
 
 
 def egmp_dynamic_longitudinal_tuning(CP) -> bool:
@@ -394,6 +395,7 @@ class CarController(CarControllerBase):
 
     if self.CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
       v_ego_raw = CS.out.vEgoRaw
+      ev9_high_angle_inhibit = self.CP.carFingerprint == CAR.KIA_EV9 and abs(CS.out.steeringAngleDeg) >= EV9_HIGH_ANGLE_CONTROL_LIMIT
       desired_angle = float(np.clip(actuators.steeringAngleDeg,
                                     -self.params.ANGLE_LIMITS.STEER_ANGLE_MAX,
                                     self.params.ANGLE_LIMITS.STEER_ANGLE_MAX))
@@ -417,6 +419,14 @@ class CarController(CarControllerBase):
         apply_torque = 0
         apply_angle = CS.out.steeringAngleDeg
         apply_steer_req = False
+
+      if ev9_high_angle_inhibit:
+        apply_torque = 0
+        apply_angle = float(np.clip(CS.out.steeringAngleDeg,
+                                    -self.params.ANGLE_LIMITS.STEER_ANGLE_MAX,
+                                    self.params.ANGLE_LIMITS.STEER_ANGLE_MAX))
+        apply_steer_req = False
+        self.angle_filter.x = apply_angle
 
       self.apply_angle_last = apply_angle
       if not CC.latActive:
@@ -617,8 +627,8 @@ class CarController(CarControllerBase):
     steering_msg_active = apply_steer_req
     if self.CP.carFingerprint == CAR.KIA_EV9 and self.CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
       # EV9 faults if the angle-steering status drops inactive during torque limiting.
-      # Hold the angle path active while lateral is active; gain/angle are already limited above.
-      steering_msg_active = CC.latActive
+      # Hold the angle path active while lateral is active, except during high-angle maneuvers.
+      steering_msg_active = CC.latActive and abs(CS.out.steeringAngleDeg) < EV9_HIGH_ANGLE_CONTROL_LIMIT
 
     can_sends.extend(hyundaicanfd.create_steering_messages(self.packer, self.CP, self.CAN, CC.enabled,
                                                            steering_msg_active, apply_torque, apply_angle,
@@ -627,7 +637,10 @@ class CarController(CarControllerBase):
                                                            lka_icon=lka_icon))
 
     # prevent LFA from activating on LKA steering cars by sending "no lane lines detected" to ADAS ECU
-    if self.frame % 5 == 0 and lka_steering:
+    suppress_lfa = bool(lka_steering)
+    if self.CP.carFingerprint == CAR.KIA_EV9 and self.CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
+      suppress_lfa = bool(steering_msg_active)
+    if self.frame % 5 == 0 and suppress_lfa:
       can_sends.append(hyundaicanfd.create_suppress_lfa(self.packer, self.CAN, CS.lfa_block_msg,
                                                         self.CP.flags & HyundaiFlags.CANFD_LKA_STEERING_ALT))
 

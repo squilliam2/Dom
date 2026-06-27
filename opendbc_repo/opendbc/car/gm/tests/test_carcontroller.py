@@ -47,6 +47,7 @@ from opendbc.car.gm.carcontroller import (
   get_bolt_acc_pedal_effective_brake_switch,
   get_bolt_acc_pedal_planner_brake_switch,
   get_bolt_pedal_long_accel_limit,
+  get_interceptor_sng_gas_cmd,
   get_lka_steering_cmd_counter,
   get_volt_one_pedal_target_decel,
   get_testing_ground_1_brake_switch_bias,
@@ -162,6 +163,18 @@ def test_bolt_acc_pedal_friction_blend_biases_small_commands_upward_at_speed():
 
   assert low_speed > 31
   assert high_speed > low_speed
+
+
+def test_bolt_acc_pedal_friction_blend_applies_a_minimum_pre_stop_command_at_speed():
+  params = SimpleNamespace(ACCEL_MIN=-4.0, MAX_BRAKE=400)
+
+  assert get_bolt_acc_pedal_friction_brake(2, -2.86, 17.0, params) >= 18
+
+
+def test_bolt_acc_pedal_friction_blend_boosts_midrange_commands_before_stopping_phase():
+  params = SimpleNamespace(ACCEL_MIN=-4.0, MAX_BRAKE=400)
+
+  assert get_bolt_acc_pedal_friction_brake(40, -2.86, 15.0, params) >= 80
 
 
 def test_bolt_acc_pedal_low_speed_friction_ignores_tiny_inactive_brake_requests():
@@ -816,6 +829,30 @@ def test_bolt_acc_pedal_sng_launch_uses_physical_standstill_without_stock_acc_bi
   assert use_interceptor_sng_launch(CP, _sng_cs(0.0, True, False))
   assert use_interceptor_sng_launch(CP, _sng_cs(0.2, False, False))
   assert not use_interceptor_sng_launch(CP, _sng_cs(1.2, False, False))
+
+
+def test_bolt_acc_pedal_sng_launch_preserves_stronger_computed_pedal():
+  CP = SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+    openpilotLongitudinalControl=True,
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+  )
+  params = SimpleNamespace(SNG_INTERCEPTOR_GAS=18. / 255.)
+
+  assert get_interceptor_sng_gas_cmd(CP, 0.2, 0.54, params, False) == pytest.approx(0.2)
+
+
+def test_other_pedal_sng_launch_keeps_fixed_floor_behavior():
+  CP = SimpleNamespace(
+    carFingerprint=CAR.CHEVROLET_BOLT_CC_2018_2021,
+    openpilotLongitudinalControl=True,
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+  )
+  params = SimpleNamespace(SNG_INTERCEPTOR_GAS=18. / 255.)
+
+  assert get_interceptor_sng_gas_cmd(CP, 0.2, 0.54, params, False) == pytest.approx(18. / 255.)
 
 
 def test_use_interceptor_sng_launch_extends_for_maneuver_mode():

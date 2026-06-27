@@ -1240,6 +1240,7 @@ class StarPilotVariables:
     toggle.driver_camera_in_reverse = self.get_value("DriverCamera", condition=quality_of_life_visuals)
     toggle.onroad_distance_button = toggle.openpilot_longitudinal and (self.get_value("OnroadDistanceButton", condition=quality_of_life_visuals) or toggle.debug_mode)
     toggle.stopped_timer = self.get_value("StoppedTimer", condition=quality_of_life_visuals)
+    toggle.stock_confidence_ball_widget = self.get_value("StockConfidenceBallWidget", condition=quality_of_life_visuals)
 
     toggle.rainbow_path = self.get_value("RainbowPath", condition=not toggle.debug_mode)
 

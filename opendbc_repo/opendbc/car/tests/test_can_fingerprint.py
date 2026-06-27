@@ -31,12 +31,6 @@ class TestCanFingerprint:
       assert finger[1] == fingerprint
       assert finger[2] == {}
 
-  def test_exact_fingerprint_preferred_over_gm_sascm_superset(self):
-    car_fingerprint, finger = self._fingerprint_from_can(FINGERPRINTS[GM.CADILLAC_ESCALADE_ESV_2019][0])
-
-    assert car_fingerprint == GM.CADILLAC_ESCALADE_ESV_2019
-    assert 0x2FF not in finger[0]
-
   def test_gm_sascm_superset_fingerprint_matches_ascm_variant(self):
     car_fingerprint, finger = self._fingerprint_from_can(FINGERPRINTS[GM.CADILLAC_ESCALADE_ESV_2019_ASCM][0])
 

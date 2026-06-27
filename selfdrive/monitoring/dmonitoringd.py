@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 import cereal.messaging as messaging
-from opendbc.car import structs
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process
-from openpilot.selfdrive.monitoring.helpers import DriverMonitoring
-
-GearShifter = structs.CarState.GearShifter
+from openpilot.selfdrive.monitoring.policy import DriverMonitoring
 
 
 def get_rhd_override(params):
@@ -26,10 +23,6 @@ def dmonitoringd_thread():
   )
   demo_mode=False
 
-  sm = sm.extend(['starpilotCarState'])
-
-  driver_view_enabled = params.get_bool("IsDriverViewEnabled")
-
   # 20Hz <- dmonitoringmodeld
   while True:
     sm.update()
@@ -39,14 +32,12 @@ def dmonitoringd_thread():
 
     valid = sm.all_checks()
     if demo_mode and sm.valid['driverStateV2']:
-      DM.run_step(sm, demo=demo_mode)
+      DM.run_step(sm, demo=True)
     elif valid:
       DM.run_step(sm, demo=demo_mode)
-    elif driver_view_enabled:
-      DM.face_detected = sm['driverStateV2'].leftDriverData.faceProb > DM.settings._FACE_THRESHOLD or sm['driverStateV2'].rightDriverData.faceProb > DM.settings._FACE_THRESHOLD
 
     # publish
-    dat = DM.get_state_packet(valid=valid or driver_view_enabled)
+    dat = DM.get_state_packet(valid=valid)
     pm.send('driverMonitoringState', dat)
 
     # load live always-on toggle
@@ -54,14 +45,14 @@ def dmonitoringd_thread():
       DM.always_on = params.get_bool("AlwaysOnDM")
       DM.wheel_on_right_default = params.get_bool("IsRhdDetected")
       DM.wheel_on_right_override = get_rhd_override(params)
-      demo_mode = params.get_bool("IsDriverViewEnabled") and sm["carState"].gearShifter != GearShifter.reverse
+      demo_mode = params.get_bool("IsDriverViewEnabled")
 
     # save rhd virtual toggle every 5 mins
     if (DM.wheel_on_right_override is None and sm['driverStateV2'].frameId % 6000 == 0 and not demo_mode and
-     DM.wheelpos.prob_offseter.filtered_stat.n > DM.settings._WHEELPOS_FILTER_MIN_COUNT and
-     DM.wheel_on_right == (DM.wheelpos.prob_offseter.filtered_stat.M > DM.settings._WHEELPOS_THRESHOLD)):
-      params.put_bool_nonblocking("IsRhdDetected", DM.wheel_on_right)
-      params.put_bool_nonblocking("IsRHD", DM.wheel_on_right)
+     DM.wheelpos_offsetter.filtered_stat.n > DM.settings._WHEELPOS_FILTER_MIN_COUNT and
+     DM.wheel_on_right == (DM.wheelpos_offsetter.filtered_stat.M > DM.settings._WHEELPOS_THRESHOLD)):
+      params.put_bool("IsRhdDetected", DM.wheel_on_right)
+      params.put_bool("IsRHD", DM.wheel_on_right)
 
 def main():
   dmonitoringd_thread()

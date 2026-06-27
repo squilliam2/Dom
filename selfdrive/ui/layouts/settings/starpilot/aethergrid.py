@@ -881,6 +881,10 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
 
 BREADCRUMB_RECTS: dict[str, rl.Rectangle] = {}
 PRESSED_BREADCRUMB: str | None = None
+BREADCRUMB_EXPANDED: bool = False
+BREADCRUMB_EXPAND_ALPHA: float = 0.0
+BREADCRUMB_EXPAND_DURATION: float = 2.5
+BREADCRUMB_LAST_INTERACT: float = 0.0
 
 def get_breadcrumbs_path() -> list[tuple[str, str]]:
   import openpilot.selfdrive.ui.layouts.settings.starpilot.main_panel as main_panel
@@ -918,6 +922,16 @@ def get_breadcrumbs_path() -> list[tuple[str, str]]:
   return path
 
 def handle_breadcrumb_click(target: str):
+  global BREADCRUMB_EXPANDED, BREADCRUMB_EXPAND_ALPHA, BREADCRUMB_LAST_INTERACT
+
+  if target == "action:breadcrumb_history":
+    BREADCRUMB_EXPANDED = not BREADCRUMB_EXPANDED
+    if BREADCRUMB_EXPANDED:
+      BREADCRUMB_LAST_INTERACT = time.monotonic()
+    return
+
+  BREADCRUMB_EXPANDED = False
+
   import openpilot.selfdrive.ui.layouts.settings.starpilot.main_panel as main_panel
   from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
   layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
@@ -949,128 +963,140 @@ def handle_breadcrumb_click(target: str):
     target_idx = int(target.split(":")[-1])
     while len(gui_app._nav_stack) > target_idx + 1:
       gui_app.pop_widget()
-  elif target == "action:breadcrumb_history":
-    full_path = get_breadcrumbs_path()
-    middle_steps = full_path[1:-1]
-    options = [text for text, action in middle_steps]
-    action_map = {text: action for text, action in middle_steps}
-
-    def on_select(res):
-      if res == DialogResult.CONFIRM and dialog.selection:
-        chosen_action = action_map.get(dialog.selection)
-        if chosen_action:
-          handle_breadcrumb_click(chosen_action)
-
-    from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
-    dialog = MultiOptionDialog(tr("Navigation History"), options, "", callback=on_select)
-    gui_app.push_widget(dialog)
 
 
 def draw_breadcrumbs(rect: rl.Rectangle) -> None:
-  """Draw the breadcrumb trail centered inside `rect`.
+  global BREADCRUMB_EXPAND_ALPHA, BREADCRUMB_EXPANDED, BREADCRUMB_LAST_INTERACT
 
-  All glyphs — past-step labels, chevrons, and the active-step label — share
-  a single vertical midline so nothing looks dropped or misaligned.
-  """
   BREADCRUMB_RECTS.clear()
   path = get_breadcrumbs_path()
   if not path:
     return
 
-  display_path = list(path)
-  if len(path) > 3:
-    display_path = [path[0], ("...", "action:breadcrumb_history"), path[-1]]
+  now = time.monotonic()
 
-  # Sizes
-  ACTIVE_SIZE   = 26   # font size for current/last step
-  PAST_SIZE     = 19   # font size for ancestor steps
-  CHEVRON_SIZE  = 16   # visual half-height of chevron arms
-  CHEVRON_W     = 14   # horizontal extent of chevron
-  GAP           = 14   # spacing between every element
+  if BREADCRUMB_EXPANDED and now - BREADCRUMB_LAST_INTERACT > BREADCRUMB_EXPAND_DURATION:
+    BREADCRUMB_EXPANDED = False
 
-  center_y = rect.y + rect.height / 2  # single shared vertical center
+  ANIM_LERP      = 0.2
+  EXPAND_THRESH  = 0.4
+  FADE_THRESH    = 0.01
+  EXPAND_RANGE   = 1.0 - EXPAND_THRESH
 
-  # ── measure total row width so we can clip/left-align ─────────────────────
-  # (We just render left-to-right; no centering needed for breadcrumbs)
+  target = 1.0 if BREADCRUMB_EXPANDED else 0.0
+  BREADCRUMB_EXPAND_ALPHA += (target - BREADCRUMB_EXPAND_ALPHA) * ANIM_LERP
+  alpha = BREADCRUMB_EXPAND_ALPHA
 
-  color_sep = rl.Color(80, 90, 115, 160)
+  ACTIVE_SIZE   = 24
+  PAST_SIZE     = 17
+  CHEVRON_SIZE  = 16
+  CHEVRON_W     = 14
+  GAP           = 16
+
+  center_y = rect.y + rect.height / 2
+
+  color_sep     = rl.Color(110, 112, 138, 200)
+  active_normal = rl.Color(252, 252, 255, 255)
+  active_hover  = rl.Color(252, 252, 255, 255)
+  active_pressed = rl.Color(200, 200, 200, 255)
+  past_normal   = rl.Color(148, 142, 168, 255)
+  past_hover    = rl.Color(168, 163, 188, 255)
+  past_pressed  = rl.Color(190, 185, 215, 255)
+  home_normal   = rl.Color(168, 163, 188, 255)
+  home_hover    = rl.Color(188, 183, 208, 255)
+  home_pressed  = rl.Color(210, 205, 230, 255)
+
   mouse_pos = gui_app.last_mouse_event.pos
 
-  current_x = rect.x + 20   # left inset inside the pill
+  has_overflow = alpha > FADE_THRESH and len(path) > 3
+
+  if has_overflow and alpha >= EXPAND_THRESH:
+    display_path = list(path)
+    middle_alpha = min(1.0, (alpha - EXPAND_THRESH) / EXPAND_RANGE)
+    overflow_alpha = 0.0
+  elif has_overflow:
+    display_path = [path[0], ("...", "action:breadcrumb_history"), path[-1]]
+    overflow_alpha = 1.0 - (alpha / EXPAND_THRESH)
+    middle_alpha = 0.0
+  else:
+    display_path = list(path) if len(path) <= 3 else [path[0], ("...", "action:breadcrumb_history"), path[-1]]
+    overflow_alpha = 1.0
+    middle_alpha = 0.0
+
+  current_x = rect.x + 20
 
   for i, (text, action) in enumerate(display_path):
     is_last     = (i == len(display_path) - 1)
+    is_first    = (i == 0)
     is_overflow = (action == "action:breadcrumb_history")
     pressed     = PRESSED_BREADCRUMB == action
 
     if is_overflow:
-      # ── glowing "..." capsule ────────────────────────────────────────────
+      if overflow_alpha <= FADE_THRESH:
+        current_x += GAP
+        continue
+
       capsule_w, capsule_h = 50, 26
-      cap_rect = rl.Rectangle(
-        current_x,
-        center_y - capsule_h / 2,
-        capsule_w,
-        capsule_h,
-      )
+      cap_rect = rl.Rectangle(current_x, center_y - capsule_h / 2, capsule_w, capsule_h)
       hovered = _point_hits(mouse_pos, cap_rect, None, pad_x=4, pad_y=6)
       BREADCRUMB_RECTS[action] = cap_rect
 
+      oa = overflow_alpha
       if pressed:
-        fill, outline, glow, dots_c = (
-          rl.Color(45, 30, 75, 230),
-          rl.Color(167, 139, 250, 255),
-          rl.Color(167, 139, 250, 90),
-          rl.Color(255, 255, 255, 255),
-        )
+        fill = rl.Color(45, 38, 62, int(230 * oa))
+        outline = rl.Color(167, 152, 210, int(180 * oa))
+        glow = rl.Color(167, 152, 210, int(90 * oa))
+        dots_c = rl.Color(255, 255, 255, int(255 * oa))
       elif hovered:
-        fill, outline, glow, dots_c = (
-          rl.Color(30, 20, 50, 200),
-          rl.Color(139, 92, 246, 200),
-          rl.Color(139, 92, 246, 60),
-          rl.Color(255, 255, 255, 255),
-        )
+        fill = rl.Color(38, 34, 54, int(200 * oa))
+        outline = rl.Color(148, 142, 168, int(120 * oa))
+        glow = rl.Color(148, 142, 168, int(60 * oa))
+        dots_c = rl.Color(255, 255, 255, int(255 * oa))
       else:
-        fill, outline, glow, dots_c = (
-          rl.Color(20, 15, 30, 150),
-          rl.Color(120, 110, 220, 80),
-          rl.Color(120, 110, 220, 20),
-          rl.Color(190, 180, 220, 180),
-        )
+        fill = rl.Color(28, 26, 38, int(160 * oa))
+        outline = rl.Color(120, 115, 160, int(60 * oa))
+        glow = rl.Color(120, 115, 160, int(20 * oa))
+        dots_c = rl.Color(190, 180, 220, int(180 * oa))
 
-      # outer glow halo
-      rl.draw_rectangle_rounded_lines_ex(
-        rl.Rectangle(cap_rect.x - 2, cap_rect.y - 2, cap_rect.width + 4, cap_rect.height + 4),
-        1.0, 16, 1.5, glow,
-      )
-      rl.draw_rectangle_rounded(cap_rect, 1.0, 16, fill)
-      rl.draw_rectangle_rounded_lines_ex(cap_rect, 1.0, 16, 1.0, outline)
+      if oa > 0.05:
+        rl.draw_rectangle_rounded_lines_ex(
+          rl.Rectangle(cap_rect.x - 2, cap_rect.y - 2, cap_rect.width + 4, cap_rect.height + 4),
+          1.0, 16, 1.5, glow)
+        rl.draw_rectangle_rounded(cap_rect, 1.0, 16, fill)
+        rl.draw_rectangle_rounded_lines_ex(cap_rect, 1.0, 16, 1.0, outline)
 
-      font_dots = gui_app.font(FontWeight.BOLD)
-      dots_w = measure_text_cached(font_dots, "...", 18).x
-      rl.draw_text_ex(
-        font_dots, "...",
-        rl.Vector2(cap_rect.x + (cap_rect.width - dots_w) / 2, center_y - 10),
-        18, 0, dots_c,
-      )
+        font_dots = gui_app.font(FontWeight.BOLD)
+        dots_w = measure_text_cached(font_dots, "...", 18).x
+        rl.draw_text_ex(font_dots, "...",
+          rl.Vector2(cap_rect.x + (cap_rect.width - dots_w) / 2, center_y - 10),
+          18, 0, dots_c)
       current_x += capsule_w + GAP
 
     else:
-      # ── normal breadcrumb label ──────────────────────────────────────────
+      item_alpha = 255
+      if has_overflow and not is_first and not is_last:
+        item_alpha = int(middle_alpha * 255)
+
       if is_last:
         font      = gui_app.font(FontWeight.BOLD)
         font_size = ACTIVE_SIZE
-        c_normal  = rl.Color(255, 255, 255, 255)
-        c_hover   = rl.Color(255, 255, 255, 255)
-        c_pressed = rl.Color(200, 200, 200, 255)
+        c_normal  = rl.Color(252, 252, 255, item_alpha)
+        c_hover   = rl.Color(252, 252, 255, item_alpha)
+        c_pressed = rl.Color(200, 200, 200, item_alpha)
+      elif is_first:
+        font      = gui_app.font(FontWeight.MEDIUM)
+        font_size = PAST_SIZE
+        c_normal  = rl.Color(home_normal.r, home_normal.g, home_normal.b, item_alpha)
+        c_hover   = rl.Color(home_hover.r, home_hover.g, home_hover.b, item_alpha)
+        c_pressed = rl.Color(home_pressed.r, home_pressed.g, home_pressed.b, item_alpha)
       else:
         font      = gui_app.font(FontWeight.MEDIUM)
         font_size = PAST_SIZE
-        c_normal  = rl.Color(110, 105, 130, 255)
-        c_hover   = rl.Color(160, 155, 185, 255)
-        c_pressed = rl.Color(190, 185, 215, 255)
+        c_normal  = rl.Color(past_normal.r, past_normal.g, past_normal.b, item_alpha)
+        c_hover   = rl.Color(past_hover.r, past_hover.g, past_hover.b, item_alpha)
+        c_pressed = rl.Color(past_pressed.r, past_pressed.g, past_pressed.b, item_alpha)
 
       text_w = measure_text_cached(font, text, font_size).x
-      # hit rect: generous padding for touch
       hit_rect = rl.Rectangle(current_x - 6, center_y - 20, text_w + 12, 40)
       hovered  = _point_hits(mouse_pos, hit_rect, None, pad_x=0, pad_y=0)
       BREADCRUMB_RECTS[action] = hit_rect
@@ -1078,21 +1104,14 @@ def draw_breadcrumbs(rect: rl.Rectangle) -> None:
       color = c_pressed if pressed else (c_hover if hovered else c_normal)
 
       if hovered and not is_last:
-        rl.draw_rectangle_rounded(hit_rect, 0.4, 8, rl.Color(255, 255, 255, 12))
+        rl.draw_rectangle_rounded(hit_rect, 0.4, 8, rl.Color(255, 255, 255, int(12 * item_alpha / 255)))
 
-      # draw text centered on the shared midline
       text_y = center_y - font_size / 2
       rl.draw_text_ex(font, text, rl.Vector2(current_x, text_y), font_size, 0, color)
       current_x += text_w + GAP
 
-    # ── chevron separator ──────────────────────────────────────────────────
     if i < len(display_path) - 1:
-      chev_rect = rl.Rectangle(
-        current_x,
-        center_y - CHEVRON_SIZE / 2,
-        CHEVRON_W,
-        CHEVRON_SIZE,
-      )
+      chev_rect = rl.Rectangle(current_x, center_y - CHEVRON_SIZE / 2, CHEVRON_W, CHEVRON_SIZE)
       draw_chevron_icon(chev_rect, color_sep, thickness=2.0, direction="right")
       current_x += CHEVRON_W + GAP
 
@@ -2809,7 +2828,15 @@ class AetherSettingsView(PanelManagerView):
           row.set_parent_rect(self._scroll_rect)
           row.render(row_rect)
         for j, row in enumerate(right_rows):
-          y += SECTION_GAP
+          row_rect = rl.Rectangle(rect.x + col_w + self.COLUMN_GAP, y + j * right_section.row_height, col_w, right_section.row_height)
+          row.set_is_last(j == len(right_rows) - 1)
+          row.set_parent_rect(self._scroll_rect)
+          row.render(row_rect)
+        y += max(section_h, right_h) + SECTION_GAP
+        i += 1
+      else:
+        y = self._draw_section(y, rect.x, width, section, visible_rows)
+        y += SECTION_GAP
         i += 1
 
   def _draw_section(self, y: float, x: float, width: float,
@@ -2880,6 +2907,23 @@ class AetherSettingsView(PanelManagerView):
         action_border=action_border,
         row_separator=self._panel_style.divider_color,
       )
+
+
+def _draw_back_button(pill_rect: rl.Rectangle, center_y: float, pressed: bool, hovered: bool) -> rl.Rectangle:
+  back_size = 38
+  back_x = pill_rect.x + 8
+  btn = rl.Rectangle(back_x, center_y - back_size / 2, back_size, back_size)
+  if pressed or hovered:
+    bg = rl.Color(255, 255, 255, 24) if pressed else rl.Color(255, 255, 255, 10)
+    rl.draw_rectangle_rounded(btn, 0.4, 8, bg)
+  chev_size = 14
+  chev_r = rl.Rectangle(back_x + (back_size - chev_size) / 2, center_y - chev_size / 2, chev_size, chev_size)
+  chev_c = rl.Color(200, 200, 210, 200) if pressed else rl.Color(160, 170, 185, 180)
+  draw_chevron_icon(chev_r, chev_c, thickness=2.0, direction="left")
+  return btn
+
+
+BACK_BTN = "__back__"
 
 
 # ── AetherCategoryTileView — dynamic nesting doll tile view ──
@@ -3039,30 +3083,41 @@ class AetherCategoryTileView(AetherSettingsView):
         )
 
   def _target_at(self, mouse_pos: MousePos) -> str | None:
-    # Check breadcrumb hits first (they're drawn in the header)
+    if self._back_btn_rect and _point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8):
+      return BACK_BTN
     crumb_target = resolve_interactive_target(mouse_pos, BREADCRUMB_RECTS, None, pad_x=8, pad_y=8)
     if crumb_target:
       return f"breadcrumb:{crumb_target}"
     return super()._target_at(mouse_pos)
 
   def _activate_target(self, target_id: str | None):
+    if target_id == BACK_BTN:
+      gui_app.pop_widget()
+      return
     if target_id and target_id.startswith("breadcrumb:"):
       action = target_id[len("breadcrumb:"):]
-      if action == "action:panel":  # topmost panel step = pop this dialog
+      if action == "action:panel":
         gui_app.pop_widget()
-      else:
-        handle_breadcrumb_click(action)
     else:
       super()._activate_target(target_id)
 
   def _draw_header(self, rect: rl.Rectangle):
-    # Draw the same glass breadcrumb pill that appears in the main nav bar
     pill_h = 52
     pill_rect = rl.Rectangle(rect.x, rect.y + (rect.height - pill_h) / 2, rect.width, pill_h)
+    center_y = pill_rect.y + pill_h / 2
+
     _draw_rounded_fill(pill_rect, rl.Color(18, 16, 24, 200), radius_px=14)
     _draw_rounded_stroke(pill_rect, rl.Color(255, 255, 255, 22), radius_px=14)
-    # Breadcrumbs fill left portion; leave ~20px right inset
-    crumb_rect = rl.Rectangle(pill_rect.x, pill_rect.y, pill_rect.width - 20, pill_rect.height)
+
+    mouse_pos = gui_app.last_mouse_event.pos
+    is_pressed = getattr(self, '_pressed_target', None) == BACK_BTN
+    is_hovered = _point_hits(mouse_pos, pill_rect, None, pad_x=0, pad_y=0) and \
+                 self._back_btn_rect and _point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8)
+    self._back_btn_rect = _draw_back_button(pill_rect, center_y, is_pressed, is_hovered)
+
+    crumb_x = pill_rect.x + 58
+    crumb_w = pill_rect.width - (crumb_x - pill_rect.x) - 20
+    crumb_rect = rl.Rectangle(crumb_x, pill_rect.y, crumb_w, pill_rect.height)
     draw_breadcrumbs(crumb_rect)
 
 
@@ -3178,30 +3233,41 @@ class AetherSubMenuTileView(AetherSettingsView):
         )
 
   def _target_at(self, mouse_pos: MousePos) -> str | None:
-    # Check breadcrumb hits first (they're drawn in the header)
+    if self._back_btn_rect and _point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8):
+      return BACK_BTN
     crumb_target = resolve_interactive_target(mouse_pos, BREADCRUMB_RECTS, None, pad_x=8, pad_y=8)
     if crumb_target:
       return f"breadcrumb:{crumb_target}"
     return super()._target_at(mouse_pos)
 
   def _activate_target(self, target_id: str | None):
+    if target_id == BACK_BTN:
+      gui_app.pop_widget()
+      return
     if target_id and target_id.startswith("breadcrumb:"):
       action = target_id[len("breadcrumb:"):]
-      if action == "action:panel":  # topmost panel step = pop this dialog
+      if action == "action:panel":
         gui_app.pop_widget()
-      else:
-        handle_breadcrumb_click(action)
     else:
       super()._activate_target(target_id)
 
   def _draw_header(self, rect: rl.Rectangle):
-    # Draw the same glass breadcrumb pill that appears in the main nav bar
     pill_h = 52
     pill_rect = rl.Rectangle(rect.x, rect.y + (rect.height - pill_h) / 2, rect.width, pill_h)
+    center_y = pill_rect.y + pill_h / 2
+
     _draw_rounded_fill(pill_rect, rl.Color(18, 16, 24, 200), radius_px=14)
     _draw_rounded_stroke(pill_rect, rl.Color(255, 255, 255, 22), radius_px=14)
-    # Breadcrumbs fill left portion; leave ~20px right inset
-    crumb_rect = rl.Rectangle(pill_rect.x, pill_rect.y, pill_rect.width - 20, pill_rect.height)
+
+    mouse_pos = gui_app.last_mouse_event.pos
+    is_pressed = getattr(self, '_pressed_target', None) == BACK_BTN
+    is_hovered = _point_hits(mouse_pos, pill_rect, None, pad_x=0, pad_y=0) and \
+                 self._back_btn_rect and _point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8)
+    self._back_btn_rect = _draw_back_button(pill_rect, center_y, is_pressed, is_hovered)
+
+    crumb_x = pill_rect.x + 58
+    crumb_w = pill_rect.width - (crumb_x - pill_rect.x) - 20
+    crumb_rect = rl.Rectangle(crumb_x, pill_rect.y, crumb_w, pill_rect.height)
     draw_breadcrumbs(crumb_rect)
 
 

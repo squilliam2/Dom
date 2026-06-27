@@ -246,48 +246,30 @@ class StarPilotLayout(Widget):
     shell_w = min(rect.width - metrics.outer_margin_x * 2, metrics.max_content_width)
     shell_x = rect.x + (rect.width - shell_w) / 2
 
-    # 0. Draw Tinted Cockpit Glass Background as a floating, rounded panel
-    glass_rect = rl.Rectangle(shell_x, rect.y + 18, shell_w, TOP_BAR_HEIGHT - 24)
-    aethergrid._draw_rounded_fill(glass_rect, rl.Color(18, 16, 24, 180), radius_px=16)
-    aethergrid._draw_rounded_stroke(glass_rect, rl.Color(255, 255, 255, 20), radius_px=16)
+    # 0. Draw bar background as a flush rounded panel
+    glass_rect = rl.Rectangle(shell_x, rect.y + 14, shell_w, TOP_BAR_HEIGHT - 24)
+    aethergrid._draw_rounded_fill(glass_rect, rl.Color(18, 16, 24, 180), radius_px=10)
+    aethergrid._draw_rounded_stroke(glass_rect, rl.Color(255, 255, 255, 35), radius_px=10)
 
-    # 1. Draw breadcrumbs in top bar — pass the full pill rect for proper vertical centering
-    # Reserve space on the right for the badge + time (estimated ~260px)
-    crumb_rect = rl.Rectangle(glass_rect.x, glass_rect.y, glass_rect.width - 260, glass_rect.height)
+    # 0b. Bottom accent line — subtle primary-hue anchor
+    line_y = glass_rect.y + glass_rect.height
+    rl.draw_rectangle_rounded_lines_ex(
+      rl.Rectangle(glass_rect.x, line_y - 1, glass_rect.width, 2),
+      0.5, 4, 1.5, rl.Color(139, 92, 246, 30))
+
+    # 0c. Soft shadow bridging bar to content
+    shadow_h = 6
+    for s in range(shadow_h):
+      a = int(8 * (1.0 - s / shadow_h))
+      rl.draw_rectangle_rounded(
+        rl.Rectangle(glass_rect.x + 2, line_y + s, glass_rect.width - 4, 1),
+        0.5, 4, rl.Color(0, 0, 0, a))
+
+    # 1. Draw breadcrumbs in top bar
+    crumb_rect = rl.Rectangle(glass_rect.x, glass_rect.y, glass_rect.width, glass_rect.height)
     aethergrid.draw_breadcrumbs(crumb_rect)
 
-    # 2. Draw Time/Clock on right
-    import time
-    from openpilot.system.ui.lib.text_measure import measure_text_cached
-    current_time = time.strftime("%I:%M %p").lstrip("0")
-    font = gui_app.font(FontWeight.SEMI_BOLD)
-    font_size = 28
-    time_w = measure_text_cached(font, current_time, font_size).x
-    time_x = glass_rect.x + glass_rect.width - time_w - 20
-    time_y = glass_rect.y + (glass_rect.height - 28) / 2
-    rl.draw_text_ex(font, current_time, rl.Vector2(time_x, time_y), font_size, 0, rl.Color(160, 170, 185, 255))
-
-    # 3. Draw Network/Wifi Badge
-    from openpilot.selfdrive.ui.ui_state import ui_state
-    network_type = ui_state.sm["deviceState"].networkType if ui_state.sm.valid.get("deviceState", False) else 0
-    if network_type == 1:
-      network_str = "WIFI"
-      network_color = rl.Color(34, 197, 94, 255)
-    elif network_type in (2, 3, 4, 5):
-      network_str = "CELL"
-      network_color = rl.Color(59, 130, 246, 255)
-    else:
-      network_str = "OFFLINE"
-      network_color = rl.Color(239, 68, 68, 255)
-
-    badge_w = measure_text_cached(font, network_str, 20).x + 24
-    badge_rect = rl.Rectangle(time_x - badge_w - 20, glass_rect.y + (glass_rect.height - 32) / 2, badge_w, 32)
-    rl.draw_rectangle_rounded(badge_rect, 0.35, 8, rl.Color(network_color.r, network_color.g, network_color.b, 24))
-    rl.draw_rectangle_rounded_lines_ex(badge_rect, 0.35, 8, 1.5, rl.Color(network_color.r, network_color.g, network_color.b, 70))
-    badge_text_pos = rl.Vector2(badge_rect.x + 12, badge_rect.y + 6)
-    rl.draw_text_ex(font, network_str, badge_text_pos, 20, 0, network_color)
-
-    # 5. Render active content panel
+    # 4. Render active content panel
     if self._current_panel == StarPilotPanelType.MAIN:
       grid_rect = rl.Rectangle(shell_x, content_rect.y + metrics.outer_margin_y, shell_w, content_rect.height - metrics.outer_margin_y * 2)
       self._main_grid.render(grid_rect)

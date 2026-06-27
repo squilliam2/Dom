@@ -235,10 +235,11 @@ class TestHyundaiFingerprint:
     fingerprint[ev9_radar_config.bus][ev9_radar_config.start_addr] = ev9_radar_config.expected_length
     ev9_car_fw = [CarParams.CarFw(ecu=Ecu.adas, fwVersion=b"", address=0x730, brand="hyundai")]
     CP = CarInterface.get_params(CAR.KIA_EV9, fingerprint, ev9_car_fw, True, False, False, None)
-    assert CP.openpilotLongitudinalControl
+    assert not CP.alphaLongitudinalAvailable
+    assert not CP.openpilotLongitudinalControl
     assert not CP.radarUnavailable
     assert CP.flags & HyundaiFlags.CANFD_LKA_STEERING_ALT
-    assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.LONG
+    assert not (CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.LONG)
     assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANFD_ANGLE_STEERING
 
     CP = CarInterface.get_params(CAR.KIA_EV9, fingerprint, [], True, False, False, None)
@@ -278,13 +279,13 @@ class TestHyundaiFingerprint:
     assert CP.steerControlType == CarParams.SteerControlType.angle
     assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANFD_ANGLE_STEERING
 
-  def test_ev9_angle_smoothing_is_ev9_specific(self):
+  def test_ev9_uses_shared_angle_smoothing(self):
     ev9_cp = SimpleNamespace(carFingerprint=CAR.KIA_EV9)
     other_cp = SimpleNamespace(carFingerprint=CAR.KIA_SPORTAGE_HEV_2026)
 
-    assert get_angle_smoothing_alpha(ev9_cp, 0.0) == pytest.approx(0.05)
-    assert get_angle_smoothing_alpha(ev9_cp, 13.8) == pytest.approx(0.6)
-    assert get_angle_smoothing_alpha(ev9_cp, 20.0) == pytest.approx(1.0)
+    assert get_angle_smoothing_alpha(ev9_cp, 0.0) == pytest.approx(get_angle_smoothing_alpha(other_cp, 0.0))
+    assert get_angle_smoothing_alpha(ev9_cp, 13.8) == pytest.approx(get_angle_smoothing_alpha(other_cp, 13.8))
+    assert get_angle_smoothing_alpha(ev9_cp, 20.0) == pytest.approx(get_angle_smoothing_alpha(other_cp, 20.0))
     assert get_angle_smoothing_alpha(other_cp, 20.0) == pytest.approx(0.0)
 
   def test_checked_angle_limiter_blocks_rate_accel_conflict(self):
@@ -1293,6 +1294,53 @@ class TestHyundaiFingerprint:
     assert lead_distance == pytest.approx(20.0)
     assert lead_rel_speed == pytest.approx(0.0)
 
+  def test_ev9_angle_status_stays_active_when_gain_is_zero(self):
+    CP = CarParams.new_message()
+    CP.carFingerprint = CAR.KIA_EV9
+    CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING |
+                   HyundaiFlags.CANFD_LKA_STEERING | HyundaiFlags.CANFD_LKA_STEERING_ALT)
+    CP.openpilotLongitudinalControl = False
+
+    controller = CarController(DBC[CP.carFingerprint], CP)
+    controller.frame = 1
+    can_bus = CanBus(CP)
+    parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [("LKAS_ALT", 0)], can_bus.ACAN)
+    stock_lkas = {
+      "CHECKSUM": 1234,
+      "COUNTER": 42,
+      "LKA_MODE": 2,
+      "LKA_AVAILABLE": 3,
+      "LKA_WARNING": 1,
+      "LKA_ICON": 1,
+      "FCA_SYSWARN": 1,
+      "TORQUE_REQUEST": 17,
+      "STEER_REQ": 1,
+      "LFA_BUTTON": 1,
+      "LKA_ASSIST": 1,
+      "STEER_MODE": 5,
+      "NEW_SIGNAL_2": 0,
+      "LKAS_ANGLE_ACTIVE": 1,
+      "HAS_LANE_SAFETY": 1,
+      "ADAS_StrAnglReqVal": 12.3,
+      "ADAS_ACIAnglTqRedcGainVal": 0.42,
+      "DAMP_FACTOR": 0,
+    }
+    cc = SimpleNamespace(enabled=True, latActive=True, actuators=SimpleNamespace(longControlState=LongCtrlState.off),
+                         leftBlinker=False, rightBlinker=False, hudControl=SimpleNamespace())
+    cs = SimpleNamespace(stock_lfa_msg=None, stock_lkas_msg=stock_lkas)
+
+    msgs = controller.create_canfd_msgs(0, False, 0.0, 8.5, 0.0, 0.0, False, cc.hudControl, cs, cc,
+                                        get_test_toggles(), lka_icon=2, lfa_icon=2)
+    lkas_msgs = [msg for msg in msgs if msg[0] == 0x110]
+    assert len(lkas_msgs) == 1
+
+    parser.update([(1, lkas_msgs)])
+
+    assert parser.can_valid
+    assert parser.vl["LKAS_ALT"]["LKAS_ANGLE_ACTIVE"] == 2
+    assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.0)
+    assert parser.vl["LKAS_ALT"]["ADAS_StrAnglReqVal"] == pytest.approx(8.5)
+
   def test_can_acc_commands_use_default_values(self):
     CP = CarParams.new_message()
     CP.carFingerprint = CAR.GENESIS_G90
@@ -1641,6 +1689,60 @@ class TestHyundaiFingerprint:
     assert parser.vl["LKAS_ALT"]["HAS_LANE_SAFETY"] == 0
     assert parser.vl["LKAS_ALT"]["ADAS_StrAnglReqVal"] == pytest.approx(-31.5)
     assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.44)
+
+  def test_ev9_angle_lkas_alt_preserves_stock_status_when_inactive(self):
+    CP = CarParams.new_message()
+    CP.carFingerprint = CAR.KIA_EV9
+    CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING |
+                   HyundaiFlags.CANFD_LKA_STEERING | HyundaiFlags.CANFD_LKA_STEERING_ALT)
+
+    packer = CANPacker(DBC[CP.carFingerprint][Bus.pt])
+    can_bus = CanBus(CP)
+    parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [("LKAS_ALT", 0)], can_bus.ACAN)
+
+    stock_lkas = {
+      "CHECKSUM": 1234,
+      "COUNTER": 42,
+      "LKA_MODE": 2,
+      "LKA_AVAILABLE": 3,
+      "LKA_WARNING": 1,
+      "LKA_ICON": 1,
+      "FCA_SYSWARN": 1,
+      "TORQUE_REQUEST": 17,
+      "STEER_REQ": 1,
+      "LFA_BUTTON": 1,
+      "LKA_ASSIST": 1,
+      "STEER_MODE": 5,
+      "NEW_SIGNAL_2": 0,
+      "LKAS_ANGLE_ACTIVE": 2,
+      "HAS_LANE_SAFETY": 1,
+      "ADAS_StrAnglReqVal": 12.3,
+      "ADAS_ACIAnglTqRedcGainVal": 0.42,
+      "DAMP_FACTOR": 0,
+    }
+
+    msgs = hyundaicanfd.create_steering_messages(packer, CP, can_bus, False, False, 0.44, -31.5,
+                                                 lkas_base_values=stock_lkas, lka_icon=1)
+    lkas_msgs = [msg for msg in msgs if msg[0] == 0x110]
+    assert len(lkas_msgs) == 1
+
+    parser.update([(1, lkas_msgs)])
+
+    assert parser.can_valid
+    assert parser.vl["LKAS_ALT"]["LKA_MODE"] == 2
+    assert parser.vl["LKAS_ALT"]["LKA_AVAILABLE"] == 3
+    assert parser.vl["LKAS_ALT"]["LKA_WARNING"] == 1
+    assert parser.vl["LKAS_ALT"]["LKA_ICON"] == 1
+    assert parser.vl["LKAS_ALT"]["FCA_SYSWARN"] == 1
+    assert parser.vl["LKAS_ALT"]["TORQUE_REQUEST"] == 0
+    assert parser.vl["LKAS_ALT"]["STEER_REQ"] == 0
+    assert parser.vl["LKAS_ALT"]["LFA_BUTTON"] == 1
+    assert parser.vl["LKAS_ALT"]["LKA_ASSIST"] == 1
+    assert parser.vl["LKAS_ALT"]["DAMP_FACTOR"] == 0
+    assert parser.vl["LKAS_ALT"]["LKAS_ANGLE_ACTIVE"] == 1
+    assert parser.vl["LKAS_ALT"]["HAS_LANE_SAFETY"] == 1
+    assert parser.vl["LKAS_ALT"]["ADAS_StrAnglReqVal"] == pytest.approx(-31.5)
+    assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.0)
 
   def test_ev9_accelerator_brake_alt_spoof_matches_route_template(self):
     msg = hyundaicanfd.create_accelerator_brake_alt_spoof(0, 0x66, True, False, CAR.KIA_EV9)

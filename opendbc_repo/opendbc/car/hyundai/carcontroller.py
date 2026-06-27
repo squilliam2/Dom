@@ -66,8 +66,6 @@ REDNECK_BUTTON_COPIES_TIME_METRIC = [REDNECK_BUTTON_COPIES_TIME, 40]
 ANGLE_SAFETY_BASELINE_MODEL = str(CAR.KIA_SPORTAGE_HEV_2026)
 DEFAULT_ANGLE_SMOOTHING_VEGO_BP = [5.0, 10.0, 20.0]
 DEFAULT_ANGLE_SMOOTHING_ALPHA_V = [0.2, 0.1, 0.0]
-KIA_EV9_ANGLE_SMOOTHING_VEGO_BP = [0.0, 8.5, 11.0, 13.8, 18.0]
-KIA_EV9_ANGLE_SMOOTHING_ALPHA_V = [0.05, 0.1, 0.3, 0.6, 1.0]
 
 
 def egmp_dynamic_longitudinal_tuning(CP) -> bool:
@@ -225,8 +223,6 @@ def get_baseline_safety_cp():
 
 
 def get_angle_smoothing_alpha(CP, v_ego: float) -> float:
-  if CP.carFingerprint == CAR.KIA_EV9:
-    return float(np.interp(v_ego, KIA_EV9_ANGLE_SMOOTHING_VEGO_BP, KIA_EV9_ANGLE_SMOOTHING_ALPHA_V))
   return float(np.interp(v_ego, DEFAULT_ANGLE_SMOOTHING_VEGO_BP, DEFAULT_ANGLE_SMOOTHING_ALPHA_V))
 
 
@@ -618,8 +614,14 @@ class CarController(CarControllerBase):
 
     # steering control
     preserve_stock_lkas = bool(self.CP.flags & HyundaiFlags.CANFD_LKA_STEERING) and not self.long_active_ecu
+    steering_msg_active = apply_steer_req
+    if self.CP.carFingerprint == CAR.KIA_EV9 and self.CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
+      # EV9 faults if the angle-steering status drops inactive during torque limiting.
+      # Hold the angle path active while lateral is active; gain/angle are already limited above.
+      steering_msg_active = CC.latActive
+
     can_sends.extend(hyundaicanfd.create_steering_messages(self.packer, self.CP, self.CAN, CC.enabled,
-                                                           apply_steer_req, apply_torque, apply_angle,
+                                                           steering_msg_active, apply_torque, apply_angle,
                                                            CS.stock_lfa_msg,
                                                            CS.stock_lkas_msg if preserve_stock_lkas else None,
                                                            lka_icon=lka_icon))

@@ -462,6 +462,48 @@ def test_post_stop_speed_trigger_is_suppressed_after_red_light_release(monkeypat
   assert cem.status_value == conditional_experimental_mode_module.CEStatus["SPEED"]
 
 
+def test_post_stop_slow_lead_trigger_is_suppressed_after_red_light_release(monkeypatch):
+  cem = make_cem(model_length=80.0, model_stopped=False)
+  toggles = make_update_toggles()
+  toggles.conditional_lead = True
+  toggles.conditional_slower_lead = True
+  toggles.conditional_stopped_lead = True
+  standstill_sm = make_update_sm(standstill=True)
+  moving_sm = make_update_sm(standstill=False)
+
+  now = [100.0]
+  monkeypatch.setattr(conditional_experimental_mode_module.time, "monotonic", lambda: now[0])
+
+  def hold_red_light(*args, **kwargs):
+    cem.stop_light_detected = True
+
+  def clear_red_light(*args, **kwargs):
+    cem.stop_light_detected = False
+    cem.stop_light_model_detected = False
+
+  def detect_slow_lead(*args, **kwargs):
+    cem.slow_lead_detected = True
+
+  monkeypatch.setattr(cem, "stop_sign_and_light", hold_red_light)
+  cem.update(0.0, standstill_sm, toggles)
+  assert cem.experimental_mode
+
+  monkeypatch.setattr(cem, "stop_sign_and_light", clear_red_light)
+  monkeypatch.setattr(cem, "slow_lead", detect_slow_lead)
+
+  launch_v_ego = 8.0 * CV.MPH_TO_MS
+
+  now[0] = 100.1
+  cem.update(launch_v_ego, moving_sm, toggles)
+  assert not cem.experimental_mode
+  assert cem.params_memory.get_int("CEStatus") == conditional_experimental_mode_module.CEStatus["OFF"]
+
+  now[0] = 102.5
+  cem.update(launch_v_ego, moving_sm, toggles)
+  assert cem.experimental_mode
+  assert cem.status_value == conditional_experimental_mode_module.CEStatus["LEAD"]
+
+
 def test_standstill_update_can_activate_exp_from_dashboard_stop_sign(monkeypatch):
   cem = make_cem(model_length=80.0, model_stopped=False)
   toggles = make_update_toggles()

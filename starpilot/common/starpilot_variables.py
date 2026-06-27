@@ -20,7 +20,7 @@ from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR, EV_CAR as HYUNDAI_EV_
 from opendbc.car.interfaces import TORQUE_SUBSTITUTE_PATH, CarInterfaceBase, GearShifter
 from opendbc.car.mock.values import CAR as MOCK
 from opendbc.car.subaru.values import SubaruFlags
-from opendbc.car.toyota.values import ToyotaStarPilotFlags
+from opendbc.car.toyota.values import CAR as TOYOTA_CAR, ToyotaStarPilotFlags
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.constants import CV
 from openpilot.common.params import Params
@@ -83,6 +83,14 @@ LEGACY_VOLT_STOCK_ACC_CARS = {
   GM_CAR.CHEVROLET_VOLT_2019,
   GM_CAR.CHEVROLET_VOLT_ASCM,
   GM_CAR.CHEVROLET_VOLT_CAMERA,
+}
+
+PRIUS_CLUSTER_OFFSET_DEFAULT = 1.015
+PRIUS_CLUSTER_OFFSET_MIGRATION_KEY = "PriusClusterOffsetMigrated"
+PRIUS_CLUSTER_OFFSET_CARS = {
+  str(TOYOTA_CAR.TOYOTA_PRIUS),
+  str(TOYOTA_CAR.TOYOTA_PRIUS_V),
+  str(TOYOTA_CAR.TOYOTA_PRIUS_TSS2),
 }
 
 RESOURCES_REPO = os.getenv("STARPILOT_RESOURCES_REPO", "firestar5683/StarPilot-Resources")
@@ -504,6 +512,21 @@ class StarPilotVariables:
     # runtime behavior to defaults after the driver has configured them.
     return self.get_value(key, cast=float, condition=condition, respect_tuning_level=False)
 
+  def migrate_prius_cluster_offset(self, car_model):
+    if car_model not in PRIUS_CLUSTER_OFFSET_CARS or self.params_raw.get_bool(PRIUS_CLUSTER_OFFSET_MIGRATION_KEY):
+      return
+
+    cluster_offset_raw = self.params_raw.get("ClusterOffset")
+    try:
+      cluster_offset = float(cluster_offset_raw) if cluster_offset_raw not in (None, b"") else 1.0
+    except (TypeError, ValueError):
+      cluster_offset = 1.0
+
+    if math.isclose(cluster_offset, 1.0, abs_tol=1e-6):
+      self.params.put_float("ClusterOffset", PRIUS_CLUSTER_OFFSET_DEFAULT)
+
+    self.params.put_bool(PRIUS_CLUSTER_OFFSET_MIGRATION_KEY, True)
+
   @staticmethod
   def set_favorite_button_flags(toggle, suffix, button_control):
     for slot_number in range(1, 4):
@@ -744,6 +767,7 @@ class StarPilotVariables:
     if toggle.force_fingerprint:
       toggle.car_model = car_model
 
+    self.migrate_prius_cluster_offset(str(toggle.car_model))
     toggle.cluster_offset = self.get_value("ClusterOffset", cast=float, condition=toggle.car_make == "toyota")
 
     toggle.conditional_experimental_mode = toggle.openpilot_longitudinal and self.get_value("ConditionalExperimental")

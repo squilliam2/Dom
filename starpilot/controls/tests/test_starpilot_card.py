@@ -157,7 +157,7 @@ def test_hyundai_lkas_button_can_toggle_aol_before_normal_engagement(monkeypatch
   assert ret.pauseLateral is False
 
 
-def test_sonata_hybrid_lkas_button_can_toggle_aol_before_engagement(monkeypatch, tmp_path):
+def test_sonata_hybrid_lkas_button_arms_aol_but_waits_for_scc_main(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -175,10 +175,17 @@ def test_sonata_hybrid_lkas_button_can_toggle_aol_before_engagement(monkeypatch,
   ret = card.update(car_state, starpilot_car_state, sm, toggles)
 
   assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is False
+
+  car_state.buttonEvents = []
+  car_state.cruiseState.available = True
+  ret = card.update(car_state, starpilot_car_state, sm, toggles)
+
+  assert ret.alwaysOnLateralAllowed is True
   assert ret.alwaysOnLateralEnabled is True
 
 
-def test_sonata_hybrid_lkas_button_can_toggle_aol_after_engagement(monkeypatch, tmp_path):
+def test_sonata_hybrid_lkas_button_keeps_steering_off_when_scc_main_is_off(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
@@ -199,7 +206,60 @@ def test_sonata_hybrid_lkas_button_can_toggle_aol_after_engagement(monkeypatch, 
   ret = card.update(lkas_state, starpilot_car_state, sm, toggles)
 
   assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is False
+
+
+def test_sonata_hybrid_main_cruise_button_waits_for_scc_main_on_edge(monkeypatch, tmp_path):
+  monkeypatch.setattr(spc, "Params", FakeParams)
+  monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
+  monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
+
+  card = spc.StarPilotCard(
+    SimpleNamespace(brand="hyundai", carFingerprint=spc.HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID),
+    SimpleNamespace(alternativeExperience=spc.ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL),
+  )
+
+  car_state = make_car_state(available=False, enabled=False, button_events=[SimpleNamespace(type=spc.ButtonType.mainCruise, pressed=True)])
+  starpilot_car_state = SimpleNamespace(distancePressed=False)
+  sm = make_sm()
+  toggles = make_toggles(always_on_lateral=True, main_cruise_aol_toggle=True)
+
+  ret = card.update(car_state, starpilot_car_state, sm, toggles)
+  assert ret.alwaysOnLateralAllowed is False
+  assert ret.alwaysOnLateralEnabled is False
+
+  car_state.buttonEvents = []
+  car_state.cruiseState.available = True
+  ret = card.update(car_state, starpilot_car_state, sm, toggles)
+
+  assert ret.alwaysOnLateralAllowed is True
   assert ret.alwaysOnLateralEnabled is True
+
+
+def test_sonata_hybrid_main_cruise_button_disables_aol_before_scc_main_turns_off(monkeypatch, tmp_path):
+  monkeypatch.setattr(spc, "Params", FakeParams)
+  monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
+  monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)
+
+  card = spc.StarPilotCard(
+    SimpleNamespace(brand="hyundai", carFingerprint=spc.HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID),
+    SimpleNamespace(alternativeExperience=spc.ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL),
+  )
+
+  car_state = make_car_state(available=True, enabled=False, button_events=[SimpleNamespace(type=spc.ButtonType.lkas, pressed=True)])
+  starpilot_car_state = SimpleNamespace(distancePressed=False)
+  sm = make_sm()
+  toggles = make_toggles(always_on_lateral=True, always_on_lateral_lkas=True, main_cruise_aol_toggle=True)
+
+  ret = card.update(car_state, starpilot_car_state, sm, toggles)
+  assert ret.alwaysOnLateralAllowed is True
+  assert ret.alwaysOnLateralEnabled is True
+
+  car_state.buttonEvents = [SimpleNamespace(type=spc.ButtonType.mainCruise, pressed=True)]
+  ret = card.update(car_state, starpilot_car_state, sm, toggles)
+
+  assert ret.alwaysOnLateralAllowed is False
+  assert ret.alwaysOnLateralEnabled is False
 
 
 def test_hyundai_aol_does_not_auto_start_from_cruise_availability(monkeypatch, tmp_path):

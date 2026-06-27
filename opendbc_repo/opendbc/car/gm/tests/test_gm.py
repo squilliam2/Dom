@@ -20,7 +20,7 @@ from opendbc.car.gm.carcontroller import (
 import opendbc.car.gm.interface as gm_interface
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.gm.fingerprints import FINGERPRINTS
-from opendbc.car.gm.values import CAMERA_ACC_CAR, CAR, CC_ONLY_CAR, DBC, GM_RX_OFFSET, CarControllerParams, CruiseButtons, GMFlags, GMSafetyFlags
+from opendbc.car.gm.values import ASCM_INT, CAMERA_ACC_CAR, CAR, CC_ONLY_CAR, DBC, GM_RX_OFFSET, CarControllerParams, CruiseButtons, GMFlags, GMSafetyFlags
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from openpilot.common.params import Params
 
@@ -180,6 +180,7 @@ class TestGMInterface:
     assert list(car_params.longitudinalTuning.kpV) == pytest.approx([0.09, 0.075, 0.055, 0.04])
     assert list(car_params.longitudinalTuning.kiBP) == pytest.approx([0.0, 4.0, 12.0, 35.0])
     assert list(car_params.longitudinalTuning.kiV) == pytest.approx([0.03, 0.04, 0.055, 0.07])
+    assert car_params.longitudinalActuatorDelay == pytest.approx(0.7)
     assert car_params.minEnableSpeed == pytest.approx(5 * CV.KPH_TO_MS)
     assert car_params.stoppingDecelRate == pytest.approx(1.0)
     assert car_params.vEgoStopping == pytest.approx(0.35)
@@ -317,6 +318,30 @@ class TestGMInterface:
     assert sascm_params.openpilotLongitudinalControl
     assert not sascm_params.pcmCruise
     assert sascm_params.safetyConfigs[0].safetyParam & GMSafetyFlags.HW_CAM_LONG.value
+
+  def test_cadillac_escalade_esv_2019_ascm_uses_sascm_and_2019_tune(self):
+    base_fingerprint = FINGERPRINTS[CAR.CADILLAC_ESCALADE_ESV_2019][0]
+    ascm_fingerprint = FINGERPRINTS[CAR.CADILLAC_ESCALADE_ESV_2019_ASCM][0]
+
+    assert CAR.CADILLAC_ESCALADE_ESV_2019_ASCM in ASCM_INT
+    assert ascm_fingerprint[0x2FF] == 8
+    assert {addr: length for addr, length in ascm_fingerprint.items() if addr != 0x2FF} == base_fingerprint
+
+    CarInterface = interfaces[CAR.CADILLAC_ESCALADE_ESV_2019_ASCM]
+    fingerprint = _empty_fingerprint()
+    fingerprint[0] = ascm_fingerprint.copy()
+
+    car_params = CarInterface.get_params(CAR.CADILLAC_ESCALADE_ESV_2019_ASCM, fingerprint, [], alpha_long=True, is_release=False,
+                                         docs=False, starpilot_toggles=_test_starpilot_toggles())
+
+    assert car_params.flags & GMFlags.SASCM.value
+    assert car_params.networkLocation == structs.CarParams.NetworkLocation.fwdCamera
+    assert car_params.openpilotLongitudinalControl
+    assert not car_params.pcmCruise
+    assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.HW_ASCM_INT.value
+    assert car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.HW_CAM_LONG.value
+    assert car_params.lateralTuning.torque.latAccelFactor == pytest.approx(1.15)
+    assert car_params.lateralTuning.torque.friction == pytest.approx(0.2)
 
   def test_cadillac_xt4_uses_nonlinear_torque_curve_with_center_boost(self):
     CarInterface = interfaces[CAR.CADILLAC_XT4]

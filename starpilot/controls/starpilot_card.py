@@ -38,7 +38,13 @@ class StarPilotCard:
       bool(hyundai_flags & HyundaiFlags.NON_SCC)
     )
     self.hyundai_aol_needs_engagement = self.CP.brand == "hyundai" and not (hyundai_flags & HyundaiFlags.CANFD) and not kia_forte_non_scc
+    self.hyundai_aol_requires_scc_main = (
+      self.CP.brand == "hyundai" and
+      getattr(self.CP, "carFingerprint", None) == HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID and
+      getattr(self.CP, "pcmCruise", True)
+    )
     self.hyundai_aol_ready = False
+    self.hyundai_main_cruise_aol_pending = False
     self.prev_active = False
     self.prev_cruise_enabled = False
     self.decel_pressed = False
@@ -117,9 +123,16 @@ class StarPilotCard:
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
+        self.hyundai_main_cruise_aol_pending = False
         self.always_on_lateral_allowed = False
       elif carState.cruiseState.enabled:
         self.hyundai_aol_ready = True
+
+    if self.hyundai_main_cruise_aol_pending and carState.cruiseState.available:
+      self.hyundai_main_cruise_aol_pending = False
+      if self.hyundai_aol_needs_engagement:
+        self.hyundai_aol_ready = True
+      self.always_on_lateral_allowed = True
 
     # Hyundai CAN cars should keep driver button intent stable even when cruise
     # availability flickers at low speed.
@@ -128,6 +141,7 @@ class StarPilotCard:
       for be, be_type in zip(carState.buttonEvents, button_event_types, strict=False):
         if be_type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
           aol_button_pressed = True
+          self.hyundai_main_cruise_aol_pending = False
           if self.hyundai_aol_needs_engagement:
             self.hyundai_aol_ready = True
           self.always_on_lateral_allowed = not self.always_on_lateral_allowed
@@ -136,9 +150,19 @@ class StarPilotCard:
         elif be_type == ButtonType.mainCruise and be.pressed:
           if starpilot_toggles.main_cruise_aol_toggle:
             aol_button_pressed = True
-            if self.hyundai_aol_needs_engagement:
-              self.hyundai_aol_ready = True
-            self.always_on_lateral_allowed = not self.always_on_lateral_allowed
+            if self.hyundai_aol_requires_scc_main:
+              if self.always_on_lateral_allowed or carState.cruiseState.available:
+                self.hyundai_main_cruise_aol_pending = False
+                self.always_on_lateral_allowed = False
+                self.pause_lateral = False
+              else:
+                self.hyundai_main_cruise_aol_pending = True
+                if self.hyundai_aol_needs_engagement:
+                  self.hyundai_aol_ready = True
+            else:
+              if self.hyundai_aol_needs_engagement:
+                self.hyundai_aol_ready = True
+              self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           elif starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:
             self.params_memory.put_bool("SLCAdoptSpeedLimit", True)
     elif starpilot_toggles.always_on_lateral_main:
@@ -167,6 +191,7 @@ class StarPilotCard:
     self.always_on_lateral_enabled = self.always_on_lateral_allowed and self.always_on_lateral_set
     self.always_on_lateral_enabled &= carState.gearShifter not in NON_DRIVING_GEARS
     self.always_on_lateral_enabled &= not self.hyundai_aol_needs_engagement or self.hyundai_aol_ready
+    self.always_on_lateral_enabled &= not self.hyundai_aol_requires_scc_main or carState.cruiseState.available or carState.cruiseState.enabled
     self.always_on_lateral_enabled &= sm["starpilotPlan"].lateralCheck
     self.always_on_lateral_enabled &= sm["liveCalibration"].calPerc >= 1
     self.always_on_lateral_enabled &= (ET.IMMEDIATE_DISABLE not in sm["selfdriveState"].alertType + sm["starpilotSelfdriveState"].alertType) or self.frogs_go_moo

@@ -23,7 +23,6 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   SettingSection,
   AetherSettingsView,
   AetherCategoryTileView,
-  AetherSubMenuTileView,
   TileGrid,
   HubTile,
   hex_to_color,
@@ -52,6 +51,43 @@ DECELERATION_PROFILE_OPTIONS = [
   (DECELERATION_PROFILES["ECO"], "Eco"),
   (DECELERATION_PROFILES["SPORT"], "Sport"),
 ]
+
+
+# ═══════════════════════════════════════════════════════════════
+# AdaptiveSpeedView — nested panel with two adaptive speed tiles
+# ═══════════════════════════════════════════════════════════════
+
+class AdaptiveSpeedView(Widget):
+  def __init__(self, controller):
+    super().__init__()
+    self._controller = controller
+    self._grid = TileGrid(columns=2, padding=12)
+    self._child(self._grid)
+
+    self._grid.add_tile(HubTile(
+      title=tr("Conditional Experimental"),
+      desc=tr("Configure triggers and threshold speeds for automated Experimental Mode switching."),
+      icon_key="steering",
+      on_click=lambda: controller._navigate_to("ce"),
+      bg_color="#8B5CF6",
+    ))
+
+    self._grid.add_tile(HubTile(
+      title=tr("Curve Speed Controller"),
+      desc=tr("Configure speed control on curves and reset collected calibration data."),
+      icon_key="navigate",
+      on_click=lambda: controller._navigate_to("csc"),
+      bg_color="#8B5CF6",
+    ))
+
+  def _render(self, rect: rl.Rectangle):
+    margin_x = 18.0
+    margin_y = 24.0
+    grid_x = rect.x + margin_x
+    grid_y = rect.y + margin_y
+    grid_w = rect.width - margin_x * 2
+    grid_h = rect.y + rect.height - grid_y - margin_y
+    self._grid.render(rl.Rectangle(grid_x, grid_y, grid_w, grid_h))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -133,47 +169,7 @@ class LongitudinalManagerView(AetherSettingsView):
         "desc": tr("Configure Curve Speed Controller and Conditional Experimental Mode triggers."),
         "icon": "display",
         "color": "#8B5CF6",
-        "on_click": lambda: gui_app.push_widget(
-          AetherSubMenuTileView(
-            self._controller,
-            tr("Adaptive Speed Controls"),
-            [
-              {
-                "title": tr("Conditional Experimental"),
-                "desc": tr("Configure triggers and threshold speeds for automated Experimental Mode switching."),
-                "icon": "steering",
-                "on_click": lambda: gui_app.push_widget(
-                  AetherCategoryTileView(
-                    self._controller,
-                    tr("Conditional Experimental"),
-                    self._controller._conditional_experimental_rows,
-                    color="#8B5CF6",
-                    subtitle=tr("Configure triggers and threshold speeds for automated Experimental Mode switching."),
-                    panel_style=self._panel_style,
-                  )
-                ),
-              },
-              {
-                "title": tr("Curve Speed Controller"),
-                "desc": tr("Configure speed control on curves and reset collected calibration data."),
-                "icon": "navigate",
-                "on_click": lambda: gui_app.push_widget(
-                  AetherCategoryTileView(
-                    self._controller,
-                    tr("Curve Speed Controller"),
-                    self._controller._curve_speed_controller_rows,
-                    color="#8B5CF6",
-                    subtitle=tr("Configure speed control on curves and reset collected calibration data."),
-                    panel_style=self._panel_style,
-                  )
-                ),
-              },
-            ],
-            color="#8B5CF6",
-            subtitle=tr("Configure Curve Speed Controller and Conditional Experimental Mode triggers."),
-            panel_style=self._panel_style,
-          )
-        )
+        "on_click": lambda: self._controller._navigate_to("adaptive_speed")
       },
       {
         "title": tr("Driving Personalities"),
@@ -237,24 +233,22 @@ class LongitudinalManagerView(AetherSettingsView):
     self.set_rect(rect)
     self._interactive_rects.clear()
 
-    margin_x = 12.0
-    margin_top = 16.0
-    margin_bottom = 16.0
+    margin_x = 18.0
+    margin_y = 24.0
 
-    # Compute remaining scroll rect starting directly from the top
-    grid_top = rect.y + margin_top
-    grid_h = rect.y + rect.height - grid_top - margin_bottom
+    grid_x = rect.x + margin_x
+    grid_y = rect.y + margin_y
+    grid_w = rect.width - margin_x * 2
+    grid_h = rect.y + rect.height - grid_y - margin_y
 
-    self._scroll_rect = rl.Rectangle(rect.x + margin_x, grid_top, rect.width - margin_x * 2, grid_h)
+    self._scroll_rect = rl.Rectangle(grid_x, grid_y, grid_w, grid_h)
     self._content_height = grid_h
 
-    # Update scroll panel to maintain touch/click validation:
     self._scroll_panel.set_enabled(self.is_visible)
     self._scroll_offset = self._scroll_panel.update(
       self._scroll_rect, self._scroll_rect.height
     )
 
-    # Draw tiles inside scroll_rect:
     self._draw_scroll_content(self._scroll_rect, self._scroll_rect.width)
 
   def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
@@ -711,6 +705,33 @@ class StarPilotLongitudinalLayout(_SettingsPage):
       header_subtitle=tr_noop("Fine-tune acceleration, braking, and driving behavior."),
       panel_style=PANEL_STYLE,
     )
+
+    ce_rows = self._conditional_experimental_rows
+    self._sub_panels["ce"] = AetherSettingsView(
+      self,
+      [
+        SettingSection(tr("Conditional Experimental"), [x for x in ce_rows if x.type != "toggle"], column_pair="1"),
+        SettingSection(tr("Conditional Experimental"), [x for x in ce_rows if x.type == "toggle"], column_pair="1"),
+      ],
+      header_title=tr("Conditional Experimental"),
+      header_subtitle=tr("Configure triggers and threshold speeds for automated Experimental Mode switching."),
+      panel_style=PANEL_STYLE,
+    )
+
+    csc_rows = self._curve_speed_controller_rows
+    self._sub_panels["csc"] = AetherSettingsView(
+      self,
+      [
+        SettingSection(tr("Curve Speed Controller"), [x for x in csc_rows if x.type != "toggle"], column_pair="1"),
+        SettingSection(tr("Curve Speed Controller"), [x for x in csc_rows if x.type == "toggle"], column_pair="1"),
+      ],
+      header_title=tr("Curve Speed Controller"),
+      header_subtitle=tr("Configure speed control on curves and reset collected calibration data."),
+      panel_style=PANEL_STYLE,
+    )
+
+    self._sub_panels["adaptive_speed"] = AdaptiveSpeedView(self)
+    self._wire_sub_panels()
 
   def _get_priority_value(self) -> str:
     primary = self._params.get("SLCPriority1", encoding="utf-8") or "Map Data"

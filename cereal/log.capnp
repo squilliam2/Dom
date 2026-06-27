@@ -68,12 +68,12 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     longitudinalManeuver @30;
     steerTempUnavailableSilent @31;
     resumeRequired @32;
-    preDriverDistracted @33;
-    promptDriverDistracted @34;
-    driverDistracted @35;
-    preDriverUnresponsive @36;
-    promptDriverUnresponsive @37;
-    driverUnresponsive @38;
+    driverDistracted1 @33;
+    driverDistracted2 @34;
+    driverDistracted3 @35;
+    driverUnresponsive1 @36;
+    driverUnresponsive2 @37;
+    driverUnresponsive3 @38;
     belowSteerSpeed @39;
     lowBattery @40;
     accFaulted @41;
@@ -1238,6 +1238,10 @@ struct DriverAssistance {
   # FCW, AEB, etc. will go here
 }
 
+struct LateralManeuverPlan {
+  desiredCurvature @0 :Float32;  # 1/m
+}
+
 struct LongitudinalPlan @0xe00b5b3eba12876c {
   modelMonoTime @9 :UInt64;
   hasLead @7 :Bool;
@@ -2208,7 +2212,7 @@ struct DriverStateDEPRECATED @0xb83c6cc593ed0a00 {
   stdDEPRECATED @2 :Float32;
 }
 
-struct DriverMonitoringState @0xb83cda094a1da284 {
+struct DriverMonitoringStateDEPRECATED @0xb83cda094a1da284 {
   events @18 :List(OnroadEvent);
   faceDetected @1 :Bool;
   isDistracted @2 :Bool;
@@ -2226,12 +2230,83 @@ struct DriverMonitoringState @0xb83cda094a1da284 {
   isActiveMode @16 :Bool;
   isRHD @4 :Bool;
   uncertainCount @19 :UInt32;
-  phoneProbOffset @20 :Float32;
-  phoneProbValidCount @21 :UInt32;
 
-  isPreviewDEPRECATED @15 :Bool;
-  rhdCheckedDEPRECATED @5 :Bool;
-  eventsDEPRECATED @0 :List(Car.OnroadEventDEPRECATED);
+  deprecated :group {
+    phoneProbOffset @20 :Float32;
+    phoneProbValidCount @21 :UInt32;
+    isPreview @15 :Bool;
+    rhdChecked @5 :Bool;
+    events @0 :List(Car.OnroadEventDEPRECATED);
+  }
+}
+
+struct DriverMonitoringState {
+  lockout @0 :Bool;
+  alertCountLockoutPercent @1 :Int8;
+  alertTimeLockoutPercent @2 :Int8;
+
+  alwaysOn @3 :Bool;
+  alwaysOnLockout @4 :Bool;
+
+  alertLevel @5 :AlertLevel;
+  activePolicy @6 :MonitoringPolicy;
+  isRHD @7 :Bool;
+  rhdCalibration @8 :CalibrationState;
+
+  visionPolicyState @9 :VisionPolicyState;
+  wheeltouchPolicyState @10 :WheeltouchPolicyState;
+
+  enum AlertLevel {
+    # ordinal must match the name to prevent bugs
+    # comparing against the raw ordinal value
+    none @0;
+    one @1;
+    two @2;
+    three @3;
+  }
+
+  enum MonitoringPolicy {
+    wheeltouch @0;
+    vision @1;
+  }
+
+  struct VisionPolicyState {
+    awarenessPercent @0 :Int8;
+    awarenessStep @1 :Float32;
+    isDistracted @2 :Bool;
+    distractedTypes @3 :DistractedTypes;
+
+    faceDetected @4 :Bool;
+    pose @5 :Pose;
+    wheeltouchFallbackPercent @6 :Int8;
+    uncertainOffroadAlertPercent @7 :Int8;
+
+    struct DistractedTypes {
+      pose @0: Bool;
+      eye @1: Bool;
+      phone @2: Bool;
+    }
+
+    struct Pose {
+      pitch @0 :Float32;
+      yaw @1 :Float32;
+      pitchCalib @2 :CalibrationState;
+      yawCalib @3 :CalibrationState;
+      calibrated @4 :Bool;
+      uncertainty @5 :Float32;
+    }
+  }
+
+  struct WheeltouchPolicyState {
+    awarenessPercent @0 :Int8;
+    awarenessStep @1 :Float32;
+    driverInteracting @2 :Bool;
+  }
+
+  struct CalibrationState {
+    calibratedPercent @0 :Int8;
+    offset @1 :Float32;
+  }
 }
 
 struct Boot {
@@ -2552,7 +2627,7 @@ struct Event {
     thumbnail @66: Thumbnail;
     onroadEvents @134: List(OnroadEvent);
     carParams @69: Car.CarParams;
-    driverMonitoringState @71: DriverMonitoringState;
+    driverMonitoringState @151 :DriverMonitoringState;
     livePose @129 :LivePose;
     modelV2 @75 :ModelDataV2;
     drivingModelData @128 :DrivingModelData;
@@ -2602,6 +2677,7 @@ struct Event {
     bookmarkButton @148 :UserBookmark;
     audioFeedback @149 :AudioFeedback;
 
+    lateralManeuverPlan @150 :LateralManeuverPlan;
     # *********** debug ***********
     testJoystick @52 :Joystick;
     roadEncodeData @86 :EncodeData;
@@ -2635,7 +2711,7 @@ struct Event {
     starpilotRadarState @114 :Custom.StarPilotRadarState;
     starpilotSelfdriveState @115 :Custom.StarPilotSelfdriveState;
     customReserved9 @116 :Custom.CustomReserved9;
-    lateralManeuverPlan @136 :Custom.LateralManeuverPlan;
+    starpilotLateralManeuverPlanDEPRECATED @136 :Custom.StarPilotLateralManeuverPlanDEPRECATED;
     customReserved11 @137 :Custom.CustomReserved11;
     customReserved12 @138 :Custom.CustomReserved12;
     customReserved13 @139 :Custom.CustomReserved13;
@@ -2693,5 +2769,6 @@ struct Event {
     gyroscope2DEPRECATED @100 :SensorEventData;
     accelerometer2DEPRECATED @101 :SensorEventData;
     temperatureSensor2DEPRECATED @123 :SensorEventData;
+    driverMonitoringStateDEPRECATED @71 :DriverMonitoringStateDEPRECATED;
   }
 }

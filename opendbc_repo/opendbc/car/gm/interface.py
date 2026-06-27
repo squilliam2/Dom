@@ -432,7 +432,7 @@ class CarInterface(CarInterfaceBase):
     elif candidate == CAR.CADILLAC_ESCALADE_ASCM:
       CarInterfaceBase.configure_torque_tune(CAR.CADILLAC_ESCALADE, ret.lateralTuning)
 
-    elif candidate in (CAR.CADILLAC_ESCALADE_ESV, CAR.CADILLAC_ESCALADE_ESV_2019):
+    elif candidate in (CAR.CADILLAC_ESCALADE_ESV, CAR.CADILLAC_ESCALADE_ESV_2019, CAR.CADILLAC_ESCALADE_ESV_2019_ASCM):
       ret.minEnableSpeed = -1.  # engage speed is decided by pcm
 
       if candidate == CAR.CADILLAC_ESCALADE_ESV:
@@ -441,7 +441,8 @@ class CarInterface(CarInterfaceBase):
         ret.lateralTuning.pid.kf = 0.000045
       else:
         ret.steerActuatorDelay = 0.2
-        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+        torque_candidate = CAR.CADILLAC_ESCALADE_ESV_2019 if candidate == CAR.CADILLAC_ESCALADE_ESV_2019_ASCM else candidate
+        CarInterfaceBase.configure_torque_tune(torque_candidate, ret.lateralTuning)
 
     elif candidate in (
       CAR.CHEVROLET_BOLT_ACC_2022_2023,
@@ -527,6 +528,10 @@ class CarInterface(CarInterfaceBase):
       if not ret.openpilotLongitudinalControl:
         ret.minEnableSpeed = -1.
       if candidate == CAR.CHEVROLET_BLAZER:
+        # The Blazer builds brake torque noticeably later than the rest of the GM set.
+        # A slightly larger planner delay estimate starts the request earlier and keeps
+        # stopped-lead approaches from turning into a late, harsh max-brake catch-up.
+        ret.longitudinalActuatorDelay = 0.7
         ret.longitudinalTuning.kpBP = [0.0, 4.0, 12.0, 35.0]
         ret.longitudinalTuning.kpV = [0.09, 0.075, 0.055, 0.040]
         ret.longitudinalTuning.kiBP = [0.0, 4.0, 12.0, 35.0]

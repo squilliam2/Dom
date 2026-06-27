@@ -784,6 +784,11 @@ def patch_updater_zipapp(original: bytes) -> bytes:
         if payload != replacement:
           payload = replacement
           changed = True
+      elif info.filename == APPLICATION_ENTRY_IN_ZIPAPP:
+        patched_payload = patch_application_script(payload)
+        if patched_payload != payload:
+          payload = patched_payload
+          changed = True
 
       new_info = zipfile.ZipInfo(info.filename, info.date_time)
       new_info.compress_type = zipfile.ZIP_DEFLATED
@@ -891,9 +896,10 @@ def updater_zipapp_has_expected_content(data: bytes) -> bool:
   with zipfile.ZipFile(BytesIO(zip_payload), "r") as z:
     try:
       updater_script = z.read(UPDATER_ENTRY_IN_ZIPAPP)
+      app_script = z.read(APPLICATION_ENTRY_IN_ZIPAPP)
     except KeyError:
       return False
-  return updater_script == patch_updater_module()
+  return updater_script == patch_updater_module() and APP_PATCH_MARKER.encode() in app_script
 
 
 def parse_inode(debugfs_output: str) -> int:

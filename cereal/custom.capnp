@@ -278,7 +278,7 @@ struct CustomReserved9 @0xa1680744031fdb2d {
   wallTimeNanos @5 :UInt64;
 }
 
-struct LateralManeuverPlan @0xcb9fd56c7057593a {
+struct StarPilotLateralManeuverPlanDEPRECATED @0xcb9fd56c7057593a {
   desiredCurvature @0 :Float32;  # 1/m
 }
 

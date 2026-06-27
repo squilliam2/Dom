@@ -57,7 +57,7 @@ class ConditionalExperimentalMode:
   SLOW_LEAD_FORCE_CLEAR_TIME = 0.75
   SLOW_LEAD_MIN_CLOSING_SPEED = 0.75
   SLOW_LEAD_CLEAR_FASTER_FACTOR = 0.5
-  POST_STOP_SPEED_TRIGGER_SUPPRESS_TIME = 2.0
+  POST_STOP_LAUNCH_TRIGGER_SUPPRESS_TIME = 2.0
   TURN_STOP_LIGHT_VETO_MAX_SPEED = 15 * CV.MPH_TO_MS
   TURN_STOP_LIGHT_VETO_STEERING_ANGLE = 45.0
 
@@ -107,7 +107,7 @@ class ConditionalExperimentalMode:
     self._prev_ce_status = None
     self.prev_standstill = False
     self.prev_standstill_stop_hold = False
-    self.post_stop_speed_trigger_suppress_until = 0.0
+    self.post_stop_launch_trigger_suppress_until = 0.0
 
   def update(self, v_ego, sm, starpilot_toggles):
     now = time.monotonic()
@@ -116,7 +116,7 @@ class ConditionalExperimentalMode:
     released_standstill_stop_hold = self.prev_standstill and self.prev_standstill_stop_hold and not standstill
 
     if released_standstill_stop_hold:
-      self.post_stop_speed_trigger_suppress_until = now + self.POST_STOP_SPEED_TRIGGER_SUPPRESS_TIME
+      self.post_stop_launch_trigger_suppress_until = now + self.POST_STOP_LAUNCH_TRIGGER_SUPPRESS_TIME
       self.mode_hold_until = 0.0
       self.mode_false_since = 0.0
       self.prev_experimental_mode = False
@@ -204,9 +204,9 @@ class ConditionalExperimentalMode:
     return bool(self.stop_light_detected or force_stop_active or model_stopped)
 
   def check_conditions(self, v_ego, sm, starpilot_toggles):
-    speed_trigger_suppressed = time.monotonic() < self.post_stop_speed_trigger_suppress_until
-    below_speed = not speed_trigger_suppressed and starpilot_toggles.conditional_limit > v_ego >= 1 and not self.starpilot_planner.starpilot_following.following_lead
-    below_speed_with_lead = not speed_trigger_suppressed and starpilot_toggles.conditional_limit_lead > v_ego >= 1 and self.starpilot_planner.starpilot_following.following_lead
+    launch_trigger_suppressed = time.monotonic() < self.post_stop_launch_trigger_suppress_until
+    below_speed = not launch_trigger_suppressed and starpilot_toggles.conditional_limit > v_ego >= 1 and not self.starpilot_planner.starpilot_following.following_lead
+    below_speed_with_lead = not launch_trigger_suppressed and starpilot_toggles.conditional_limit_lead > v_ego >= 1 and self.starpilot_planner.starpilot_following.following_lead
     if below_speed or below_speed_with_lead:
       self.status_value = CEStatus["SPEED"]
       return True
@@ -221,7 +221,7 @@ class ConditionalExperimentalMode:
       self.status_value = CEStatus["CURVATURE"]
       return True
 
-    if starpilot_toggles.conditional_lead and self.slow_lead_detected and v_ego <= 35.31:
+    if not launch_trigger_suppressed and starpilot_toggles.conditional_lead and self.slow_lead_detected and v_ego <= 35.31:
       self.status_value = CEStatus["LEAD"]
       return True
 

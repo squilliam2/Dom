@@ -52,6 +52,7 @@ from opendbc.car.gm.carcontroller import (
   get_testing_ground_1_brake_switch_bias,
   get_acc_dashboard_status_active,
   get_stock_cc_active_for_cancel,
+  shape_bolt_acc_pedal_low_speed_friction,
   shape_truck_positive_accel,
   should_use_fixed_stopping_brake,
   should_activate_auto_hold,
@@ -102,6 +103,7 @@ def _controller(car_fingerprint=CAR.CHEVROLET_BOLT_CC_2018_2021):
   controller.pedal_steady = 0.0
   controller.aego = 0.0
   controller.maneuver_paddle_mode = "auto"
+  controller.bolt_acc_pedal_friction_low_speed_active = False
   return controller
 
 
@@ -160,6 +162,37 @@ def test_bolt_acc_pedal_friction_blend_biases_small_commands_upward_at_speed():
 
   assert low_speed > 31
   assert high_speed > low_speed
+
+
+def test_bolt_acc_pedal_low_speed_friction_ignores_tiny_inactive_brake_requests():
+  apply_brake, active = shape_bolt_acc_pedal_low_speed_friction(9, 5.0, False, False)
+
+  assert apply_brake == 0
+  assert not active
+
+
+def test_bolt_acc_pedal_low_speed_friction_uses_hysteresis_once_active():
+  apply_brake, active = shape_bolt_acc_pedal_low_speed_friction(24, 3.0, False, False)
+  assert apply_brake == 24
+  assert active
+
+  apply_brake, active = shape_bolt_acc_pedal_low_speed_friction(5, 3.0, False, active)
+  assert apply_brake == 0
+  assert not active
+
+
+def test_bolt_acc_pedal_low_speed_friction_fades_out_at_standstill():
+  apply_brake, active = shape_bolt_acc_pedal_low_speed_friction(80, 0.2, True, True)
+
+  assert apply_brake == 0
+  assert not active
+
+
+def test_bolt_acc_pedal_low_speed_friction_preserves_rolling_stop_authority():
+  apply_brake, active = shape_bolt_acc_pedal_low_speed_friction(80, 1.2, True, True)
+
+  assert 0 < apply_brake < 80
+  assert active
 
 
 def test_bolt_pedal_long_accel_limit_matches_planner_regen_envelope():

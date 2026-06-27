@@ -170,6 +170,44 @@ def test_slc_lead_drop_relaxed_target_bails_out_for_threatening_lead():
   assert relaxed == pytest.approx(raw_target)
 
 
+def test_slc_lead_drop_relaxed_target_softens_for_far_slower_lead_if_new_limit_is_still_below_lead_speed():
+  raw_target = 45.0 * CV.MPH_TO_MS
+  previous_target = 56.0 * CV.MPH_TO_MS
+  v_ego = 56.0 * CV.MPH_TO_MS
+  lead = SimpleNamespace(status=True, dRel=113.0, vLead=50.0 * CV.MPH_TO_MS, aLeadK=-0.15)
+
+  relaxed = get_slc_lead_drop_relaxed_target(
+    raw_target,
+    previous_target,
+    v_ego,
+    tracking_lead=True,
+    lead=lead,
+    override_active=False,
+    source="Map Data",
+  )
+
+  assert raw_target < relaxed < previous_target
+
+
+def test_slc_lead_drop_relaxed_target_still_bails_if_lead_is_slower_than_new_limit():
+  raw_target = 45.0 * CV.MPH_TO_MS
+  previous_target = 56.0 * CV.MPH_TO_MS
+  v_ego = 56.0 * CV.MPH_TO_MS
+  lead = SimpleNamespace(status=True, dRel=113.0, vLead=39.0 * CV.MPH_TO_MS, aLeadK=-0.05)
+
+  relaxed = get_slc_lead_drop_relaxed_target(
+    raw_target,
+    previous_target,
+    v_ego,
+    tracking_lead=True,
+    lead=lead,
+    override_active=False,
+    source="Map Data",
+  )
+
+  assert relaxed == pytest.approx(raw_target)
+
+
 def test_slc_lead_drop_relaxed_target_bails_out_without_tracking_lead():
   raw_target = 55.0 * CV.MPH_TO_MS
   previous_target = 65.0 * CV.MPH_TO_MS

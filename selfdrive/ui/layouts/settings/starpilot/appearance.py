@@ -205,24 +205,22 @@ class AppearanceManagerView(AetherSettingsView):
         self.set_rect(rect)
         self._interactive_rects.clear()
 
-        margin_x = 12.0
-        margin_top = 16.0
-        margin_bottom = 16.0
+        margin_x = 18.0
+        margin_y = 24.0
 
-        # Compute remaining scroll rect starting directly from the top
-        grid_top = rect.y + margin_top
-        grid_h = rect.y + rect.height - grid_top - margin_bottom
+        grid_x = rect.x + margin_x
+        grid_y = rect.y + margin_y
+        grid_w = rect.width - margin_x * 2
+        grid_h = rect.y + rect.height - grid_y - margin_y
 
-        self._scroll_rect = rl.Rectangle(rect.x + margin_x, grid_top, rect.width - margin_x * 2, grid_h)
+        self._scroll_rect = rl.Rectangle(grid_x, grid_y, grid_w, grid_h)
         self._content_height = grid_h
 
-        # Update scroll panel to maintain touch/click validation:
         self._scroll_panel.set_enabled(self.is_visible)
         self._scroll_offset = self._scroll_panel.update(
             self._scroll_rect, self._scroll_rect.height
         )
 
-        # Draw tiles inside scroll_rect:
         self._draw_scroll_content(self._scroll_rect, self._scroll_rect.width)
 
     def _draw_scroll_content(self, rect: rl.Rectangle, width: float):

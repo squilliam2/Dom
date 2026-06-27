@@ -396,7 +396,7 @@ def wait_for_no_driver(params, sm, door_checks=False, time_threshold=60):
     if any(ps.ignitionLine or ps.ignitionCan for ps in sm["pandaStates"] if ps.pandaType != log.PandaState.PandaType.unknown):
       break
 
-    if sm["driverMonitoringState"].faceDetected or not sm.alive["driverMonitoringState"]:
+    if sm["driverMonitoringState"].visionPolicyState.faceDetected or not sm.alive["driverMonitoringState"]:
       start_time = time.monotonic()
 
     if door_checks:

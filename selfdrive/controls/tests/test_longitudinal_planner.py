@@ -9,6 +9,7 @@ import pytest
 from cereal import log
 from opendbc.car.honda.interface import CarInterface
 from opendbc.car.honda.values import CAR
+from opendbc.car.gm.values import CAR as GM_CAR, GMFlags
 import openpilot.selfdrive.controls.lib.longitudinal_planner as longitudinal_planner_module
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
@@ -144,6 +145,18 @@ def test_experimental_mlsim_uses_vehicle_min_accel_floor(model_version):
   assert planner.mlsim
   assert planner.output_a_target == pytest.approx(desired_accel, abs=1e-3)
   assert planner.output_a_target < comfort_min_accel
+
+
+def test_gm_pedal_vehicle_min_accel_uses_brand_when_car_name_is_missing():
+  CP = SimpleNamespace(
+    carName=None,
+    brand="gm",
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+    carFingerprint=GM_CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+  )
+
+  assert get_vehicle_min_accel(CP, 32.4) == pytest.approx(-2.95)
 
 
 @pytest.mark.parametrize("model_version", ["v11", "v12", "v13", "v14", "v15"])
@@ -3216,6 +3229,55 @@ def test_near_duplicate_lead_transition_target_damps_low_speed_duplicate_radar_h
 
   assert smoothed is not None
   assert smoothed == pytest.approx(0.57, abs=1e-6)
+
+
+def test_near_duplicate_lead_transition_target_damps_generous_headway_duplicate_vision_sign_flip():
+  v_ego = 25.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=54.0, v_lead=20.8, a_lead=-0.02, radar=False, model_prob=0.99)
+  lead_two = make_lead(status=True, d_rel=54.3, v_lead=20.82, a_lead=-0.01, radar=False, model_prob=0.99)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  smoothed = planner.get_near_duplicate_lead_transition_target(
+    lead_two,
+    v_ego,
+    1.45,
+    prev_output_a_target=0.70,
+    output_a_target=-0.61,
+    current_source="lead1",
+    tracking_lead_active=True,
+  )
+
+  assert smoothed is not None
+  assert smoothed == pytest.approx(0.52, abs=1e-6)
+
+
+def test_near_duplicate_lead_transition_target_skips_fast_duplicate_vision_sign_flip_when_headway_is_not_generous():
+  v_ego = 25.0
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_one = make_lead(status=True, d_rel=43.0, v_lead=20.8, a_lead=-0.02, radar=False, model_prob=0.99)
+  lead_two = make_lead(status=True, d_rel=43.3, v_lead=20.82, a_lead=-0.01, radar=False, model_prob=0.99)
+  lead_one.vRel = lead_one.vLead - v_ego
+  lead_two.vRel = lead_two.vLead - v_ego
+  planner.lead_one = lead_one
+  planner.lead_two = lead_two
+
+  smoothed = planner.get_near_duplicate_lead_transition_target(
+    lead_two,
+    v_ego,
+    1.45,
+    prev_output_a_target=0.70,
+    output_a_target=-0.61,
+    current_source="lead1",
+    tracking_lead_active=True,
+  )
+
+  assert smoothed is None
 
 
 def test_duplicate_slow_lead_brake_hold_prevents_zero_cross_from_duplicate_voacc_leads():

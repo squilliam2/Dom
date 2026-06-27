@@ -332,6 +332,29 @@ def get_bolt_acc_pedal_friction_brake(apply_brake, full_brake_accel, v_ego, para
   return int(round(np.clip(apply_brake * corrected_scale * speed_gain, 0, params.MAX_BRAKE)))
 
 
+def shape_bolt_acc_pedal_low_speed_friction(apply_brake: int, v_ego: float, stopping: bool, active: bool):
+  if apply_brake <= 0:
+    return 0, False
+
+  engage_threshold = float(np.interp(v_ego, [0.0, 1.5, 3.0, 5.0, 8.0], [40.0, 20.0, 12.0, 10.0, 0.0]))
+  release_threshold = float(np.interp(v_ego, [0.0, 1.5, 3.0, 5.0, 8.0], [0.0, 8.0, 6.0, 4.0, 0.0]))
+
+  if not active:
+    if apply_brake < engage_threshold:
+      return 0, False
+    active = True
+  elif apply_brake < release_threshold:
+    return 0, False
+
+  if stopping:
+    stop_fade = float(np.interp(v_ego, [0.0, 0.5, 1.0, 2.0], [0.0, 0.0, 0.45, 0.85]))
+    apply_brake = int(round(apply_brake * stop_fade))
+    if apply_brake <= 0 or apply_brake < release_threshold:
+      return 0, False
+
+  return apply_brake, active
+
+
 def get_bolt_pedal_long_accel_limit(v_ego: float) -> float:
   return float(np.interp(v_ego, BOLT_PEDAL_LONG_ACCEL_LIMIT_BP, BOLT_PEDAL_LONG_ACCEL_LIMIT_V))
 
@@ -436,6 +459,7 @@ class CarController(CarControllerBase):
     except UnknownKeyName:
       self.gm_auto_hold_enabled = False
     self.bolt_acc_pedal_friction_release_frames = 0
+    self.bolt_acc_pedal_friction_low_speed_active = False
 
   def _reset_volt_one_pedal(self):
     self.volt_one_pedal_pid.reset()
@@ -775,6 +799,8 @@ class CarController(CarControllerBase):
     )
     bolt_acc_pedal_friction_experiment = supports_bolt_acc_pedal_friction_experiment(self.CP)
     bolt_acc_pedal_friction_main_on = bolt_acc_pedal_friction_experiment and CS.out.cruiseState.available
+    if not bolt_acc_pedal_friction_main_on:
+      self.bolt_acc_pedal_friction_low_speed_active = False
     volt_one_pedal_braking = volt_one_pedal_active and self.volt_one_pedal_brake > 0
     volt_one_pedal_hold_active = (
       volt_one_pedal_braking and
@@ -835,6 +861,7 @@ class CarController(CarControllerBase):
           # ASCM sends max regen when not enabled
           self.apply_gas = self.params.INACTIVE_REGEN
           self.apply_brake = 0
+          self.bolt_acc_pedal_friction_low_speed_active = False
           self.planner_regen_hold = False
           self.regen_paddle_pressed = False
           self.regen_paddle_timer = 0
@@ -911,14 +938,18 @@ class CarController(CarControllerBase):
             brake_accel = min((scaled_torque - brake_switch) / (self.tireRadius * self.mass), 0)
             self.apply_gas = int(round(apply_gas_torque))
             self.apply_brake = int(round(np.interp(brake_accel, self.params.BRAKE_LOOKUP_BP, self.params.BRAKE_LOOKUP_V)))
-            if bolt_acc_pedal_friction_main_on and self.apply_brake > 0:
-              full_brake_accel = min(
-                self.params.ACCEL_MIN + (0.5 * self.coeffDrag * self.frontalArea * self.airDensity * CS.out.vEgo ** 2) / self.mass +
-                (self.params.ZERO_GAS - brake_switch) / (self.tireRadius * self.mass),
-                -0.1,
-              )
-              self.apply_brake = get_bolt_acc_pedal_friction_brake(
-                self.apply_brake, full_brake_accel, CS.out.vEgo, self.params,
+            if bolt_acc_pedal_friction_main_on:
+              if self.apply_brake > 0:
+                full_brake_accel = min(
+                  self.params.ACCEL_MIN + (0.5 * self.coeffDrag * self.frontalArea * self.airDensity * CS.out.vEgo ** 2) / self.mass +
+                  (self.params.ZERO_GAS - brake_switch) / (self.tireRadius * self.mass),
+                  -0.1,
+                )
+                self.apply_brake = get_bolt_acc_pedal_friction_brake(
+                  self.apply_brake, full_brake_accel, CS.out.vEgo, self.params,
+                )
+              self.apply_brake, self.bolt_acc_pedal_friction_low_speed_active = shape_bolt_acc_pedal_low_speed_friction(
+                self.apply_brake, CS.out.vEgo, stopping, self.bolt_acc_pedal_friction_low_speed_active,
               )
             if self.apply_brake > 0:
               self.apply_gas = self.params.INACTIVE_REGEN

@@ -16,7 +16,7 @@ STANDSTILL_FORCE_STOP_LIGHT_HOLD_TIME = 5.0
 SLC_LEAD_DROP_RELAXATION_MIN_SPEED = 20.0 * CV.MPH_TO_MS
 SLC_LEAD_DROP_RELAXATION_MIN_DISTANCE = 30.0
 SLC_LEAD_DROP_RELAXATION_MIN_HEADWAY = 1.2
-SLC_LEAD_DROP_RELAXATION_MAX_CLOSING_SPEED = 0.35
+SLC_LEAD_DROP_RELAXATION_MAX_POST_DROP_CLOSING_SPEED = 0.35
 SLC_LEAD_DROP_RELAXATION_MAX_LEAD_BRAKE = 0.25
 SLC_LEAD_DROP_RELAXATION_OVERSPEED_BP = [0.0, 5.0 * CV.MPH_TO_MS, 10.0 * CV.MPH_TO_MS, 15.0 * CV.MPH_TO_MS]
 SLC_LEAD_DROP_RELAXATION_DECEL_V = [0.7, 0.9, 1.15, 1.35]
@@ -34,7 +34,7 @@ NAV_TURN_TARGET_SPEEDS = {
 # Force-stop kinematic profile. The user tunes one signed knob (ForceStopDistanceOffset,
 # in feet); positive = stop later/longer, negative = stop sooner/shorter.
 # Smaller values pull speed down earlier on approach.
-FORCE_STOP_MODEL_APPROACH_DECEL = 0.8
+FORCE_STOP_MODEL_APPROACH_DECEL = 0.65
 FORCE_STOP_DASH_APPROACH_DECEL = 1.0
 ACTIVATION_M = 75.0       # m — CEM/model path activates when model_length < this
 MPC_HANDOFF_M = 6.0       # m — below this, command 0 and let MPC finish the stop
@@ -43,7 +43,11 @@ DASH_SEED_M = 27.0        # ~88 ft — typical ADAS detection distance, used to 
                           # tracked length closer when dashboard confirms a sign
 FT_TO_M = 0.3048
 FORCE_STOP_TURN_VETO_MAX_SPEED = 18.0 * CV.MPH_TO_MS
-FORCE_STOP_TURN_VETO_STEERING_ANGLE = 12.0
+# Real-turn steering angle. A stop-then-turn is still ~straight on approach, so a low
+# threshold caused legit stops to be skipped when the blinker came on early. Only suppress
+# Force Stop once the wheel is actually wound into the turn (turn instead of stop), and only
+# for *new* activation — an in-progress stop is carried through (see force_stop_timer logic).
+FORCE_STOP_TURN_VETO_STEERING_ANGLE = 25.0
 FORCE_STOP_CURVE_VETO_MAX_ROAD_CURVATURE = 0.003
 
 # Knob bounds (mirror of UI slider; defense in depth)
@@ -105,7 +109,7 @@ def get_slc_lead_drop_relaxed_target(raw_target, previous_target, v_ego, trackin
     return raw_target
 
   v_lead = float(getattr(lead, "vLead", 0.0))
-  if v_lead < float(v_ego) - SLC_LEAD_DROP_RELAXATION_MAX_CLOSING_SPEED:
+  if v_lead < float(raw_target) - SLC_LEAD_DROP_RELAXATION_MAX_POST_DROP_CLOSING_SPEED:
     return raw_target
 
   lead_brake = max(0.0, -float(getattr(lead, "aLeadK", 0.0)))
@@ -352,7 +356,9 @@ class StarPilotVCruise:
     if force_stop_active and not sm["carState"].standstill:
       rate = DT_MDL * 2 if dash_active else DT_MDL
       self.force_stop_timer = min(self.force_stop_timer + rate, 2.0)
-    elif turn_scene_active and not sm["carState"].standstill:
+    elif turn_scene_active and not self.forcing_stop and not sm["carState"].standstill:
+      # Suppress only a *new* stop while turning. If we're already forcing a stop
+      # (stop-then-turn), carry it through to the stop line instead of releasing here.
       self.force_stop_timer = 0.0
     elif self.standstill_force_stop_hold:
       self.force_stop_timer = max(self.force_stop_timer, 0.5)
@@ -363,8 +369,9 @@ class StarPilotVCruise:
       self.force_stop_timer = max(self.force_stop_timer - DT_MDL * 0.25, 0.0)
 
     force_stop_enabled = self.force_stop_timer >= 0.5
-    # Stay committed across model dropouts until standstill
-    force_stop_enabled |= self.forcing_stop and not sm["carState"].standstill and not turn_scene_active
+    # Stay committed across model dropouts until standstill. Signaling a turn does not
+    # abandon a stop already in progress — we bring the car to the stop line, then turn.
+    force_stop_enabled |= self.forcing_stop and not sm["carState"].standstill
     force_stop_enabled |= self.standstill_force_stop_hold
 
     # Override: gas/accel pedal during an active force stop

@@ -161,7 +161,7 @@ def resolve_model_files(input_root: Path, model_key: str) -> dict[str, Path]:
   if model_key in staged:
     return staged[model_key]
   root_files = staged.get("_root")
-  if root_files and set(staged) == {"_root"}:
+  if root_files:
     return root_files
   return {
     component: path
@@ -345,14 +345,17 @@ def split_oversized_artifact(
 def compile_driving(model_key: str, files: dict[str, Path], input_format: str, version: str, output_dir: Path) -> Path:
   model_type, source_args = driving_compile_args(files, input_format)
   output_path = output_dir / f"{model_key}_driving_tinygrad.pkl"
-  removed = remove_paths([
+  removed = remove_paths(sorted({
     output_path,
     *multipart_output_paths(output_path, output_dir),
-    *output_dir.glob(f"{model_key}_driving_*_tinygrad.pkl"),
-    *output_dir.glob(f"{model_key}_driving_*_metadata.pkl"),
-  ])
+    *output_dir.glob("*_driving_tinygrad.pkl"),
+    *output_dir.glob("*_driving_tinygrad.pkl.p[0-9][0-9]"),
+    *output_dir.glob("*_driving_tinygrad.pkl.sha256"),
+    *output_dir.glob("*_driving_*_tinygrad.pkl"),
+    *output_dir.glob("*_driving_*_metadata.pkl"),
+  }))
   if removed:
-    print(f"  cleared {removed} existing output entries for {model_key}")
+    print(f"  cleared {removed} existing driving output entries")
 
   frame_skip = MODEL_RUN_FREQ // MODEL_CONTEXT_FREQ
   command = [
@@ -465,6 +468,8 @@ def main() -> int:
 
   input_format = select_input_format(args.input_format, files)
   version = infer_model_version(model_key, args.version)
+  if not version and input_format == "supercombo":
+    version = "v15"
   version_label = version or "unspecified behavior"
   print(f"Compiling {model_key} ({input_format}, {version_label}) from {args.input_dir} -> {args.output_dir}")
   output = compile_driving(model_key, files, input_format, version, args.output_dir)
@@ -474,6 +479,8 @@ def main() -> int:
     print("  artifact exceeds 100 MiB; created repository-safe multipart files:")
     for multipart_output in multipart_outputs:
       print(f"    {multipart_output.name} ({multipart_output.stat().st_size} bytes)")
+    output.unlink()
+    print(f"  removed oversized source artifact {output.name}")
   print("Done.")
   return 0
 

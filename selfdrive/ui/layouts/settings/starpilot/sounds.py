@@ -76,7 +76,7 @@ class SoundsManagerView(PanelManagerView):
     )
 
   def _init_toggles(self):
-    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_height=130.0, max_tile_height=180.0)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_height=130.0, max_tile_height=280.0)
     self._child(self._toggle_grid)
     self._page_grid = self._toggle_grid
 
@@ -92,7 +92,7 @@ class SoundsManagerView(PanelManagerView):
         "disabled_label": tr(info.get("disabled_label", "")) if info.get("disabled_label") else "",
       })
 
-    self._set_toggle_pages([toggle_defs[i:i+6] for i in range(0, len(toggle_defs), 6)])
+    self._set_toggle_pages([toggle_defs[i:i+4] for i in range(0, len(toggle_defs), 4)])
 
   def _set_active_adjustor(self, key: str, active: bool):
     if active:

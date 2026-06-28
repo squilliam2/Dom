@@ -484,6 +484,9 @@ KEYS = {
   "secret": ("secret", "sk.", "MapboxSecretKey", "Secret key", 80),
 }
 
+GALAXY_COOKIE_NAME = "galaxy_session"
+GALAXY_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.embaucha.galaxynav&hl=en-US&ah=9FldHJ99kxL8oNbSlO5F4sQqwC4"
+
 NAVIGATION_MEMORY_LOCATION_STALE_SECONDS = 10.0
 NAVIGATION_PERSISTED_LOCATION_FUTURE_SKEW_SECONDS = 60.0
 NAVIGATION_PERSISTED_LOCATION_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -498,6 +501,23 @@ MODEL_SORT_MODE_PARAM = "ModelSortMode"
 MODEL_USER_FAVORITES_PARAM = "UserFavorites"
 MAPS_DOWNLOAD_PARAM = "DownloadMaps"
 MAPS_CANCEL_DOWNLOAD_PARAM = "CancelDownloadMaps"
+
+
+def _get_galaxy_dir():
+  return Path(Paths.comma_home()) / "starpilot" / "data" / "galaxy" if PC else Path("/data/galaxy")
+
+
+def _read_galaxy_text(path):
+  try:
+    return path.read_text().strip() if path.is_file() else ""
+  except Exception:
+    return ""
+
+
+def _build_galaxy_session_value(slug, token):
+  if not slug or not token:
+    return ""
+  return quote(f"{slug}:{token}", safe="")
 
 
 def _parse_last_gps_position(raw_value):
@@ -5571,20 +5591,30 @@ def setup(app):
     }), 202
 
   # ── Galaxy pairing (mirrors settings.cc L262-282) ──────────────────
-  GALAXY_DIR = Path("/data/galaxy")
+  GALAXY_DIR = _get_galaxy_dir()
   GALAXY_AUTH_FILE = GALAXY_DIR / "glxyauth"
+  GALAXY_SESSION_FILE = GALAXY_DIR / "glxysession"
+  GALAXY_SLUG_FILE = GALAXY_DIR / "glxyslug"
 
   @app.route("/api/galaxy/status", methods=["GET"])
   def galaxy_status():
-    try:
-      paired = GALAXY_AUTH_FILE.is_file() and len(GALAXY_AUTH_FILE.read_text().strip()) == 64
-    except Exception:
-      paired = False
-    slug_file = GALAXY_DIR / "glxyslug"
-    slug = slug_file.read_text().strip() if slug_file.is_file() else ""
+    paired = len(_read_galaxy_text(GALAXY_AUTH_FILE)) == 64
+    slug = _read_galaxy_text(GALAXY_SLUG_FILE)
     return jsonify({
       "paired": paired,
       "url": f"https://galaxy.firestar.link/{slug}" if slug else "",
+    })
+
+  @app.route("/api/galaxy/session", methods=["GET"])
+  def galaxy_session():
+    slug = _read_galaxy_text(GALAXY_SLUG_FILE)
+    token = _read_galaxy_text(GALAXY_SESSION_FILE)
+    paired = len(_read_galaxy_text(GALAXY_AUTH_FILE)) == 64 and bool(slug and token)
+    return jsonify({
+      "appUrl": GALAXY_PLAY_STORE_URL,
+      "cookieName": GALAXY_COOKIE_NAME,
+      "paired": paired,
+      "sessionToken": _build_galaxy_session_value(slug, token),
     })
 
   @app.route("/api/galaxy/pair", methods=["POST"])
@@ -5599,12 +5629,12 @@ def setup(app):
     GALAXY_AUTH_FILE.write_text(pw_hash)
     
     # Generate 256-bit secure session token
-    (GALAXY_DIR / "glxysession").write_text(secrets.token_hex(32))
+    GALAXY_SESSION_FILE.write_text(secrets.token_hex(32))
     
     # Generate 16-character alphanumeric routing slug
     charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     slug = ''.join(secrets.choice(charset) for _ in range(16))
-    (GALAXY_DIR / "glxyslug").write_text(slug)
+    GALAXY_SLUG_FILE.write_text(slug)
 
     return jsonify({
       "message": "Pairing successful!",

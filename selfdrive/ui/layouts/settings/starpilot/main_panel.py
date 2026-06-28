@@ -29,7 +29,7 @@ class StarPilotLayout(Widget):
     {
       "title": "Driving Controls",
       "icon": "steering",
-      "buttons": [("DRIVING MODEL", "DRIVING_MODEL", "aicar"), ("GAS / BRAKE", "LONGITUDINAL", "road"), ("STEERING", "LATERAL", "steering")],
+      "buttons": [("Driving Model", "DRIVING_MODEL", "aicar"), ("Gas / Brake", "LONGITUDINAL", "road"), ("Steering", "LATERAL", "steering")],
     },
     {
       "title": "Map Data",

@@ -1,6 +1,8 @@
+from types import SimpleNamespace
+
 from cereal import log
 from openpilot.common.realtime import DT_DMON
-from openpilot.selfdrive.monitoring.policy import DriverMonitoring, DRIVER_MONITOR_SETTINGS
+from openpilot.selfdrive.monitoring.policy import DriverMonitoring, DRIVER_MONITOR_SETTINGS, starpilot_aol_enabled
 
 EventName = log.OnroadEvent.EventName
 dm_settings = DRIVER_MONITOR_SETTINGS()
@@ -46,6 +48,17 @@ always_distracted = [msg_DISTRACTED] * int(TEST_TIMESPAN / DT_DMON)
 always_true = [True] * int(TEST_TIMESPAN / DT_DMON)
 always_false = [False] * int(TEST_TIMESPAN / DT_DMON)
 
+
+class FakeSubMaster:
+  def __init__(self, aol_enabled, alive=True, valid=True):
+    self.data = {'starpilotCarState': SimpleNamespace(alwaysOnLateralEnabled=aol_enabled)}
+    self.alive = {'starpilotCarState': alive}
+    self.valid = {'starpilotCarState': valid}
+
+  def __getitem__(self, service):
+    return self.data[service]
+
+
 class TestMonitoring:
   def _run_seq(self, msgs, interaction, engaged, lowspeed):
     DM = DriverMonitoring()
@@ -69,6 +82,13 @@ class TestMonitoring:
     DM = DriverMonitoring(rhd_saved=True, rhd_override=False)
     DM._update_states(msg_ATTENTIVE, [0, 0, 0], 0, False, False)
     assert not DM.wheel_on_right
+
+
+  def test_starpilot_aol_counts_as_dm_engaged(self):
+    assert starpilot_aol_enabled(FakeSubMaster(True))
+    assert not starpilot_aol_enabled(FakeSubMaster(False))
+    assert not starpilot_aol_enabled(FakeSubMaster(True, alive=False))
+    assert not starpilot_aol_enabled(FakeSubMaster(True, valid=False))
 
 
   # engaged, driver is attentive all the time

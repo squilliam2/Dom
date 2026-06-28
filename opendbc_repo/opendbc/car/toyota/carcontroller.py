@@ -26,6 +26,7 @@ ACCEL_WINDDOWN_LIMIT = -4.0 * DT_CTRL * 3  # m/s^2 / frame
 ACCEL_PID_UNWIND = 0.03 * DT_CTRL * 3  # m/s^2 / frame
 PRIUS_INTEGRAL_MISMATCH_UNWIND = 8.0
 PRIUS_POSITIVE_FEEDFORWARD_SCALE = 0.7
+PRIUS_CRUISE_FEEDFORWARD_SCALE = 0.85
 
 MAX_PITCH_COMPENSATION = 1.5  # m/s^2
 TOYOTA_COAST_BRAKE_MIN_SPEED = 15.0  # m/s
@@ -64,6 +65,11 @@ def get_long_tune(CP, params):
   return PIDController(0.0, (kiBP, kiV), k_f=k_f,
                        pos_limit=params.ACCEL_MAX, neg_limit=params.ACCEL_MIN,
                        rate=1 / (DT_CTRL * 3))
+
+
+def get_prius_positive_feedforward_scale(v_ego: float) -> float:
+  return float(np.interp(v_ego, [0.0, 8.0, 20.0],
+                         [PRIUS_POSITIVE_FEEDFORWARD_SCALE, PRIUS_POSITIVE_FEEDFORWARD_SCALE, PRIUS_CRUISE_FEEDFORWARD_SCALE]))
 
 
 def update_permit_braking(current: bool, net_acceleration_request_min: float, stopping: bool,
@@ -435,9 +441,8 @@ class CarController(CarControllerBase):
 
             feedforward = pcm_accel_cmd
             if self.CP.carFingerprint == CAR.TOYOTA_PRIUS:
-              # Keep Prius positive handoffs softer than the stock tune, while restoring some launch authority.
               if feedforward > 0.0:
-                feedforward *= PRIUS_POSITIVE_FEEDFORWARD_SCALE
+                feedforward *= get_prius_positive_feedforward_scale(CS.out.vEgo)
 
             pcm_accel_cmd = self.long_pid.update(error_future,
                                                  speed=CS.out.vEgo,

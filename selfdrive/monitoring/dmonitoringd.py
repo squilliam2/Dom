@@ -14,7 +14,13 @@ def dmonitoringd_thread():
 
   params = Params()
   pm = messaging.PubMaster(['driverMonitoringState'])
-  sm = messaging.SubMaster(['driverStateV2', 'liveCalibration', 'carState', 'selfdriveState', 'modelV2'], poll='driverStateV2')
+  sm = messaging.SubMaster(
+    ['driverStateV2', 'liveCalibration', 'carState', 'selfdriveState', 'modelV2', 'starpilotCarState'],
+    poll='driverStateV2',
+    ignore_alive=['starpilotCarState'],
+    ignore_avg_freq=['starpilotCarState'],
+    ignore_valid=['starpilotCarState'],
+  )
 
   DM = DriverMonitoring(
     rhd_saved=params.get_bool("IsRhdDetected"),

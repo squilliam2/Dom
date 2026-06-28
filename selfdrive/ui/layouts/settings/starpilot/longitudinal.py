@@ -249,6 +249,9 @@ class LongitudinalManagerView(AetherSettingsView):
       self._scroll_rect, self._scroll_rect.height
     )
 
+    if self.vertical_scrolling_disabled:
+      self._scroll_offset = 0.0
+
     self._draw_scroll_content(self._scroll_rect, self._scroll_rect.width)
 
   def _draw_scroll_content(self, rect: rl.Rectangle, width: float):

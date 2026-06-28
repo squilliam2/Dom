@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, replace
 import math
+import random
 import time
 import pyray as rl
 from collections.abc import Callable
@@ -27,7 +28,13 @@ MIN_TILE_WIDTH = 300
 _HUD_BG_ON = rl.Color(12, 10, 18, 230)
 _HUD_BORDER_OFF = rl.Color(28, 27, 34, 255)
 _HUD_TEXT_DIM = rl.Color(220, 220, 230, 220)
-_HUD_LED_BASE = rl.Color(36, 35, 44, 255)
+# Constellation accent node colors (replaces top dash LED)
+_CONST_PRIMARY = rl.Color(235, 240, 255, 255)
+_CONST_SECONDARY = rl.Color(180, 195, 220, 255)
+_CONST_TERTIARY = rl.Color(145, 155, 175, 255)
+
+_NODE_NUM_MIN = 3
+_NODE_NUM_MAX = 5
 
 
 class SPACING:
@@ -659,8 +666,7 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
   PAGE_ANIM_DURATION = 0.28
   PAGE_SNAP_DURATION = 0.20
 
-  PAGE_DOT_RADIUS = 6.0
-  PAGE_DOT_GAP = 20.0
+
 
   @property
   def _has_pagination(self) -> bool:
@@ -770,7 +776,7 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
 
           self._page_scissor_push(clip_rect)
           if self._page_anim_prev_tiles:
-            old_grid = TileGrid(columns=grid.get_column_count(), padding=grid.gap, tile_height=grid._tile_height)
+            old_grid = TileGrid(columns=grid.get_column_count(), padding=grid.gap, tile_height=grid._tile_height, force_square=grid.force_square, min_tile_height=grid.min_tile_height, max_tile_height=grid.max_tile_height, min_tile_width=grid._min_tile_width)
             old_grid.tiles.extend(self._page_anim_prev_tiles)
             old_grid.set_parent_rect(self._scroll_rect)
             old_grid.render(rl.Rectangle(grid_rect.x + prev_offset, grid_rect.y, grid_rect.width, grid_rect.height))
@@ -784,7 +790,20 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
           grid.render(rl.Rectangle(grid_rect.x + cur_offset, grid_rect.y, grid_rect.width, grid_rect.height))
           self._page_scissor_pop()
 
-    self._draw_page_dots(rect)
+    self._draw_page_indicator(rect)
+
+    if self._has_pagination:
+      glow_w = 60.0
+      if self._current_page > 0:
+        rl.draw_rectangle_gradient_h(
+          int(rect.x), int(rect.y), int(glow_w), int(rect.height),
+          _with_alpha(self.PANEL_STYLE.accent, 10), rl.Color(0, 0, 0, 0),
+        )
+      if self._current_page < self._page_count - 1:
+        rl.draw_rectangle_gradient_h(
+          int(rect.x + rect.width - glow_w), int(rect.y), int(glow_w), int(rect.height),
+          rl.Color(0, 0, 0, 0), _with_alpha(self.PANEL_STYLE.accent, 10),
+        )
 
   # ── mouse handling ─────────────────────────────────────────
 
@@ -843,22 +862,57 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
 
   # ── page indicator ─────────────────────────────────────────
 
-  def _draw_page_dots(self, rect: rl.Rectangle) -> None:
+  def _get_page_indicator_progress(self) -> float:
+    if not self._has_pagination:
+      return 0.0
+    page_w = self._scroll_rect.width
+
+    if self._page_drag_active:
+      return max(0.0, min(self._page_count - 1, self._current_page + self._page_drag_offset / page_w))
+
+    if self._page_animating:
+      elapsed = time.monotonic() - self._page_anim_start
+      duration = self.PAGE_ANIM_DURATION if self._page_anim_committed else self.PAGE_SNAP_DURATION
+      if elapsed >= duration:
+        return float(self._current_page)
+      t = elapsed / duration
+      t = 1.0 - (1.0 - t) ** 3
+      if self._page_anim_committed:
+        direction = 1 if self._page_anim_from < 0 else -1
+        return self._current_page + direction * (t - 1)
+      else:
+        offset = self._page_anim_from * (1.0 - t)
+        return max(0.0, min(self._page_count - 1, self._current_page + offset / page_w))
+
+    return float(self._current_page)
+
+  def _draw_page_indicator(self, rect: rl.Rectangle) -> None:
     if not self._has_pagination:
       return
     n = min(self._page_count, 8)
-    total_w = n * self.PAGE_DOT_RADIUS * 2 + max(0, n - 1) * self.PAGE_DOT_GAP
-    start_x = rect.x + (rect.width - total_w) / 2
-    dot_y = rect.y + rect.height - 12
-    for i in range(n):
-      cx = start_x + i * (self.PAGE_DOT_RADIUS * 2 + self.PAGE_DOT_GAP) + self.PAGE_DOT_RADIUS
-      fill = self.PANEL_STYLE.accent if i == self._current_page else _with_alpha(AetherListColors.MUTED, 100)
-      rl.draw_circle(int(cx), int(dot_y), self.PAGE_DOT_RADIUS, fill)
+    seg_w = 28.0
+    track_h = 10.0
+    track_w = seg_w * n
+    start_x = rect.x + (rect.width - track_w) / 2
+    track_y = rect.y + rect.height - 16
+
+    label = f"{self._current_page + 1} / {self._page_count}"
+    lf = gui_app.font(FontWeight.MEDIUM)
+    ls = 16.0
+    lw = measure_text_cached(lf, label, int(ls)).x
+    rl.draw_text_ex(lf, label, rl.Vector2(int(rect.x + (rect.width - lw) / 2), int(track_y - ls - 6)), int(ls), 0, _with_alpha(AetherListColors.MUTED, 200))
+
+    track_col = _with_alpha(AetherListColors.MUTED, 60)
+    rl.draw_rectangle_rounded(rl.Rectangle(start_x, track_y, track_w, track_h), 0.5, 8, track_col)
+
+    progress = self._get_page_indicator_progress()
+    active_x = start_x + progress * seg_w
+    active_x = max(start_x, min(active_x, start_x + track_w - seg_w))
+    rl.draw_rectangle_rounded(rl.Rectangle(active_x, track_y, seg_w, track_h), 0.5, 8, self.PANEL_STYLE.accent)
+
     if self._page_count > 8:
-      more_x = start_x + n * (self.PAGE_DOT_RADIUS * 2 + self.PAGE_DOT_GAP)
-      rl.draw_text_ex(
-        gui_app.font(FontWeight.MEDIUM), "···",
-        rl.Vector2(more_x, dot_y - 8), 16, 0, AetherListColors.MUTED)
+      more_x = int(start_x + track_w + 10)
+      rl.draw_text_ex(lf, "···", rl.Vector2(more_x, int(track_y - 2)), 14, 0, AetherListColors.MUTED)
 
   # ── lifecycle ──────────────────────────────────────────────
 
@@ -966,7 +1020,7 @@ class BreadcrumbController:
     from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
     layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
 
-    path = [("HOME", "action:home")]
+    path = [("Home", "action:home")]
     if not layout:
         return path
 
@@ -976,7 +1030,7 @@ class BreadcrumbController:
     is_folder = False
     if layout._current_category_idx is not None:
       cat = layout.CATEGORIES[layout._current_category_idx]
-      cat_title = cat["title"].upper()
+      cat_title = cat["title"]
       is_folder = "buttons" in cat
       path.append((cat_title, "action:category"))
 
@@ -984,12 +1038,12 @@ class BreadcrumbController:
       panel_info = layout._panels[layout._current_panel]
       if panel_info.name:
         if is_folder or layout._current_category_idx is None:
-          panel_title = panel_info.name.upper()
+          panel_title = panel_info.name
           path.append((panel_title, "action:panel"))
 
     for i, widget in enumerate(pushed_widgets):
       if hasattr(widget, '_header_title') and widget._header_title:
-        path.append((widget._header_title.upper(), f"action:nav_stack:{i+1}"))
+        path.append((widget._header_title, f"action:nav_stack:{i+1}"))
 
     return path
 
@@ -1092,9 +1146,9 @@ class BreadcrumbController:
           rl.draw_rectangle_rounded_lines_ex(cap_rect, 1.0, 16, 1.0, outline)
 
           font_dots = gui_app.font(FontWeight.BOLD)
-          dots_w = measure_text_cached(font_dots, "...", 18).x
+          dots_ts = measure_text_cached(font_dots, "...", 18)
           rl.draw_text_ex(font_dots, "...",
-            rl.Vector2(cap_rect.x + (cap_rect.width - dots_w) / 2, center_y - 10),
+            rl.Vector2(cap_rect.x + (cap_rect.width - dots_ts.x) / 2, center_y - dots_ts.y / 2),
             18, 0, dots_c)
         current_x += capsule_w + GAP
 
@@ -1122,8 +1176,8 @@ class BreadcrumbController:
           c_hover   = rl.Color(past_hover.r, past_hover.g, past_hover.b, item_alpha)
           c_pressed = rl.Color(past_pressed.r, past_pressed.g, past_pressed.b, item_alpha)
 
-        text_w = measure_text_cached(font, text, font_size).x
-        hit_rect = rl.Rectangle(current_x - 6, center_y - 20, text_w + 12, 40)
+        ts = measure_text_cached(font, text, font_size)
+        hit_rect = rl.Rectangle(current_x - 6, center_y - 20, ts.x + 12, 40)
         hovered  = _point_hits(mouse_pos, hit_rect, None, pad_x=0, pad_y=0)
         self._rects[action] = hit_rect
 
@@ -1132,9 +1186,9 @@ class BreadcrumbController:
         if hovered and not is_last:
           rl.draw_rectangle_rounded(hit_rect, 0.4, 8, rl.Color(255, 255, 255, int(12 * item_alpha / 255)))
 
-        text_y = center_y - font_size / 2
+        text_y = center_y - ts.y / 2
         rl.draw_text_ex(font, text, rl.Vector2(current_x, text_y), font_size, 0, color)
-        current_x += text_w + GAP
+        current_x += ts.x + GAP
 
       if i < len(display_path) - 1:
         chev_rect = rl.Rectangle(current_x, center_y - CHEVRON_SIZE / 2, CHEVRON_W, CHEVRON_SIZE)
@@ -3618,6 +3672,80 @@ class AetherTile(Widget):
 
     return layout
 
+  def _constellation_seed(self) -> str:
+    title = getattr(self, 'title', None)
+    resolved = str(_resolve_value(title, '')) if title is not None else ''
+    pos = getattr(self, '_rect', None)
+    if pos is not None:
+      return f"{resolved}:{int(pos.x)}:{int(pos.y)}" if resolved else f"{self.__class__.__name__}:{int(pos.x)}:{int(pos.y)}"
+    return resolved or self.__class__.__name__
+
+  def _generate_and_cache_constellation(self):
+    if hasattr(self, '_constellation_data'):
+      return
+    rng = random.Random(self._constellation_seed())
+    num = _NODE_NUM_MIN + rng.randint(0, _NODE_NUM_MAX - _NODE_NUM_MIN)
+    regions = [
+      (0.18, 0.30, 0.18, 0.30),  # top-left corner
+      (0.70, 0.82, 0.18, 0.30),  # top-right corner
+      (0.18, 0.30, 0.70, 0.82),  # bottom-left corner
+      (0.70, 0.82, 0.70, 0.82),  # bottom-right corner
+      (0.38, 0.62, 0.18, 0.28),  # top-center edge
+      (0.38, 0.62, 0.72, 0.82),  # bottom-center edge
+      (0.18, 0.28, 0.38, 0.62),  # left-center edge
+      (0.72, 0.82, 0.38, 0.62),  # right-center edge
+    ]
+    ax_min, ax_max, ay_min, ay_max = regions[rng.randint(0, 7)]
+    ax = ax_min + rng.random() * (ax_max - ax_min)
+    ay = ay_min + rng.random() * (ay_max - ay_min)
+    nodes = []
+    for _ in range(num):
+      for _ in range(20):
+        a = rng.random() * 2.0 * math.pi
+        r = 0.05 + rng.random() * 0.11
+        x = max(0.04, min(0.96, ax + r * math.cos(a)))
+        y = max(0.04, min(0.96, ay + r * math.sin(a)))
+        if all(math.sqrt((x - n['x'])**2 + (y - n['y'])**2) >= 0.07 for n in nodes):
+          nodes.append({'x': x, 'y': y})
+          break
+      else:
+        nodes.append({'x': x, 'y': y})
+    nodes.sort(key=lambda n: -(abs(n['x'] - 0.5) + abs(n['y'] - 0.5)))
+    for i, n in enumerate(nodes):
+      n['w'] = 0 if i == 0 else 1 if i == 1 else 2
+    vecs = [(0, j) for j in range(1, num)]
+    self._constellation_data = (nodes, vecs)
+
+  def _draw_constellation(self, face: rl.Rectangle, accent: rl.Color, glow: float):
+    self._generate_and_cache_constellation()
+    nodes, vecs = self._constellation_data
+    rx, ry, rw, rh = int(face.x), int(face.y), int(face.width), int(face.height)
+
+    va = int(10 + glow * 25)
+    if va > 2:
+      vc = rl.Color(accent.r, accent.g, accent.b, min(255, va))
+      for i, j in vecs:
+        x1 = int(rx + nodes[i]['x'] * rw)
+        y1 = int(ry + nodes[i]['y'] * rh)
+        x2 = int(rx + nodes[j]['x'] * rw)
+        y2 = int(ry + nodes[j]['y'] * rh)
+        rl.draw_line_ex(rl.Vector2(x1, y1), rl.Vector2(x2, y2), 1.0, vc)
+
+    for nd in nodes:
+      nx = int(rx + nd['x'] * rw)
+      ny = int(ry + nd['y'] * rh)
+      if nd['w'] == 0:
+        core_r, diff_r, col = 3.0, 12.0, _CONST_PRIMARY
+      elif nd['w'] == 1:
+        core_r, diff_r, col = 2.0, 8.0, _CONST_SECONDARY
+      else:
+        core_r, diff_r, col = 1.2, 0.0, _CONST_TERTIARY
+      da = int(5 + glow * 20)
+      if diff_r > 0 and da > 2:
+        rl.draw_circle(nx, ny, int(diff_r), rl.Color(col.r, col.g, col.b, min(255, da)))
+      ca = int(130 + glow * 125)
+      rl.draw_circle(nx, ny, int(core_r), rl.Color(col.r, col.g, col.b, min(255, ca)))
+
   def _render_hud_background(self, rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0) -> tuple[rl.Rectangle, rl.Color]:
     sq = getattr(self, '_squish', 1.0)
     snapped = _snap_rect(rect)
@@ -3645,16 +3773,7 @@ class AetherTile(Widget):
       255)
     _draw_rounded_stroke(face, bc, radius_px=100)
 
-    led_w, led_h = 32, 2
-    led_x = rx + (rw - led_w) // 2
-    led_y = ry + 12
-    led_base = _HUD_LED_BASE
-    led_col = rl.Color(
-      max(0, min(255, int(led_base.r + (accent.r - led_base.r) * glow))),
-      max(0, min(255, int(led_base.g + (accent.g - led_base.g) * glow))),
-      max(0, min(255, int(led_base.b + (accent.b - led_base.b) * glow))),
-      255)
-    rl.draw_rectangle(led_x, led_y, led_w, led_h, led_col)
+    self._draw_constellation(face, accent, glow)
 
     return face, accent
 
@@ -3713,7 +3832,7 @@ class HubTile(AetherTile):
     gap = SPACING.line_gap
 
     title_size = max(20, int(round(24 * text_scale)))
-    desc_to_render = status_text if status_text else fallback_desc
+    desc_to_render = status_text
     desc_size = max(17, int(round(18 * text_scale))) if desc_to_render else 0
 
     icon_h = 0.0
@@ -5474,6 +5593,8 @@ class TileGrid(Widget):
         if self.max_tile_height is not None:
           tile_h = min(self.max_tile_height, tile_h)
       uniform_tile_w = (rect.width - (self._gap * (cols - 1))) / cols if self._uniform_width else 0
+    content_height = rows * tile_h + max(0, rows - 1) * self._gap
+    y_offset = max(0, (rect.height - content_height) / 2)
     tile_idx = 0
     for r in range(rows):
       remaining = count - tile_idx
@@ -5492,7 +5613,7 @@ class TileGrid(Widget):
         parent_rect = getattr(self, "_parent_rect", None)
         if parent_rect is not None and hasattr(tile, "set_parent_rect"):
           tile.set_parent_rect(parent_rect)
-        tile.render(_snap_rect(rl.Rectangle(row_x + c * (row_tile_w + self._gap), rect.y + r * (tile_h + self._gap), row_tile_w, tile_h)))
+        tile.render(_snap_rect(rl.Rectangle(row_x + c * (row_tile_w + self._gap), rect.y + y_offset + r * (tile_h + self._gap), row_tile_w, tile_h)))
         tile_idx += 1
 
 

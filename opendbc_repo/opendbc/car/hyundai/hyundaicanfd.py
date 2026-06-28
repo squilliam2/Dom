@@ -154,6 +154,20 @@ def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque,
           "TORQUE_REQUEST": 0,
           "STEER_REQ": 0,
         })
+      else:
+        lkas_values.update({
+          "LKA_MODE": 0,
+          "LKA_AVAILABLE": 0,
+          "LKA_WARNING": 0,
+          "LKA_ICON": lka_icon,
+          "FCA_SYSWARN": 0,
+          "TORQUE_REQUEST": 0,
+          "STEER_REQ": 0,
+          "LFA_BUTTON": 0,
+          "LKA_ASSIST": 0,
+          "DAMP_FACTOR": 100,
+          "HAS_LANE_SAFETY": 0,
+        })
       # These signals overlap DAMP_FACTOR in the local DBC naming; omitting them
       # preserves the stock angle-steering damping byte expected by the ADAS ECU.
       lkas_values.pop("STEER_MODE", None)

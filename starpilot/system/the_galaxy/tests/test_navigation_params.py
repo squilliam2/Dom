@@ -88,3 +88,10 @@ def test_navigation_last_position_rejects_stale_persisted_fix(monkeypatch):
   monkeypatch.setattr(the_galaxy, "system_time_valid", lambda: True)
 
   assert the_galaxy._get_navigation_last_position() is None
+
+
+def test_galaxy_session_value_matches_cookie_format():
+  assert the_galaxy._build_galaxy_session_value(
+    "testGalaxySlug01",
+    "a" * 64,
+  ) == f"testGalaxySlug01%3A{'a' * 64}"

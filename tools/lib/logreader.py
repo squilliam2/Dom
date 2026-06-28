@@ -204,11 +204,12 @@ def auto_source(identifier: str, sources: list[Source], default_mode: ReadMode) 
 
 
 def parse_indirect(identifier: str) -> str:
-  if "useradmin.comma.ai" in identifier:
+  parsed = urlparse(identifier)
+  if parsed.netloc in ("useradmin.comma.ai", "useradmin.konik.ai"):
     query = parse_qs(urlparse(identifier).query)
     identifier = query["onebox"][0]
-  elif "connect.comma.ai" in identifier:
-    path = urlparse(identifier).path.strip("/").split("/")
+  elif parsed.netloc in ("connect.comma.ai", "connect.konik.ai", "stable.konik.ai"):
+    path = parsed.path.strip("/").split("/")
     path = ['/'.join(path[:2]), *path[2:]]  # recombine log id
 
     identifier = path[0]

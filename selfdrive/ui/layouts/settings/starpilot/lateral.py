@@ -78,12 +78,16 @@ def _sync_parent(params, parent_key, child_keys):
 class SteeringManagerView(PanelManagerView):
   METRICS = CUSTOM_METRICS
 
+  @property
+  def vertical_scrolling_disabled(self) -> bool:
+    return True
+
   def __init__(self, controller: "StarPilotLateralLayout"):
     super().__init__()
     self._controller = controller
     self._shell_rect = rl.Rectangle(0, 0, 0, 0)
 
-    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=180.0)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=280.0)
     self._toggle_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
     self._child(self._toggle_grid)
 
@@ -239,7 +243,7 @@ class SteeringManagerView(PanelManagerView):
   def _rebuild_toggle_grid(self):
     self._page_grid = self._toggle_grid
     defs = self._build_toggle_defs()
-    self._set_toggle_pages([defs[i:i+6] for i in range(0, len(defs), 6)])
+    self._set_toggle_pages([defs[i:i+4] for i in range(0, len(defs), 4)])
 
   def _measure_content_height(self, width: float) -> float:
     sections = self._build_left_sections()
@@ -253,7 +257,14 @@ class SteeringManagerView(PanelManagerView):
         tiles_height = SECTION_GAP + self._section_block_height(tiles_content_h + 24)
 
     if self._uses_two_columns(width):
-      return self._compute_two_column_height(left_h)
+      column_w = self._column_width(width)
+      self._toggle_grid._columns = 2
+      grid_content_h = self.measure_page_grid_height(self._toggle_grid, column_w - 24) + 24
+      grid_container_h = grid_content_h + SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
+      available_h = self._scroll_rect.height if self._scroll_rect else left_h
+      container_h = max(left_h, grid_container_h, available_h)
+      self._grid_container_h = container_h
+      return self._compute_two_column_height(container_h)
     return left_h + tiles_height
 
   def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
@@ -289,8 +300,7 @@ class SteeringManagerView(PanelManagerView):
 
       if self._toggle_grid.tiles:
         rx = x + column_w + self.COLUMN_GAP
-        left_h = curr_y - y
-        self._draw_two_column_tile_grid(self._toggle_grid, rx, y, column_w, left_h, title=tr("Toggles"), style=PANEL_STYLE)
+        self._draw_two_column_tile_grid(self._toggle_grid, rx, y, column_w, self._grid_container_h, title=tr("Toggles"), style=PANEL_STYLE)
     else:
       curr_y = y
       for section in sections:

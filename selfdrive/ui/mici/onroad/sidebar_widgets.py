@@ -84,7 +84,7 @@ class MiciSidebarWidgets(Widget):
     self._confidence_ball = confidence_ball
     self._font_bold = gui_app.font(FontWeight.BOLD)
     self._font_semi_bold = gui_app.font(FontWeight.SEMI_BOLD)
-    self._demo = _env_truthy("SP_MICI_WIDGET_DEMO")
+    self._demo = _env_truthy("SP_CEM_DEMO") or _env_truthy("SP_MICI_WIDGET_DEMO")
 
   @property
   def demo_active(self) -> bool:
@@ -193,14 +193,26 @@ class MiciSidebarWidgets(Widget):
       pass
     return False
 
+  def _curve_speed_controller_active(self) -> bool:
+    try:
+      if ui_state.sm.recv_frame["starpilotPlan"] >= ui_state.started_frame:
+        return bool(ui_state.sm["starpilotPlan"].cscControllingSpeed)
+    except Exception:
+      pass
+    return False
+
   def _cem_reason(self) -> tuple[str, rl.Color]:
     if self._demo:
-      reason = DEMO_REASONS[int(rl.get_time() / DEMO_HOLD_SECONDS) % len(DEMO_REASONS)]
-      if reason == "chill":
-        return reason, WHITE
-      if reason == "stop":
-        return reason, TRAFFIC_RED
-      return reason, CEM_BLUE
+      status = ui_state.params_memory.get_int("CEStatus", default=CEStatus["OFF"])
+      status_reason = self._ce_status_reason(status)
+      if status_reason is not None:
+        return status_reason
+      return self._fallback_demo_reason()
+
+    if self._model_stop_active():
+      return "stop", TRAFFIC_RED
+    if self._curve_speed_controller_active():
+      return "curve", CEM_BLUE
 
     conditional_experimental = ui_state.params.get_bool("ConditionalExperimental")
     conditional_chill = ui_state.params.get_bool("ConditionalChill") and not conditional_experimental
@@ -217,6 +229,20 @@ class MiciSidebarWidgets(Widget):
       return "chill", WHITE
 
     status = ui_state.params_memory.get_int("CEStatus", default=CEStatus["OFF"]) if conditional_experimental else CEStatus["OFF"]
+    status_reason = self._ce_status_reason(status)
+    if status_reason is not None:
+      return status_reason
+    return "chill", WHITE
+
+  def _fallback_demo_reason(self) -> tuple[str, rl.Color]:
+    reason = DEMO_REASONS[int(rl.get_time() / DEMO_HOLD_SECONDS) % len(DEMO_REASONS)]
+    if reason == "chill":
+      return reason, WHITE
+    if reason == "stop":
+      return reason, TRAFFIC_RED
+    return reason, CEM_BLUE
+
+  def _ce_status_reason(self, status: int) -> tuple[str, rl.Color] | None:
     if status == CEStatus["CURVATURE"]:
       return "curve", CEM_BLUE
     if status == CEStatus["LEAD"]:
@@ -231,9 +257,7 @@ class MiciSidebarWidgets(Widget):
       return "chill", WHITE
     if status == CEStatus["USER_OVERRIDDEN"]:
       return "chill", WHITE
-    if self._model_stop_active():
-      return "stop", TRAFFIC_RED
-    return "chill", WHITE
+    return None
 
   def _draw_chill_icon(self, rect: rl.Rectangle) -> None:
     cx = rect.x + rect.width / 2

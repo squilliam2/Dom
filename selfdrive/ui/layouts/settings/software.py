@@ -3,6 +3,7 @@ import time
 import datetime
 from pathlib import Path
 from openpilot.common.time_helpers import system_time_valid
+from openpilot.selfdrive.ui.lib.starpilot_version import starpilot_display_description
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, trn
@@ -54,7 +55,7 @@ class SoftwareLayout(Widget):
     super().__init__()
 
     self._onroad_label = ListItem(lambda: tr("Updates are only downloaded while the car is off."))
-    self._version_item = text_item(lambda: tr("Current Version"), ui_state.params.get("UpdaterCurrentDescription") or "")
+    self._version_item = text_item(lambda: tr("Current Version"), starpilot_display_description(ui_state.params.get("UpdaterCurrentDescription")))
     self._auto_updates_toggle = toggle_item(
       lambda: tr("Automatically Install Updates"),
       lambda: tr("Automatically install updates when parked with an active internet connection."),
@@ -103,7 +104,7 @@ class SoftwareLayout(Widget):
     self._onroad_label.set_visible(ui_state.is_onroad())
 
     # Update current version and release notes
-    current_desc = ui_state.params.get("UpdaterCurrentDescription") or ""
+    current_desc = starpilot_display_description(ui_state.params.get("UpdaterCurrentDescription"))
     current_release_notes = (ui_state.params.get("UpdaterCurrentReleaseNotes") or b"").decode("utf-8", "replace")
     self._version_item.action_item.set_text(current_desc)
     self._version_item.set_description(current_release_notes)
@@ -154,7 +155,7 @@ class SoftwareLayout(Widget):
     # Update install button
     self._install_btn.set_visible(ui_state.is_offroad() and update_available)
     if update_available:
-      new_desc = ui_state.params.get("UpdaterNewDescription") or ""
+      new_desc = starpilot_display_description(ui_state.params.get("UpdaterNewDescription"))
       new_release_notes = (ui_state.params.get("UpdaterNewReleaseNotes") or b"").decode("utf-8", "replace")
       self._install_btn.action_item.set_text(tr("INSTALL"))
       self._install_btn.action_item.set_value(new_desc)

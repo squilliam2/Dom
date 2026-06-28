@@ -17,6 +17,26 @@ MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 def to_percent(v):
   return int(min(max(v * 100., 0.), 100.))
 
+
+def starpilot_aol_enabled(sm):
+  service = 'starpilotCarState'
+  if service not in getattr(sm, 'data', {}):
+    return False
+
+  alive = getattr(sm, 'alive', None)
+  if alive is not None and not alive.get(service, False):
+    return False
+
+  valid = getattr(sm, 'valid', None)
+  if valid is not None and not valid.get(service, False):
+    return False
+
+  try:
+    return bool(sm[service].alwaysOnLateralEnabled)
+  except (AttributeError, KeyError):
+    return False
+
+
 # ******************************************************************************************
 #  NOTE: To fork maintainers.
 #  Disabling or nerfing safety features will get you and your users banned from our servers.
@@ -431,7 +451,7 @@ class DriverMonitoring:
       rpyCalib = [0., 0., 0.]
     else:
       car_speed = sm['carState'].vEgo
-      enabled = sm['selfdriveState'].enabled
+      enabled = sm['selfdriveState'].enabled or starpilot_aol_enabled(sm)
       wrong_gear = sm['carState'].gearShifter not in (car.CarState.GearShifter.drive, car.CarState.GearShifter.low)
       lowspeed = car_speed < self.settings._ALERT_MIN_SPEED
       driver_engaged = sm['carState'].steeringPressed or sm['carState'].gasPressed

@@ -11,7 +11,7 @@ from opendbc.car.hyundai.carcontroller import CarController, Ioniq6LongitudinalT
                                              update_ioniq_6_longitudinal_tuning, \
                                              update_genesis_g90_longitudinal_tuning, egmp_dynamic_longitudinal_tuning, \
                                              should_reset_ev6_gt_line_longitudinal_tuning, reset_ev6_gt_line_longitudinal_tuning, \
-                                             get_angle_smoothing_alpha, apply_steer_angle_limits_vm_checked
+                                             get_angle_smoothing_alpha, apply_ev9_high_angle_gain_cap
 from opendbc.car.hyundai.carstate import CarState, decode_canfd_camera_lead, decode_ioniq_6_blindspot_radar_state
 from opendbc.car.hyundai.interface import CarInterface
 from opendbc.car.hyundai import hyundaican, hyundaicanfd
@@ -21,9 +21,8 @@ from opendbc.car.hyundai.radar_interface import MRREVO14F_RADAR_START_ADDR, MRR3
 from opendbc.car.hyundai.values import CAMERA_SCC_CAR, CANFD_CAR, CAN_GEARS, CAR, CHECKSUM, DATE_FW_ECUS, \
                                          HYBRID_CAR, EV_CAR, FW_QUERY_CONFIG, LEGACY_SAFETY_MODE_CAR, CANFD_FUZZY_WHITELIST, \
                                          UNSUPPORTED_LONGITUDINAL_CAR, PLATFORM_CODE_ECUS, HYUNDAI_VERSION_REQUEST_LONG, \
-                                         LEGACY_LONGITUDINAL_CAR, CarControllerParams, DBC, HyundaiFlags, get_platform_codes, HyundaiSafetyFlags, \
+                                         LEGACY_LONGITUDINAL_CAR, DBC, HyundaiFlags, get_platform_codes, HyundaiSafetyFlags, \
                                          HyundaiStarPilotSafetyFlags, Buttons, kia_ev6_gt_line_longitudinal_tuning
-from opendbc.car.vehicle_model import VehicleModel
 
 LongCtrlState = CarControl.Actuators.LongControlState
 from opendbc.car.hyundai.fingerprints import FW_VERSIONS
@@ -95,6 +94,7 @@ CCNC_NON_HDA2_CARS = (
 )
 
 ANGLE_STEERING_CARS = (
+  CAR.HYUNDAI_AZERA_HEV_7TH_GEN,
   CAR.HYUNDAI_SANTA_FE_HEV_5TH_GEN,
   CAR.HYUNDAI_IONIQ_5_PE,
   CAR.HYUNDAI_IONIQ_9,
@@ -288,12 +288,16 @@ class TestHyundaiFingerprint:
     assert get_angle_smoothing_alpha(ev9_cp, 20.0) == pytest.approx(get_angle_smoothing_alpha(other_cp, 20.0))
     assert get_angle_smoothing_alpha(other_cp, 20.0) == pytest.approx(0.0)
 
-  def test_checked_angle_limiter_blocks_rate_accel_conflict(self):
-    CP = CarInterface.get_non_essential_params(CAR.KIA_EV9)
-    params = CarControllerParams(CP)
+  def test_ev9_high_angle_gain_cap_is_ev9_only_and_nonzero(self):
+    ev9_cp = SimpleNamespace(carFingerprint=CAR.KIA_EV9, flags=int(HyundaiFlags.CANFD_ANGLE_STEERING))
+    sportage_cp = SimpleNamespace(carFingerprint=CAR.KIA_SPORTAGE_HEV_2026, flags=int(HyundaiFlags.CANFD_ANGLE_STEERING))
 
-    assert apply_steer_angle_limits_vm_checked(0.0, 100.0, 20.0, 100.0, True,
-                                               params, VehicleModel(CP)) is None
+    assert apply_ev9_high_angle_gain_cap(ev9_cp, 0.70, 60.0, True) == pytest.approx(0.70)
+    assert apply_ev9_high_angle_gain_cap(ev9_cp, 0.70, 120.0, True) == pytest.approx(0.55)
+    assert apply_ev9_high_angle_gain_cap(ev9_cp, 0.70, 320.0, True) == pytest.approx(0.16)
+    assert apply_ev9_high_angle_gain_cap(ev9_cp, 0.0, 320.0, True) > 0.0
+    assert apply_ev9_high_angle_gain_cap(ev9_cp, 0.70, 320.0, False) == pytest.approx(0.70)
+    assert apply_ev9_high_angle_gain_cap(sportage_cp, 0.70, 320.0, True) == pytest.approx(0.70)
 
   def test_ccnc_hda2_lka_layout_does_not_set_ccnc_safety_param(self):
     fingerprint = gen_empty_fingerprint()
@@ -1405,7 +1409,37 @@ class TestHyundaiFingerprint:
     assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.0)
     assert parser.vl["LKAS_ALT"]["ADAS_StrAnglReqVal"] == pytest.approx(8.5)
 
-  def test_ev9_high_steering_angle_inhibits_angle_control_and_lfa_suppress(self):
+  def test_ev9_inactive_angle_status_keeps_standby_damping_without_stock_lkas(self):
+    CP = CarParams.new_message()
+    CP.carFingerprint = CAR.KIA_EV9
+    CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING |
+                   HyundaiFlags.CANFD_LKA_STEERING | HyundaiFlags.CANFD_LKA_STEERING_ALT)
+    CP.openpilotLongitudinalControl = False
+
+    controller = CarController(DBC[CP.carFingerprint], CP)
+    can_bus = CanBus(CP)
+    parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [("LKAS_ALT", 0)], can_bus.ACAN)
+    cc = SimpleNamespace(enabled=False, latActive=False, actuators=SimpleNamespace(longControlState=LongCtrlState.off),
+                         leftBlinker=False, rightBlinker=False, hudControl=SimpleNamespace())
+    cs = SimpleNamespace(stock_lfa_msg=None, stock_lkas_msg={},
+                         out=SimpleNamespace(steeringAngleDeg=-201.0))
+
+    msgs = controller.create_canfd_msgs(0, False, 0.0, -201.0, 0.0, 0.0, False, cc.hudControl, cs, cc,
+                                        get_test_toggles(), lka_icon=1, lfa_icon=1)
+    lkas_msgs = [msg for msg in msgs if msg[0] == 0x110]
+    assert len(lkas_msgs) == 1
+
+    parser.update([(1, lkas_msgs)])
+
+    assert parser.can_valid
+    assert parser.vl["LKAS_ALT"]["LKAS_ANGLE_ACTIVE"] == 1
+    assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.0)
+    assert parser.vl["LKAS_ALT"]["ADAS_StrAnglReqVal"] == pytest.approx(-201.0)
+    assert parser.vl["LKAS_ALT"]["DAMP_FACTOR"] == pytest.approx(100.0)
+    assert parser.vl["LKAS_ALT"]["STEER_MODE"] == 2
+    assert parser.vl["LKAS_ALT"]["NEW_SIGNAL_2"] == 3
+
+  def test_ev9_high_steering_angle_keeps_active_status_and_gain(self):
     CP = CarParams.new_message()
     CP.carFingerprint = CAR.KIA_EV9
     CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING |
@@ -1438,7 +1472,9 @@ class TestHyundaiFingerprint:
     }
     cc = SimpleNamespace(enabled=True, latActive=True, actuators=SimpleNamespace(longControlState=LongCtrlState.off),
                          leftBlinker=False, rightBlinker=False, hudControl=SimpleNamespace())
-    cs = SimpleNamespace(stock_lfa_msg=None, stock_lkas_msg=stock_lkas, lfa_block_msg={},
+    lfa_block_msg = {f"BYTE{i}": 0 for i in range(3, 32) if i != 7}
+    lfa_block_msg["COUNTER"] = 0
+    cs = SimpleNamespace(stock_lfa_msg=None, stock_lkas_msg=stock_lkas, lfa_block_msg=lfa_block_msg,
                          out=SimpleNamespace(steeringAngleDeg=120.0))
 
     msgs = controller.create_canfd_msgs(0, True, 0.44, 120.0, 0.0, 0.0, False, cc.hudControl, cs, cc,
@@ -1446,13 +1482,13 @@ class TestHyundaiFingerprint:
     lkas_msgs = [msg for msg in msgs if msg[0] == 0x110]
     suppress_msgs = [msg for msg in msgs if msg[0] == 0x362]
     assert len(lkas_msgs) == 1
-    assert len(suppress_msgs) == 0
+    assert len(suppress_msgs) == 1
 
     parser.update([(1, lkas_msgs)])
 
     assert parser.can_valid
-    assert parser.vl["LKAS_ALT"]["LKAS_ANGLE_ACTIVE"] == 1
-    assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.0)
+    assert parser.vl["LKAS_ALT"]["LKAS_ANGLE_ACTIVE"] == 2
+    assert parser.vl["LKAS_ALT"]["ADAS_ACIAnglTqRedcGainVal"] == pytest.approx(0.44)
     assert parser.vl["LKAS_ALT"]["ADAS_StrAnglReqVal"] == pytest.approx(120.0)
 
   def test_can_acc_commands_use_default_values(self):

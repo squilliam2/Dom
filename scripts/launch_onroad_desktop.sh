@@ -27,13 +27,14 @@ env_var_truthy() {
 usage() {
   cat <<'EOF'
 Usage:
-  ./onroad [jobs] (--c3 | --c4 | --raybig | --all | --replay-only) [-nav] [--mici-widget-demo] [--prefix name] <route-or-replay-args...>
+  ./onroad [jobs] (--c3 | --c4 | --raybig | --all | --replay-only) [-nav] [--cem] [--prefix name] <route-or-replay-args...>
 
 Examples:
   ./onroad --c3 <route>
   ./onroad --c4 <route> --start 30
   ./onroad --c4 -nav <route>
-  ./onroad --c4 --mici-widget-demo --demo
+  ./onroad --c4 --cem --demo
+  ./onroad --raybig --cem --demo
   ./onroad --all <route>
   ./onroad --replay-only --demo --no-vipc --no-loop
 
@@ -42,7 +43,7 @@ Notes:
   - A private comma connect route still requires tools/lib/auth.py before replay can download it.
   - Use multiple UI flags together if you want more than one desktop UI at once.
   - -nav injects a fake navigation demo stream and blocks replay from publishing navInstruction/navRoute.
-  - --mici-widget-demo makes the small C4 sidebar cycle through widget states for visual review.
+  - --cem publishes fake CEM statuses for desktop visual review in the raylib UIs.
 EOF
 }
 
@@ -58,9 +59,10 @@ UI_TARGETS=()
 LEGACY_UI_SELECTION=""
 REPLAY_ONLY=0
 NAV_DEMO=0
-MICI_WIDGET_DEMO=0
+CEM_DEMO=0
 REPLAY_PID=""
 NAV_PID=""
+CEM_PID=""
 UI_PIDS=()
 
 parse_args() {
@@ -94,8 +96,8 @@ parse_args() {
         NAV_DEMO=1
         shift
         ;;
-      --mici-widget-demo|--widget-demo)
-        MICI_WIDGET_DEMO=1
+      --cem|--mici-widget-demo|--widget-demo)
+        CEM_DEMO=1
         shift
         ;;
       --ui)
@@ -212,6 +214,9 @@ cleanup() {
   if [[ -n "${NAV_PID}" ]]; then
     kill "${NAV_PID}" >/dev/null 2>&1 || true
   fi
+  if [[ -n "${CEM_PID}" ]]; then
+    kill "${CEM_PID}" >/dev/null 2>&1 || true
+  fi
 
   for pid in "${UI_PIDS[@]-}"; do
     if [[ -n "${pid}" ]]; then
@@ -223,6 +228,9 @@ cleanup() {
   fi
   if [[ -n "${NAV_PID}" ]]; then
     wait "${NAV_PID}" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${CEM_PID}" ]]; then
+    wait "${CEM_PID}" >/dev/null 2>&1 || true
   fi
 
   if [[ -n "${OPENPILOT_PREFIX:-}" && "${OPENPILOT_PREFIX}" == desktop-onroad-* ]]; then
@@ -322,7 +330,7 @@ prepare_env() {
   export SP_RAYBIG_FAKE_WIFI=0
   export SP_ALLOW_DESKTOP_FAKE_WIFI=0
   export SP_ONROAD_NAV_DEMO="${NAV_DEMO}"
-  export SP_MICI_WIDGET_DEMO="${MICI_WIDGET_DEMO}"
+  export SP_CEM_DEMO="${CEM_DEMO}"
 
   if [[ "$(uname -s)" == "Darwin" ]] || env_var_truthy "${ZMQ:-0}"; then
     export OPENPILOT_ZMQ_NAMESPACE="${PREFIX_ARG:-${OPENPILOT_ZMQ_NAMESPACE:-desktop-onroad-$$}}"
@@ -399,6 +407,18 @@ launch_nav_demo() {
   sleep 0.5
   if ! kill -0 "${NAV_PID}" >/dev/null 2>&1; then
     wait "${NAV_PID}"
+    return 1
+  fi
+}
+
+launch_cem_demo() {
+  echo "Starting fake CEM demo publisher..."
+  "${ROOT_DIR}/.venv/bin/python3" "${ROOT_DIR}/tools/replay/fake_cem_demo.py" &
+  CEM_PID=$!
+
+  sleep 0.5
+  if ! kill -0 "${CEM_PID}" >/dev/null 2>&1; then
+    wait "${CEM_PID}"
     return 1
   fi
 }
@@ -494,6 +514,10 @@ launch_replay
 
 if [[ "${NAV_DEMO}" == "1" ]]; then
   launch_nav_demo
+fi
+
+if [[ "${CEM_DEMO}" == "1" ]]; then
+  launch_cem_demo
 fi
 
 if [[ ${#UI_TARGETS[@]} -eq 0 ]]; then

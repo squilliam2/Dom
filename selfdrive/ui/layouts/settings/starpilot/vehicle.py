@@ -106,7 +106,7 @@ class VehicleSettingsManagerView(PanelManagerView):
     self._controller = controller
     self._shell_rect = rl.Rectangle(0, 0, 0, 0)
 
-    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=180.0)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=280.0)
     self.register_page_grid(self._toggle_grid)
 
     self._last_make = ""
@@ -222,7 +222,7 @@ class VehicleSettingsManagerView(PanelManagerView):
 
   def _rebuild_toggle_grid(self):
     defs = self._build_driving_toggles()
-    self._set_toggle_pages([defs[i:i+6] for i in range(0, len(defs), 6)])
+    self._set_toggle_pages([defs[i:i+4] for i in range(0, len(defs), 4)])
 
   def _check_rebuild_grid(self):
     current_make = self._controller._get_display_make()

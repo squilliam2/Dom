@@ -247,24 +247,21 @@ class StarPilotLayout(Widget):
     shell_w = min(rect.width - metrics.outer_margin_x * 2, metrics.max_content_width)
     shell_x = rect.x + (rect.width - shell_w) / 2
 
-    # 0. Draw bar background as a flush rounded panel
+    # 0. Draw top bar with HubTile-style purple glow
     glass_rect = rl.Rectangle(shell_x, rect.y + 14, shell_w, TOP_BAR_HEIGHT - 24)
-    aethergrid._draw_rounded_fill(glass_rect, rl.Color(18, 16, 24, 180), radius_px=10)
-    aethergrid._draw_rounded_stroke(glass_rect, rl.Color(255, 255, 255, 35), radius_px=10)
 
-    # 0b. Bottom accent line — subtle primary-hue anchor
-    line_y = glass_rect.y + glass_rect.height
-    rl.draw_rectangle_rounded_lines_ex(
-      rl.Rectangle(glass_rect.x, line_y - 1, glass_rect.width, 2),
-      0.5, 4, 1.5, rl.Color(139, 92, 246, 30))
+    # 0a. Purple glow rings — 4 concentric, fading outward (HubTile parity)
+    for i in range(4, 0, -1):
+      off = i * 2.5
+      gr = rl.Rectangle(glass_rect.x - off, glass_rect.y - off, glass_rect.width + off * 2, glass_rect.height + off * 2)
+      a = int(25 * (1.0 - i / 5))
+      aethergrid._draw_rounded_fill(gr, rl.Color(139, 92, 246, max(0, min(255, a))), radius_px=100)
 
-    # 0c. Soft shadow bridging bar to content
-    shadow_h = 6
-    for s in range(shadow_h):
-      a = int(8 * (1.0 - s / shadow_h))
-      rl.draw_rectangle_rounded(
-        rl.Rectangle(glass_rect.x + 2, line_y + s, glass_rect.width - 4, 1),
-        0.5, 4, rl.Color(0, 0, 0, a))
+    # 0b. Dark fill — strict parity with HubTile _HUD_BG_ON
+    aethergrid._draw_rounded_fill(glass_rect, rl.Color(12, 10, 18, 230), radius_px=100)
+
+    # 0c. Full bright purple border — strict parity
+    aethergrid._draw_rounded_stroke(glass_rect, rl.Color(139, 92, 246, 255), radius_px=100)
 
     # 1. Draw breadcrumbs in top bar
     crumb_rect = rl.Rectangle(glass_rect.x, glass_rect.y, glass_rect.width, glass_rect.height)

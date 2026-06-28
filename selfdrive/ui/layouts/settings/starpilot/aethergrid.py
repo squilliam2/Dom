@@ -442,6 +442,7 @@ class AetherInteractiveMixin:
     self._interactive_rects: dict[str, rl.Rectangle] = {}
     self._pressed_target: str | None = None
     self._can_click = True
+    self._breadcrumbs = BreadcrumbController()
     super().__init__(*args, **kwargs)
 
   def _interactive_state(self, target_id: str, rect: rl.Rectangle, *, pad_y: float = 0) -> tuple[bool, bool]:
@@ -459,33 +460,24 @@ class AetherInteractiveMixin:
     pass
 
   def _handle_mouse_press(self, mouse_pos: MousePos):
-    global PRESSED_BREADCRUMB
-    breadcrumb_target = resolve_interactive_target(mouse_pos, BREADCRUMB_RECTS, None, pad_x=12, pad_y=12)
-    if breadcrumb_target:
-      PRESSED_BREADCRUMB = breadcrumb_target
-
+    self._breadcrumbs.init_interaction(mouse_pos)
     self._pressed_target = self._target_at(mouse_pos)
     self._can_click = True
 
   def _handle_mouse_event(self, mouse_event: MouseEvent):
-    global PRESSED_BREADCRUMB
     if self._scroll_panel and not self._scroll_panel.is_touch_valid():
       self._can_click = False
       return
     if self._pressed_target is not None and self._target_at(mouse_event.pos) != self._pressed_target:
       self._pressed_target = None
-    if PRESSED_BREADCRUMB and resolve_interactive_target(mouse_event.pos, BREADCRUMB_RECTS, None, pad_x=12, pad_y=12) != PRESSED_BREADCRUMB:
-      PRESSED_BREADCRUMB = None
+    self._breadcrumbs.update_interaction(mouse_event.pos)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    global PRESSED_BREADCRUMB
-
     target = self._target_at(mouse_pos) if self._scroll_panel and self._scroll_panel.is_touch_valid() else None
 
-    breadcrumb_target = resolve_interactive_target(mouse_pos, BREADCRUMB_RECTS, None, pad_x=12, pad_y=12)
-    if breadcrumb_target and breadcrumb_target == PRESSED_BREADCRUMB and self._can_click:
-        handle_breadcrumb_click(breadcrumb_target)
-    PRESSED_BREADCRUMB = None
+    action = self._breadcrumbs.finish_interaction(mouse_pos)
+    if action and self._can_click:
+      self._breadcrumbs.handle_click(action)
 
     if self._pressed_target is not None and self._pressed_target == target and self._can_click:
       self._activate_target(target)
@@ -496,11 +488,13 @@ class AetherInteractiveMixin:
     super().show_event()
     self._pressed_target = None
     self._can_click = True
+    self._breadcrumbs.cancel_interaction()
 
   def hide_event(self):
     super().hide_event()
     self._pressed_target = None
     self._can_click = True
+    self._breadcrumbs.cancel_interaction()
 
 
 class PanelManagerView(AetherInteractiveMixin, Widget):
@@ -879,241 +873,273 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
       self._on_page_changed()
 
 
-BREADCRUMB_RECTS: dict[str, rl.Rectangle] = {}
-PRESSED_BREADCRUMB: str | None = None
-BREADCRUMB_EXPANDED: bool = False
-BREADCRUMB_EXPAND_ALPHA: float = 0.0
-BREADCRUMB_EXPAND_DURATION: float = 2.5
-BREADCRUMB_LAST_INTERACT: float = 0.0
+class BreadcrumbController:
+  EXPAND_DURATION: float = 2.5
 
-def get_breadcrumbs_path() -> list[tuple[str, str]]:
-  import openpilot.selfdrive.ui.layouts.settings.starpilot.main_panel as main_panel
-  from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
-  layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
+  def __init__(self):
+    self._rects: dict[str, rl.Rectangle] = {}
+    self._pressed: str | None = None
+    self._expanded: bool = False
+    self._expand_alpha: float = 0.0
+    self._last_interact: float = 0.0
 
-  path = [("HOME", "action:home")]
-  if not layout:
-      return path
+  @property
+  def rects(self) -> dict[str, rl.Rectangle]:
+    return self._rects
 
-  pushed_widgets = gui_app._nav_stack[1:]
+  @property
+  def pressed(self) -> str | None:
+    return self._pressed
 
-  # 1. Add Category if selected
-  cat_title = ""
-  is_folder = False
-  if layout._current_category_idx is not None:
-    cat = layout.CATEGORIES[layout._current_category_idx]
-    cat_title = cat["title"].upper()
-    is_folder = "buttons" in cat
-    path.append((cat_title, "action:category"))
+  @property
+  def expanded(self) -> bool:
+    return self._expanded
 
-  # 2. Add Sub-panel if active
-  if layout._current_panel != StarPilotPanelType.MAIN:
-    panel_info = layout._panels[layout._current_panel]
-    if panel_info.name:
-      if is_folder or layout._current_category_idx is None:
-        panel_title = panel_info.name.upper()
-        path.append((panel_title, "action:panel"))
+  @property
+  def expand_alpha(self) -> float:
+    return self._expand_alpha
 
-  # 3. Add any pushed widgets from nav stack
-  for i, widget in enumerate(pushed_widgets):
-    if hasattr(widget, '_header_title') and widget._header_title:
-      path.append((widget._header_title.upper(), f"action:nav_stack:{i+1}"))
+  def init_interaction(self, mouse_pos: MousePos, *, pad_x: float = 12, pad_y: float = 12) -> None:
+    target = resolve_interactive_target(mouse_pos, self._rects, None, pad_x=pad_x, pad_y=pad_y)
+    if target:
+      self._pressed = target
 
-  return path
+  def update_interaction(self, mouse_pos: MousePos, *, pad_x: float = 12, pad_y: float = 12) -> None:
+    if self._pressed and resolve_interactive_target(mouse_pos, self._rects, None, pad_x=pad_x, pad_y=pad_y) != self._pressed:
+      self._pressed = None
 
-def handle_breadcrumb_click(target: str):
-  global BREADCRUMB_EXPANDED, BREADCRUMB_EXPAND_ALPHA, BREADCRUMB_LAST_INTERACT
+  def finish_interaction(self, mouse_pos: MousePos, *, pad_x: float = 12, pad_y: float = 12) -> str | None:
+    target = resolve_interactive_target(mouse_pos, self._rects, None, pad_x=pad_x, pad_y=pad_y)
+    if target and target == self._pressed:
+      self._pressed = None
+      return target
+    self._pressed = None
+    return None
 
-  if target == "action:breadcrumb_history":
-    BREADCRUMB_EXPANDED = not BREADCRUMB_EXPANDED
-    if BREADCRUMB_EXPANDED:
-      BREADCRUMB_LAST_INTERACT = time.monotonic()
-    return
+  def cancel_interaction(self) -> None:
+    self._pressed = None
 
-  BREADCRUMB_EXPANDED = False
-
-  import openpilot.selfdrive.ui.layouts.settings.starpilot.main_panel as main_panel
-  from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
-  layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
-  if not layout:
+  def handle_click(self, target: str) -> None:
+    if target == "action:breadcrumb_history":
+      self._expanded = not self._expanded
+      if self._expanded:
+        self._last_interact = time.monotonic()
       return
 
-  if target == "action:home":
-    while len(gui_app._nav_stack) > 1:
-      gui_app.pop_widget()
-    layout._panel_stack.clear()
-    layout._current_category_idx = None
-    layout._set_current_panel(StarPilotPanelType.MAIN)
-  elif target == "action:category":
-    while len(gui_app._nav_stack) > 1:
-      gui_app.pop_widget()
-    layout._panel_stack.clear()
+    self._expanded = False
 
-    cat = layout.CATEGORIES[layout._current_category_idx]
-    if "buttons" in cat:
+    import openpilot.selfdrive.ui.layouts.settings.starpilot.main_panel as main_panel
+    from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
+    layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
+    if not layout:
+        return
+
+    if target == "action:home":
+      while len(gui_app._nav_stack) > 1:
+        gui_app.pop_widget()
+      layout._panel_stack.clear()
+      layout._current_category_idx = None
       layout._set_current_panel(StarPilotPanelType.MAIN)
-    else:
+    elif target == "action:category":
+      while len(gui_app._nav_stack) > 1:
+        gui_app.pop_widget()
+      layout._panel_stack.clear()
+
+      cat = layout.CATEGORIES[layout._current_category_idx]
+      if "buttons" in cat:
+        layout._set_current_panel(StarPilotPanelType.MAIN)
+      else:
+        layout._update_sub_panel_visibility()
+    elif target == "action:panel":
+      while len(gui_app._nav_stack) > 1:
+        gui_app.pop_widget()
+      layout._panel_stack.clear()
       layout._update_sub_panel_visibility()
-  elif target == "action:panel":
-    while len(gui_app._nav_stack) > 1:
-      gui_app.pop_widget()
-    layout._panel_stack.clear()
-    layout._update_sub_panel_visibility()
-  elif target.startswith("action:nav_stack:"):
-    target_idx = int(target.split(":")[-1])
-    while len(gui_app._nav_stack) > target_idx + 1:
-      gui_app.pop_widget()
+    elif target.startswith("action:nav_stack:"):
+      target_idx = int(target.split(":")[-1])
+      while len(gui_app._nav_stack) > target_idx + 1:
+        gui_app.pop_widget()
 
+  @staticmethod
+  def build_path() -> list[tuple[str, str]]:
+    import openpilot.selfdrive.ui.layouts.settings.starpilot.main_panel as main_panel
+    from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
+    layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
 
-def draw_breadcrumbs(rect: rl.Rectangle) -> None:
-  global BREADCRUMB_EXPAND_ALPHA, BREADCRUMB_EXPANDED, BREADCRUMB_LAST_INTERACT
+    path = [("HOME", "action:home")]
+    if not layout:
+        return path
 
-  BREADCRUMB_RECTS.clear()
-  path = get_breadcrumbs_path()
-  if not path:
-    return
+    pushed_widgets = gui_app._nav_stack[1:]
 
-  now = time.monotonic()
+    cat_title = ""
+    is_folder = False
+    if layout._current_category_idx is not None:
+      cat = layout.CATEGORIES[layout._current_category_idx]
+      cat_title = cat["title"].upper()
+      is_folder = "buttons" in cat
+      path.append((cat_title, "action:category"))
 
-  if BREADCRUMB_EXPANDED and now - BREADCRUMB_LAST_INTERACT > BREADCRUMB_EXPAND_DURATION:
-    BREADCRUMB_EXPANDED = False
+    if layout._current_panel != StarPilotPanelType.MAIN:
+      panel_info = layout._panels[layout._current_panel]
+      if panel_info.name:
+        if is_folder or layout._current_category_idx is None:
+          panel_title = panel_info.name.upper()
+          path.append((panel_title, "action:panel"))
 
-  ANIM_LERP      = 0.2
-  EXPAND_THRESH  = 0.4
-  FADE_THRESH    = 0.01
-  EXPAND_RANGE   = 1.0 - EXPAND_THRESH
+    for i, widget in enumerate(pushed_widgets):
+      if hasattr(widget, '_header_title') and widget._header_title:
+        path.append((widget._header_title.upper(), f"action:nav_stack:{i+1}"))
 
-  target = 1.0 if BREADCRUMB_EXPANDED else 0.0
-  BREADCRUMB_EXPAND_ALPHA += (target - BREADCRUMB_EXPAND_ALPHA) * ANIM_LERP
-  alpha = BREADCRUMB_EXPAND_ALPHA
+    return path
 
-  ACTIVE_SIZE   = 24
-  PAST_SIZE     = 17
-  CHEVRON_SIZE  = 16
-  CHEVRON_W     = 14
-  GAP           = 16
+  def draw(self, rect: rl.Rectangle) -> None:
+    self._rects.clear()
+    path = self.build_path()
+    if not path:
+      return
 
-  center_y = rect.y + rect.height / 2
+    now = time.monotonic()
 
-  color_sep     = rl.Color(110, 112, 138, 200)
-  active_normal = rl.Color(252, 252, 255, 255)
-  active_hover  = rl.Color(252, 252, 255, 255)
-  active_pressed = rl.Color(200, 200, 200, 255)
-  past_normal   = rl.Color(148, 142, 168, 255)
-  past_hover    = rl.Color(168, 163, 188, 255)
-  past_pressed  = rl.Color(190, 185, 215, 255)
-  home_normal   = rl.Color(168, 163, 188, 255)
-  home_hover    = rl.Color(188, 183, 208, 255)
-  home_pressed  = rl.Color(210, 205, 230, 255)
+    if self._expanded and now - self._last_interact > self.EXPAND_DURATION:
+      self._expanded = False
 
-  mouse_pos = gui_app.last_mouse_event.pos
+    ANIM_LERP      = 0.2
+    EXPAND_THRESH  = 0.4
+    FADE_THRESH    = 0.01
+    EXPAND_RANGE   = 1.0 - EXPAND_THRESH
 
-  has_overflow = alpha > FADE_THRESH and len(path) > 3
+    target = 1.0 if self._expanded else 0.0
+    self._expand_alpha += (target - self._expand_alpha) * ANIM_LERP
+    alpha = self._expand_alpha
 
-  if has_overflow and alpha >= EXPAND_THRESH:
-    display_path = list(path)
-    middle_alpha = min(1.0, (alpha - EXPAND_THRESH) / EXPAND_RANGE)
-    overflow_alpha = 0.0
-  elif has_overflow:
-    display_path = [path[0], ("...", "action:breadcrumb_history"), path[-1]]
-    overflow_alpha = 1.0 - (alpha / EXPAND_THRESH)
-    middle_alpha = 0.0
-  else:
-    display_path = list(path) if len(path) <= 3 else [path[0], ("...", "action:breadcrumb_history"), path[-1]]
-    overflow_alpha = 1.0
-    middle_alpha = 0.0
+    ACTIVE_SIZE   = 24
+    PAST_SIZE     = 17
+    CHEVRON_SIZE  = 16
+    CHEVRON_W     = 14
+    GAP           = 16
 
-  current_x = rect.x + 20
+    center_y = rect.y + rect.height / 2
 
-  for i, (text, action) in enumerate(display_path):
-    is_last     = (i == len(display_path) - 1)
-    is_first    = (i == 0)
-    is_overflow = (action == "action:breadcrumb_history")
-    pressed     = PRESSED_BREADCRUMB == action
+    color_sep     = rl.Color(110, 112, 138, 200)
+    active_normal = rl.Color(252, 252, 255, 255)
+    active_hover  = rl.Color(252, 252, 255, 255)
+    active_pressed = rl.Color(200, 200, 200, 255)
+    past_normal   = rl.Color(148, 142, 168, 255)
+    past_hover    = rl.Color(168, 163, 188, 255)
+    past_pressed  = rl.Color(190, 185, 215, 255)
+    home_normal   = rl.Color(168, 163, 188, 255)
+    home_hover    = rl.Color(188, 183, 208, 255)
+    home_pressed  = rl.Color(210, 205, 230, 255)
 
-    if is_overflow:
-      if overflow_alpha <= FADE_THRESH:
-        current_x += GAP
-        continue
+    mouse_pos = gui_app.last_mouse_event.pos
 
-      capsule_w, capsule_h = 50, 26
-      cap_rect = rl.Rectangle(current_x, center_y - capsule_h / 2, capsule_w, capsule_h)
-      hovered = _point_hits(mouse_pos, cap_rect, None, pad_x=4, pad_y=6)
-      BREADCRUMB_RECTS[action] = cap_rect
+    has_overflow = alpha > FADE_THRESH and len(path) > 3
 
-      oa = overflow_alpha
-      if pressed:
-        fill = rl.Color(45, 38, 62, int(230 * oa))
-        outline = rl.Color(167, 152, 210, int(180 * oa))
-        glow = rl.Color(167, 152, 210, int(90 * oa))
-        dots_c = rl.Color(255, 255, 255, int(255 * oa))
-      elif hovered:
-        fill = rl.Color(38, 34, 54, int(200 * oa))
-        outline = rl.Color(148, 142, 168, int(120 * oa))
-        glow = rl.Color(148, 142, 168, int(60 * oa))
-        dots_c = rl.Color(255, 255, 255, int(255 * oa))
-      else:
-        fill = rl.Color(28, 26, 38, int(160 * oa))
-        outline = rl.Color(120, 115, 160, int(60 * oa))
-        glow = rl.Color(120, 115, 160, int(20 * oa))
-        dots_c = rl.Color(190, 180, 220, int(180 * oa))
-
-      if oa > 0.05:
-        rl.draw_rectangle_rounded_lines_ex(
-          rl.Rectangle(cap_rect.x - 2, cap_rect.y - 2, cap_rect.width + 4, cap_rect.height + 4),
-          1.0, 16, 1.5, glow)
-        rl.draw_rectangle_rounded(cap_rect, 1.0, 16, fill)
-        rl.draw_rectangle_rounded_lines_ex(cap_rect, 1.0, 16, 1.0, outline)
-
-        font_dots = gui_app.font(FontWeight.BOLD)
-        dots_w = measure_text_cached(font_dots, "...", 18).x
-        rl.draw_text_ex(font_dots, "...",
-          rl.Vector2(cap_rect.x + (cap_rect.width - dots_w) / 2, center_y - 10),
-          18, 0, dots_c)
-      current_x += capsule_w + GAP
-
+    if has_overflow and alpha >= EXPAND_THRESH:
+      display_path = list(path)
+      middle_alpha = min(1.0, (alpha - EXPAND_THRESH) / EXPAND_RANGE)
+      overflow_alpha = 0.0
+    elif has_overflow:
+      display_path = [path[0], ("...", "action:breadcrumb_history"), path[-1]]
+      overflow_alpha = 1.0 - (alpha / EXPAND_THRESH)
+      middle_alpha = 0.0
     else:
-      item_alpha = 255
-      if has_overflow and not is_first and not is_last:
-        item_alpha = int(middle_alpha * 255)
+      display_path = list(path) if len(path) <= 3 else [path[0], ("...", "action:breadcrumb_history"), path[-1]]
+      overflow_alpha = 1.0
+      middle_alpha = 0.0
 
-      if is_last:
-        font      = gui_app.font(FontWeight.BOLD)
-        font_size = ACTIVE_SIZE
-        c_normal  = rl.Color(252, 252, 255, item_alpha)
-        c_hover   = rl.Color(252, 252, 255, item_alpha)
-        c_pressed = rl.Color(200, 200, 200, item_alpha)
-      elif is_first:
-        font      = gui_app.font(FontWeight.MEDIUM)
-        font_size = PAST_SIZE
-        c_normal  = rl.Color(home_normal.r, home_normal.g, home_normal.b, item_alpha)
-        c_hover   = rl.Color(home_hover.r, home_hover.g, home_hover.b, item_alpha)
-        c_pressed = rl.Color(home_pressed.r, home_pressed.g, home_pressed.b, item_alpha)
+    current_x = rect.x + 20
+
+    for i, (text, action) in enumerate(display_path):
+      is_last     = (i == len(display_path) - 1)
+      is_first    = (i == 0)
+      is_overflow = (action == "action:breadcrumb_history")
+      pressed     = self._pressed == action
+
+      if is_overflow:
+        if overflow_alpha <= FADE_THRESH:
+          current_x += GAP
+          continue
+
+        capsule_w, capsule_h = 50, 26
+        cap_rect = rl.Rectangle(current_x, center_y - capsule_h / 2, capsule_w, capsule_h)
+        hovered = _point_hits(mouse_pos, cap_rect, None, pad_x=4, pad_y=6)
+        self._rects[action] = cap_rect
+
+        oa = overflow_alpha
+        if pressed:
+          fill = rl.Color(45, 38, 62, int(230 * oa))
+          outline = rl.Color(167, 152, 210, int(180 * oa))
+          glow = rl.Color(167, 152, 210, int(90 * oa))
+          dots_c = rl.Color(255, 255, 255, int(255 * oa))
+        elif hovered:
+          fill = rl.Color(38, 34, 54, int(200 * oa))
+          outline = rl.Color(148, 142, 168, int(120 * oa))
+          glow = rl.Color(148, 142, 168, int(60 * oa))
+          dots_c = rl.Color(255, 255, 255, int(255 * oa))
+        else:
+          fill = rl.Color(28, 26, 38, int(160 * oa))
+          outline = rl.Color(120, 115, 160, int(60 * oa))
+          glow = rl.Color(120, 115, 160, int(20 * oa))
+          dots_c = rl.Color(190, 180, 220, int(180 * oa))
+
+        if oa > 0.05:
+          rl.draw_rectangle_rounded_lines_ex(
+            rl.Rectangle(cap_rect.x - 2, cap_rect.y - 2, cap_rect.width + 4, cap_rect.height + 4),
+            1.0, 16, 1.5, glow)
+          rl.draw_rectangle_rounded(cap_rect, 1.0, 16, fill)
+          rl.draw_rectangle_rounded_lines_ex(cap_rect, 1.0, 16, 1.0, outline)
+
+          font_dots = gui_app.font(FontWeight.BOLD)
+          dots_w = measure_text_cached(font_dots, "...", 18).x
+          rl.draw_text_ex(font_dots, "...",
+            rl.Vector2(cap_rect.x + (cap_rect.width - dots_w) / 2, center_y - 10),
+            18, 0, dots_c)
+        current_x += capsule_w + GAP
+
       else:
-        font      = gui_app.font(FontWeight.MEDIUM)
-        font_size = PAST_SIZE
-        c_normal  = rl.Color(past_normal.r, past_normal.g, past_normal.b, item_alpha)
-        c_hover   = rl.Color(past_hover.r, past_hover.g, past_hover.b, item_alpha)
-        c_pressed = rl.Color(past_pressed.r, past_pressed.g, past_pressed.b, item_alpha)
+        item_alpha = 255
+        if has_overflow and not is_first and not is_last:
+          item_alpha = int(middle_alpha * 255)
 
-      text_w = measure_text_cached(font, text, font_size).x
-      hit_rect = rl.Rectangle(current_x - 6, center_y - 20, text_w + 12, 40)
-      hovered  = _point_hits(mouse_pos, hit_rect, None, pad_x=0, pad_y=0)
-      BREADCRUMB_RECTS[action] = hit_rect
+        if is_last:
+          font      = gui_app.font(FontWeight.BOLD)
+          font_size = ACTIVE_SIZE
+          c_normal  = rl.Color(252, 252, 255, item_alpha)
+          c_hover   = rl.Color(252, 252, 255, item_alpha)
+          c_pressed = rl.Color(200, 200, 200, item_alpha)
+        elif is_first:
+          font      = gui_app.font(FontWeight.MEDIUM)
+          font_size = PAST_SIZE
+          c_normal  = rl.Color(home_normal.r, home_normal.g, home_normal.b, item_alpha)
+          c_hover   = rl.Color(home_hover.r, home_hover.g, home_hover.b, item_alpha)
+          c_pressed = rl.Color(home_pressed.r, home_pressed.g, home_pressed.b, item_alpha)
+        else:
+          font      = gui_app.font(FontWeight.MEDIUM)
+          font_size = PAST_SIZE
+          c_normal  = rl.Color(past_normal.r, past_normal.g, past_normal.b, item_alpha)
+          c_hover   = rl.Color(past_hover.r, past_hover.g, past_hover.b, item_alpha)
+          c_pressed = rl.Color(past_pressed.r, past_pressed.g, past_pressed.b, item_alpha)
 
-      color = c_pressed if pressed else (c_hover if hovered else c_normal)
+        text_w = measure_text_cached(font, text, font_size).x
+        hit_rect = rl.Rectangle(current_x - 6, center_y - 20, text_w + 12, 40)
+        hovered  = _point_hits(mouse_pos, hit_rect, None, pad_x=0, pad_y=0)
+        self._rects[action] = hit_rect
 
-      if hovered and not is_last:
-        rl.draw_rectangle_rounded(hit_rect, 0.4, 8, rl.Color(255, 255, 255, int(12 * item_alpha / 255)))
+        color = c_pressed if pressed else (c_hover if hovered else c_normal)
 
-      text_y = center_y - font_size / 2
-      rl.draw_text_ex(font, text, rl.Vector2(current_x, text_y), font_size, 0, color)
-      current_x += text_w + GAP
+        if hovered and not is_last:
+          rl.draw_rectangle_rounded(hit_rect, 0.4, 8, rl.Color(255, 255, 255, int(12 * item_alpha / 255)))
 
-    if i < len(display_path) - 1:
-      chev_rect = rl.Rectangle(current_x, center_y - CHEVRON_SIZE / 2, CHEVRON_W, CHEVRON_SIZE)
-      draw_chevron_icon(chev_rect, color_sep, thickness=2.0, direction="right")
-      current_x += CHEVRON_W + GAP
+        text_y = center_y - font_size / 2
+        rl.draw_text_ex(font, text, rl.Vector2(current_x, text_y), font_size, 0, color)
+        current_x += text_w + GAP
+
+      if i < len(display_path) - 1:
+        chev_rect = rl.Rectangle(current_x, center_y - CHEVRON_SIZE / 2, CHEVRON_W, CHEVRON_SIZE)
+        draw_chevron_icon(chev_rect, color_sep, thickness=2.0, direction="right")
+        current_x += CHEVRON_W + GAP
 
 
 PANEL_HEADER_TITLE_Y: int = 34
@@ -3085,19 +3111,11 @@ class AetherCategoryTileView(AetherSettingsView):
   def _target_at(self, mouse_pos: MousePos) -> str | None:
     if self._back_btn_rect and _point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8):
       return BACK_BTN
-    crumb_target = resolve_interactive_target(mouse_pos, BREADCRUMB_RECTS, None, pad_x=8, pad_y=8)
-    if crumb_target:
-      return f"breadcrumb:{crumb_target}"
     return super()._target_at(mouse_pos)
 
   def _activate_target(self, target_id: str | None):
     if target_id == BACK_BTN:
       gui_app.pop_widget()
-      return
-    if target_id and target_id.startswith("breadcrumb:"):
-      action = target_id[len("breadcrumb:"):]
-      if action == "action:panel":
-        gui_app.pop_widget()
     else:
       super()._activate_target(target_id)
 
@@ -3118,7 +3136,7 @@ class AetherCategoryTileView(AetherSettingsView):
     crumb_x = pill_rect.x + 58
     crumb_w = pill_rect.width - (crumb_x - pill_rect.x) - 20
     crumb_rect = rl.Rectangle(crumb_x, pill_rect.y, crumb_w, pill_rect.height)
-    draw_breadcrumbs(crumb_rect)
+    self._breadcrumbs.draw(crumb_rect)
 
 
 # ── AetherSubMenuTileView — category panel containing navigation HubTiles ──
@@ -3235,19 +3253,11 @@ class AetherSubMenuTileView(AetherSettingsView):
   def _target_at(self, mouse_pos: MousePos) -> str | None:
     if self._back_btn_rect and _point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8):
       return BACK_BTN
-    crumb_target = resolve_interactive_target(mouse_pos, BREADCRUMB_RECTS, None, pad_x=8, pad_y=8)
-    if crumb_target:
-      return f"breadcrumb:{crumb_target}"
     return super()._target_at(mouse_pos)
 
   def _activate_target(self, target_id: str | None):
     if target_id == BACK_BTN:
       gui_app.pop_widget()
-      return
-    if target_id and target_id.startswith("breadcrumb:"):
-      action = target_id[len("breadcrumb:"):]
-      if action == "action:panel":
-        gui_app.pop_widget()
     else:
       super()._activate_target(target_id)
 
@@ -3268,7 +3278,7 @@ class AetherSubMenuTileView(AetherSettingsView):
     crumb_x = pill_rect.x + 58
     crumb_w = pill_rect.width - (crumb_x - pill_rect.x) - 20
     crumb_rect = rl.Rectangle(crumb_x, pill_rect.y, crumb_w, pill_rect.height)
-    draw_breadcrumbs(crumb_rect)
+    self._breadcrumbs.draw(crumb_rect)
 
 
 class AetherTile(Widget):

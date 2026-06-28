@@ -18,8 +18,6 @@ from openpilot.starpilot.common.favorite_slots import toggle_favorite_slot
 from openpilot.starpilot.common.starpilot_utilities import is_FrogsGoMoo
 from openpilot.starpilot.common.starpilot_variables import ERROR_LOGS_PATH, GearShifter, NON_DRIVING_GEARS
 
-SONATA_AOL_LOW_SPEED_PRIME_MS = 30 * 0.44704
-
 class StarPilotCard:
   @staticmethod
   def _button_type_raw(button_event) -> int:
@@ -39,14 +37,13 @@ class StarPilotCard:
       getattr(self.CP, "carFingerprint", None) in (HYUNDAI_CAR.KIA_FORTE_2019_NON_SCC, HYUNDAI_CAR.KIA_FORTE_2021_NON_SCC) and
       bool(hyundai_flags & HyundaiFlags.NON_SCC)
     )
-    self.hyundai_lkas_aol_requires_engagement = getattr(self.CP, "carFingerprint", None) == HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID
     self.hyundai_aol_needs_engagement = self.CP.brand == "hyundai" and not (hyundai_flags & HyundaiFlags.CANFD) and not kia_forte_non_scc
     self.sonata_hybrid_stock_scc = (
       self.CP.brand == "hyundai" and
       getattr(self.CP, "carFingerprint", None) == HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID and
       getattr(self.CP, "pcmCruise", True)
     )
-    self.sonata_hybrid_scc_primed = False
+    self.sonata_hybrid_main_cruise_pending = False
     self.hyundai_aol_ready = False
     self.prev_active = False
     self.prev_cruise_enabled = False
@@ -122,27 +119,15 @@ class StarPilotCard:
   def update(self, carState, starpilotCarState, sm, starpilot_toggles):
     self.switchback_mode_enabled = self.params_memory.get_bool("SwitchbackModeEnabled")
     button_event_types = [self._button_type_raw(be) for be in carState.buttonEvents]
-    sonata_hybrid_cruise_ready = self.hyundai_lkas_aol_requires_engagement and carState.cruiseState.available
-    hyundai_lkas_aol_can_toggle = (
-      not self.hyundai_lkas_aol_requires_engagement or
-      self.hyundai_aol_ready or
-      sm["selfdriveState"].active or
-      carState.cruiseState.enabled or
-      sonata_hybrid_cruise_ready
-    )
+    sonata_hybrid_cruise_ready = self.sonata_hybrid_stock_scc and (carState.cruiseState.available or carState.cruiseState.enabled)
 
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
-        self.sonata_hybrid_scc_primed = False
+        self.sonata_hybrid_main_cruise_pending = False
         self.always_on_lateral_allowed = False
       elif sm["selfdriveState"].active or carState.cruiseState.enabled or sonata_hybrid_cruise_ready:
         self.hyundai_aol_ready = True
-        if self.sonata_hybrid_stock_scc and carState.cruiseState.enabled:
-          self.sonata_hybrid_scc_primed = True
-
-    if self.sonata_hybrid_stock_scc and not carState.cruiseState.available and not carState.cruiseState.enabled:
-      self.sonata_hybrid_scc_primed = False
 
     # Hyundai CAN cars should keep driver button intent stable even when cruise
     # availability flickers at low speed.
@@ -150,21 +135,28 @@ class StarPilotCard:
     if self.CP.brand == "hyundai" or starpilot_toggles.lkas_allowed_for_aol:
       for be, be_type in zip(carState.buttonEvents, button_event_types, strict=False):
         if be_type == ButtonType.lkas and be.pressed and starpilot_toggles.always_on_lateral_lkas:
-          if not hyundai_lkas_aol_can_toggle:
-            continue
           aol_button_pressed = True
           if self.hyundai_aol_needs_engagement:
-            self.hyundai_aol_ready = True
+            self.hyundai_aol_ready = not self.always_on_lateral_allowed
           self.always_on_lateral_allowed = not self.always_on_lateral_allowed
           if carState.cruiseState.enabled or self.pause_lateral:
             self.pause_lateral = not self.always_on_lateral_allowed
-        elif be_type == ButtonType.mainCruise and be.pressed:
+        elif be_type == ButtonType.mainCruise:
           if starpilot_toggles.main_cruise_aol_toggle:
             aol_button_pressed = True
-            if self.hyundai_aol_needs_engagement:
-              self.hyundai_aol_ready = True
-            self.always_on_lateral_allowed = not self.always_on_lateral_allowed
-          elif starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:
+            if self.sonata_hybrid_stock_scc:
+              if be.pressed:
+                self.sonata_hybrid_main_cruise_pending = True
+              elif self.sonata_hybrid_main_cruise_pending:
+                self.always_on_lateral_allowed = sonata_hybrid_cruise_ready
+                self.hyundai_aol_ready = sonata_hybrid_cruise_ready
+                self.pause_lateral &= not self.always_on_lateral_allowed
+                self.sonata_hybrid_main_cruise_pending = False
+            elif be.pressed:
+              if self.hyundai_aol_needs_engagement:
+                self.hyundai_aol_ready = True
+              self.always_on_lateral_allowed = not self.always_on_lateral_allowed
+          elif be.pressed and starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:
             self.params_memory.put_bool("SLCAdoptSpeedLimit", True)
     elif starpilot_toggles.always_on_lateral_main:
       if pacifica_hybrid_aol_requires_set_press(self.CP.carFingerprint, self.CP.pcmCruise):
@@ -192,8 +184,7 @@ class StarPilotCard:
     self.always_on_lateral_enabled = self.always_on_lateral_allowed and self.always_on_lateral_set
     self.always_on_lateral_enabled &= carState.gearShifter not in NON_DRIVING_GEARS
     self.always_on_lateral_enabled &= not self.hyundai_aol_needs_engagement or self.hyundai_aol_ready
-    if self.sonata_hybrid_stock_scc and carState.vEgo < SONATA_AOL_LOW_SPEED_PRIME_MS:
-      self.always_on_lateral_enabled &= carState.cruiseState.enabled or (carState.cruiseState.available and self.sonata_hybrid_scc_primed)
+    self.always_on_lateral_enabled &= not self.sonata_hybrid_stock_scc or sonata_hybrid_cruise_ready
     self.always_on_lateral_enabled &= sm["starpilotPlan"].lateralCheck
     self.always_on_lateral_enabled &= sm["liveCalibration"].calPerc >= 1
     self.always_on_lateral_enabled &= (ET.IMMEDIATE_DISABLE not in sm["selfdriveState"].alertType + sm["starpilotSelfdriveState"].alertType) or self.frogs_go_moo

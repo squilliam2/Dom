@@ -8,7 +8,7 @@ from opendbc.can import CANPacker, CANParser
 from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.car_helpers import interfaces
 from opendbc.car.gm import gmcan
-from opendbc.car.gm.carstate import CarState as GMCarState, get_hard_cruise_buttons
+from opendbc.car.gm.carstate import CarState as GMCarState, get_hard_cruise_buttons, update_auto_hold_drive_timers
 from opendbc.car.gm.carcontroller import (
   VisualAlert,
   get_acc_dashboard_fcw_alert,
@@ -94,6 +94,23 @@ class TestGMInterface:
     assert get_hard_cruise_buttons({"ACCButtons": CruiseButtons.RES_ACCEL}) == CruiseButtons.INIT
     assert get_hard_cruise_buttons({"ACCButtonsHard": CruiseButtons.DECEL_SET}) == CruiseButtons.DECEL_SET
 
+  def test_volt_auto_hold_drive_timer_requires_motion_before_startup_arming(self):
+    auto_hold_time, one_pedal_time = update_auto_hold_drive_timers(True, False, 0.0, 0.0)
+
+    assert auto_hold_time == 0.0
+    assert one_pedal_time == 0.0
+
+  def test_volt_auto_hold_drive_timer_accumulates_only_while_moving(self):
+    auto_hold_time, one_pedal_time = update_auto_hold_drive_timers(True, True, 0.0, 0.0)
+
+    assert auto_hold_time == pytest.approx(DT_CTRL)
+    assert one_pedal_time == pytest.approx(DT_CTRL)
+
+    auto_hold_time, one_pedal_time = update_auto_hold_drive_timers(True, False, auto_hold_time, one_pedal_time)
+
+    assert auto_hold_time == pytest.approx(DT_CTRL)
+    assert one_pedal_time == pytest.approx(DT_CTRL)
+
   @parameterized.expand(VOLT_CARS)
   def test_volt_min_steer_speed_is_7_mph(self, car_model):
     CarInterface = interfaces[car_model]
@@ -137,28 +154,6 @@ class TestGMInterface:
       assert list(car_params.longitudinalTuning.kiV) == [0.5, 0.5]
       assert not car_params.startingState
       assert car_params.startAccel == pytest.approx(0.0)
-
-  def test_volt_ascm_sascm_stock_long_sets_marker_only_with_alpha_long_off(self):
-    CarInterface = interfaces[CAR.CHEVROLET_VOLT_ASCM]
-    fingerprint = _empty_fingerprint()
-    fingerprint[0][0x2FF] = 8  # SASCM detected
-
-    stock_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, fingerprint, [], alpha_long=False,
-                                           is_release=False, docs=False, starpilot_toggles=_test_starpilot_toggles())
-    alpha_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, fingerprint, [], alpha_long=True,
-                                           is_release=False, docs=False, starpilot_toggles=_test_starpilot_toggles())
-
-    assert not stock_params.openpilotLongitudinalControl
-    assert stock_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
-    assert alpha_params.openpilotLongitudinalControl
-    assert not alpha_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
-
-  def test_volt_ascm_stock_long_marker_requires_sascm(self):
-    CarInterface = interfaces[CAR.CHEVROLET_VOLT_ASCM]
-    car_params = CarInterface.get_params(CAR.CHEVROLET_VOLT_ASCM, _empty_fingerprint(), [], alpha_long=False,
-                                         is_release=False, docs=False, starpilot_toggles=_test_starpilot_toggles())
-
-    assert not car_params.safetyConfigs[0].safetyParam & GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
 
   def test_volt_cc_sparse_fingerprint_without_camera_sets_no_camera(self):
     CarInterface = interfaces[CAR.CHEVROLET_VOLT_CC]

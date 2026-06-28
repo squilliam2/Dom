@@ -420,7 +420,7 @@ class CarController(CarControllerBase):
     self.last_button_frame = 0
     self.cancel_counter = 0
 
-    self.lka_steering_cmd_counter = -1
+    self.lka_steering_cmd_counter = 0
     self.lka_icon_status_last = (False, False)
 
     self.params = CarControllerParams(self.CP)
@@ -836,17 +836,20 @@ class CarController(CarControllerBase):
       # - on startup, first few msgs are blocked
       # - until we're in sync with camera so counters align when relay closes, preventing a fault.
       #   openpilot can subtly drift, so this is activated throughout a drive to stay synced
-      next_lka_steering_cmd_counter = get_lka_steering_cmd_counter(self.lka_steering_cmd_counter, CS)
-      out_of_sync = next_lka_steering_cmd_counter % 4 != (CS.cam_lka_steering_cmd_counter + 1) % 4
+      out_of_sync = self.lka_steering_cmd_counter % 4 != (CS.cam_lka_steering_cmd_counter + 1) % 4
       if CS.loopback_lka_steering_cmd_ts_nanos == 0 or out_of_sync:
         steer_step = self.params.STEER_STEP
 
-    self.lka_steering_cmd_counter = get_lka_steering_cmd_counter(self.lka_steering_cmd_counter, CS)
+    self.lka_steering_cmd_counter += 1 if CS.loopback_lka_steering_cmd_updated else 0
 
     # Avoid GM EPS faults when transmitting messages too close together: skip this transmit if we
     # received the ASCMLKASteeringCmd loopback confirmation too recently
     last_lka_steer_msg_ms = (now_nanos - CS.loopback_lka_steering_cmd_ts_nanos) * 1e-6
     if (self.frame - self.last_steer_frame) >= steer_step and last_lka_steer_msg_ms > MIN_STEER_MSG_INTERVAL_MS:
+      # Initialize ASCMLKASteeringCmd counter using the camera until we get a msg on the bus
+      if CS.loopback_lka_steering_cmd_ts_nanos == 0:
+        self.lka_steering_cmd_counter = CS.pt_lka_steering_cmd_counter + 1
+
       if CC.latActive:
         new_torque = int(round(actuators.torque * self.params.STEER_MAX))
         apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.params)
@@ -861,7 +864,6 @@ class CarController(CarControllerBase):
       self.apply_torque_last = apply_torque
       idx = self.lka_steering_cmd_counter % 4
       can_sends.append(gmcan.create_steering_control(self.packer_pt, CanBus.POWERTRAIN, apply_torque, idx, CC.latActive))
-      self.lka_steering_cmd_counter = (idx + 1) % 4
 
     if should_spoof_ecm_cruise_status(self.CP) and self.frame % 4 == 0:
       can_sends.append(gmcan.create_ecm_cruise_control_command(

@@ -62,7 +62,6 @@ static bool gm_bolt_2022_pedal = false;
 static bool gm_alt_brake = false;
 static bool gm_volt_auto_hold = false;
 static bool gm_volt_one_pedal = false;
-static bool gm_volt_ascm_stock_acc = false;
 
 static bool gm_cc_long = false;
 static bool gm_has_acc = true;
@@ -367,7 +366,7 @@ static bool gm_tx_hook(const CANPacket_t *msg) {
   if (msg->addr == 0x315U) {
     int brake = ((msg->data[0] & 0xFU) << 8) + msg->data[1];
     brake = (0x1000 - brake) & 0xFFF;
-    bool stock_auto_hold_brake_allowed = gm_volt_auto_hold && !vehicle_moving && !gas_pressed_prev;
+    bool stock_auto_hold_brake_allowed = gm_volt_auto_hold && acc_main_on && !vehicle_moving && !gas_pressed_prev;
     bool stock_one_pedal_brake_allowed = gm_volt_one_pedal && acc_main_on && !gas_pressed_prev && !brake_pressed;
     bool violation = false;
     violation |= !(get_longitudinal_allowed() || stock_auto_hold_brake_allowed || stock_one_pedal_brake_allowed) && (brake != 0);
@@ -520,7 +519,7 @@ static bool gm_fwd_hook(int bus_num, int addr) {
       bool is_acc_actuation_msg = (addr == 0x315U) || (addr == 0x2CBU);
 
       block_msg = is_lkas_msg;
-      if (gm_cam_long || gm_pedal_long || gm_volt_ascm_stock_acc) {
+      if (gm_cam_long || gm_pedal_long) {
         block_msg |= is_acc_status_msg;
       }
       if (gm_cam_long) {
@@ -707,8 +706,16 @@ static safety_config gm_init(uint16_t param) {
   enable_gas_interceptor = GET_FLAG(param, GM_PARAM_PEDAL_INTERCEPTOR);
   gm_force_ascm = GET_FLAG(param, GM_PARAM_HW_ASCM_LONG);
   gm_force_brake_c9 = GET_FLAG(param, GM_PARAM_FORCE_BRAKE_C9);
-  const bool gm_bolt_2022_pedal_param = GET_FLAG(param, GM_PARAM_BOLT_2022_PEDAL);
+  gm_bolt_2022_pedal = GET_FLAG(param, GM_PARAM_BOLT_2022_PEDAL);
   gm_remote_start_boots_comma = GET_FLAG(param, GM_PARAM_REMOTE_START_BOOTS_COMMA);
+  gm_panda_3d1_sched = GET_FLAG(param, GM_PARAM_PANDA_3D1_SCHED) && gm_pedal_long && !gm_has_acc && !gm_bolt_2022_pedal;
+  gm_panda_paddle_sched = GET_FLAG(param, GM_PARAM_PANDA_PADDLE_SCHED) && gm_pedal_long && enable_gas_interceptor;
+  // Reuse the paddle-scheduler bit as a stock-Volt auto-hold marker on non-pedal ACC paths.
+  gm_volt_auto_hold = GET_FLAG(param, GM_PARAM_PANDA_PADDLE_SCHED) && !gm_pedal_long && !gm_cc_long && gm_has_acc;
+  // Reuse the 3D1 scheduler bit as a stock-Volt one-pedal marker on non-pedal
+  // ACC paths. The actual 3D1 scheduler still requires pedal-long and no-ACC,
+  // so this stays isolated from the Bolt pedal path.
+  gm_volt_one_pedal = GET_FLAG(param, GM_PARAM_PANDA_3D1_SCHED) && !gm_pedal_long && !gm_cc_long && gm_has_acc;
   gm_alt_brake = GET_FLAG(param, GM_PARAM_NO_CAMERA) && (gm_hw == GM_ASCM) && !gm_sdgm && !gm_ascm_int;
 
   gm_3d1_spoof_valid = false;
@@ -739,18 +746,6 @@ static safety_config gm_init(uint16_t param) {
   gm_cam_long = GET_FLAG(param, GM_PARAM_HW_CAM_LONG) && !gm_cc_long;
   gm_pcm_cruise = (gm_hw == GM_CAM || gm_sdgm) && !gm_cam_long && !gm_force_ascm && !gm_pedal_long;
   const bool gm_ascm_int_stock_cam = gm_ascm_int && (gm_hw == GM_CAM) && gm_pcm_cruise && !gm_cam_long && !gm_pedal_long && !gm_cc_long;
-  // On the stock-ASCM_INT camera path, reuse the Bolt pedal bit as a Volt
-  // ASCM + SASCM stock-ACC marker and strip its pedal-long meaning.
-  gm_volt_ascm_stock_acc = gm_ascm_int_stock_cam && gm_bolt_2022_pedal_param;
-  gm_bolt_2022_pedal = gm_bolt_2022_pedal_param && !gm_volt_ascm_stock_acc;
-  gm_panda_3d1_sched = GET_FLAG(param, GM_PARAM_PANDA_3D1_SCHED) && gm_pedal_long && !gm_has_acc && !gm_bolt_2022_pedal;
-  gm_panda_paddle_sched = GET_FLAG(param, GM_PARAM_PANDA_PADDLE_SCHED) && gm_pedal_long && enable_gas_interceptor;
-  // Reuse the paddle-scheduler bit as a stock-Volt auto-hold marker on non-pedal ACC paths.
-  gm_volt_auto_hold = GET_FLAG(param, GM_PARAM_PANDA_PADDLE_SCHED) && !gm_pedal_long && !gm_cc_long && gm_has_acc;
-  // Reuse the 3D1 scheduler bit as a stock-Volt one-pedal marker on non-pedal
-  // ACC paths. The actual 3D1 scheduler still requires pedal-long and no-ACC,
-  // so this stays isolated from the Bolt pedal path.
-  gm_volt_one_pedal = GET_FLAG(param, GM_PARAM_PANDA_3D1_SCHED) && !gm_pedal_long && !gm_cc_long && gm_has_acc;
   const bool gm_ascm_int_no_accel_pos = gm_ascm_int && (gm_hw == GM_CAM) && gm_force_brake_c9;
   // FLAG_GM_BOLT_2022_PEDAL is shared with Malibu Hybrid pedal-long. Requiring
   // the paddle scheduler bit narrows this whitelist to the Gen2 Bolt pedal-long

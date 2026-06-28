@@ -297,20 +297,6 @@ def test_gm_ascm_int_stock_cam_f1_rx_pinning():
   assert not safety.safety_config_valid()
 
 
-def test_gm_volt_ascm_stock_acc_marker_blocks_camera_acc_status_forwarding():
-  safety = libsafety_py.libsafety
-  stock_ascm_int = GMSafetyFlags.HW_CAM | GMSafetyFlags.HW_ASCM_INT
-  marked_volt_ascm = stock_ascm_int | GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC
-
-  safety.set_safety_hooks(CarParams.SafetyModel.gm, stock_ascm_int)
-  safety.init_tests()
-  assert safety.safety_fwd_hook(2, 0x370) == 0
-
-  safety.set_safety_hooks(CarParams.SafetyModel.gm, marked_volt_ascm)
-  safety.init_tests()
-  assert safety.safety_fwd_hook(2, 0x370) == -1
-
-
 def test_gm_ascm_int_long_no_accel_pos_uses_stock_cam_rx_checks():
   safety = libsafety_py.libsafety
   safety.set_safety_hooks(CarParams.SafetyModel.gm, GMSafetyFlags.HW_CAM | GMSafetyFlags.HW_CAM_LONG |
@@ -647,18 +633,27 @@ class TestGmVoltAutoHoldCameraSafety(TestGmCameraSafetyBase):
     values = {"FrictionBrakeCmd": -brake}
     return self.packer_chassis.make_can_msg_safety("EBCMFrictionBrakeCmd", 0, values)
 
-  def test_standstill_brake_allowed_without_controls(self):
+  def test_standstill_brake_allowed_without_controls_when_main_on(self):
     self._rx(self._speed_msg(0))
+    self._rx(self._toggle_aol(True))
     self.safety.set_controls_allowed(False)
     self.assertTrue(self._tx(self._send_brake_msg(100)))
 
+  def test_standstill_brake_blocked_without_main_on(self):
+    self._rx(self._speed_msg(0))
+    self._rx(self._toggle_aol(False))
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(self._tx(self._send_brake_msg(100)))
+
   def test_moving_brake_blocked_without_controls(self):
     self._rx(self._speed_msg(self.STANDSTILL_THRESHOLD + 1))
+    self._rx(self._toggle_aol(True))
     self.safety.set_controls_allowed(False)
     self.assertFalse(self._tx(self._send_brake_msg(100)))
 
   def test_gas_blocks_standstill_brake_without_controls(self):
     self._rx(self._speed_msg(0))
+    self._rx(self._toggle_aol(True))
     self._rx(self._user_gas_msg(True))
     self.safety.set_controls_allowed(False)
     self.assertFalse(self._tx(self._send_brake_msg(100)))
@@ -714,13 +709,21 @@ class TestGmVoltAutoHoldSdgmSafety(TestGmSafetyBase):
     values = {"FrictionBrakeCmd": -brake}
     return self.packer_chassis.make_can_msg_safety("EBCMFrictionBrakeCmd", 2, values)
 
-  def test_standstill_brake_allowed_without_controls(self):
+  def test_standstill_brake_allowed_without_controls_when_main_on(self):
     self._rx(self._speed_msg(0))
+    self._rx(self._toggle_aol(True))
     self.safety.set_controls_allowed(False)
     self.assertTrue(self._tx(self._send_brake_msg(100)))
 
+  def test_standstill_brake_blocked_without_main_on(self):
+    self._rx(self._speed_msg(0))
+    self._rx(self._toggle_aol(False))
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(self._tx(self._send_brake_msg(100)))
+
   def test_moving_brake_blocked_without_controls(self):
     self._rx(self._speed_msg(self.STANDSTILL_THRESHOLD + 1))
+    self._rx(self._toggle_aol(True))
     self.safety.set_controls_allowed(False)
     self.assertFalse(self._tx(self._send_brake_msg(100)))
 

@@ -680,17 +680,6 @@ class CarInterface(CarInterfaceBase):
         # Reuse the no-camera safety bit as an ASCM Volt selector for the alternate EBCM brake path.
         ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_NO_CAMERA.value
 
-    volt_ascm_sascm_stock_acc = (
-      candidate == CAR.CHEVROLET_VOLT_ASCM and
-      has_sascm and
-      not alpha_long and
-      ret.pcmCruise and
-      not ret.openpilotLongitudinalControl and
-      not ret.enableGasInterceptorDEPRECATED
-    )
-    if volt_ascm_sascm_stock_acc:
-      ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_VOLT_ASCM_STOCK_ACC.value
-
     try:
       remote_start_boots_comma = params.get_bool("RemoteStartBootsComma")
     except UnknownKeyName:

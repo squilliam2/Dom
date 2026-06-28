@@ -17,7 +17,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.system_settings import St
 from openpilot.selfdrive.ui.layouts.settings.starpilot.appearance import StarPilotAppearanceLayout
 from openpilot.selfdrive.ui.layouts.settings.starpilot.vehicle import StarPilotVehicleSettingsLayout
 
-from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import TileGrid, HubTile, RadioTileGroup, SPACING
+from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import TileGrid, HubTile, RadioTileGroup, SPACING, BreadcrumbController
 
 class StarPilotLayout(Widget):
   CATEGORIES = [
@@ -89,6 +89,7 @@ class StarPilotLayout(Widget):
       StarPilotPanelType.VEHICLE,
     )
 
+    self._breadcrumbs = BreadcrumbController()
     self._main_grid = TileGrid(columns=None, padding=SPACING.tile_gap)
     self._rebuild_grid()
 
@@ -267,7 +268,7 @@ class StarPilotLayout(Widget):
 
     # 1. Draw breadcrumbs in top bar
     crumb_rect = rl.Rectangle(glass_rect.x, glass_rect.y, glass_rect.width, glass_rect.height)
-    aethergrid.draw_breadcrumbs(crumb_rect)
+    self._breadcrumbs.draw(crumb_rect)
 
     # 4. Render active content panel
     if self._current_panel == StarPilotPanelType.MAIN:
@@ -279,15 +280,12 @@ class StarPilotLayout(Widget):
         panel.instance.render(content_rect)
 
   def _handle_mouse_press(self, mouse_pos: MousePos):
-    import openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid as aethergrid
-    aethergrid.PRESSED_BREADCRUMB = aethergrid.resolve_interactive_target(mouse_pos, aethergrid.BREADCRUMB_RECTS, None, pad_x=12, pad_y=12)
+    self._breadcrumbs.init_interaction(mouse_pos)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
-    import openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid as aethergrid
-    target = aethergrid.resolve_interactive_target(mouse_pos, aethergrid.BREADCRUMB_RECTS, None, pad_x=12, pad_y=12)
-    if target and target == aethergrid.PRESSED_BREADCRUMB:
-      aethergrid.handle_breadcrumb_click(target)
-    aethergrid.PRESSED_BREADCRUMB = None
+    action = self._breadcrumbs.finish_interaction(mouse_pos)
+    if action:
+      self._breadcrumbs.handle_click(action)
 
   def _handle_mouse_event(self, mouse_event):
     pass

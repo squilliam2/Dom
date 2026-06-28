@@ -52,6 +52,19 @@ BOLT_CANCEL_BUTTON_CARS = BOLT_GEN1_CANCEL_PERSONALITY_CARS | {
 }
 
 
+def update_auto_hold_drive_timers(in_drive_for_hold: bool, moving_for_hold: bool,
+                                  auto_hold_drive_time: float, one_pedal_drive_time: float) -> tuple[float, float]:
+  if in_drive_for_hold:
+    if moving_for_hold:
+      auto_hold_drive_time = min(auto_hold_drive_time + DT_CTRL, AUTO_HOLD_MIN_DRIVE_TIME_S)
+      one_pedal_drive_time = min(one_pedal_drive_time + DT_CTRL, AUTO_HOLD_MIN_DRIVE_TIME_S)
+  else:
+    auto_hold_drive_time = 0.0
+    one_pedal_drive_time = 0.0
+
+  return auto_hold_drive_time, one_pedal_drive_time
+
+
 class CarState(CarStateBase):
   def __init__(self, CP, FPCP):
     super().__init__(CP, FPCP)
@@ -211,15 +224,10 @@ class CarState(CarStateBase):
       ret.brakePressed = ret.brake >= analog_thresh
 
     in_drive_for_hold = ret.gearShifter in (GearShifter.drive, GearShifter.low, GearShifter.manumatic)
-    if in_drive_for_hold:
-      if ret.brakePressed:
-        self.auto_hold_drive_time = AUTO_HOLD_MIN_DRIVE_TIME_S
-      else:
-        self.auto_hold_drive_time = min(self.auto_hold_drive_time + DT_CTRL, AUTO_HOLD_MIN_DRIVE_TIME_S)
-      self.one_pedal_drive_time = min(self.one_pedal_drive_time + DT_CTRL, AUTO_HOLD_MIN_DRIVE_TIME_S)
-    else:
-      self.auto_hold_drive_time = 0.0
-      self.one_pedal_drive_time = 0.0
+    self.auto_hold_drive_time, self.one_pedal_drive_time = update_auto_hold_drive_timers(
+      in_drive_for_hold, ret.vEgo > 0.1, self.auto_hold_drive_time, self.one_pedal_drive_time
+    )
+    if not in_drive_for_hold:
       self.auto_hold_armed = False
       self.auto_hold_engaged = False
 

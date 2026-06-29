@@ -118,13 +118,12 @@ class StarPilotCard:
   def update(self, carState, starpilotCarState, sm, starpilot_toggles):
     self.switchback_mode_enabled = self.params_memory.get_bool("SwitchbackModeEnabled")
     button_event_types = [self._button_type_raw(be) for be in carState.buttonEvents]
-    sonata_hybrid_cruise_ready = self.sonata_hybrid_stock_scc and (carState.cruiseState.available or carState.cruiseState.enabled)
 
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
         self.always_on_lateral_allowed = False
-      elif sm["selfdriveState"].active or carState.cruiseState.enabled or sonata_hybrid_cruise_ready:
+      elif sm["selfdriveState"].active or carState.cruiseState.enabled:
         self.hyundai_aol_ready = True
 
     # Hyundai CAN cars should keep driver button intent stable even when cruise

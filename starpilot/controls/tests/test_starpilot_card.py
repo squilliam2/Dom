@@ -157,7 +157,7 @@ def test_hyundai_lkas_button_can_toggle_aol_before_normal_engagement(monkeypatch
   assert ret.pauseLateral is False
 
 
-def test_sonata_hybrid_lkas_button_toggles_aol_with_scc_main_available(monkeypatch, tmp_path):
+def test_sonata_hybrid_lkas_button_can_start_aol_before_normal_engagement(monkeypatch, tmp_path):
   monkeypatch.setattr(spc, "Params", FakeParams)
   monkeypatch.setattr(spc, "is_FrogsGoMoo", lambda: False)
   monkeypatch.setattr(spc, "ERROR_LOGS_PATH", tmp_path)

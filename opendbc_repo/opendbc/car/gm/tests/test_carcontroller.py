@@ -208,6 +208,13 @@ def test_bolt_acc_pedal_low_speed_friction_preserves_rolling_stop_authority():
   assert active
 
 
+def test_bolt_acc_pedal_low_speed_friction_drops_out_before_two_clamp():
+  apply_brake, active = shape_bolt_acc_pedal_low_speed_friction(80, 0.9, True, True)
+
+  assert apply_brake == 0
+  assert not active
+
+
 def test_bolt_pedal_long_accel_limit_matches_planner_regen_envelope():
   assert get_bolt_pedal_long_accel_limit(6.66) == pytest.approx(-2.379, abs=1e-3)
   assert get_bolt_pedal_long_accel_limit(3.0) == pytest.approx(-1.70, abs=1e-3)

@@ -32,6 +32,19 @@ def apply_deadzone(error, deadzone):
   return error
 
 
+def get_bolt_acc_pedal_friction_bias(output_accel, a_target, v_ego):
+  if output_accel >= -0.05 or a_target >= -0.80 or v_ego <= 5.0:
+    return 0.0
+
+  authority_gap = max(0.0, abs(a_target) - abs(output_accel))
+  if authority_gap <= 0.25:
+    return 0.0
+
+  speed_factor = interp(v_ego, [5.0, 10.0, 15.0, 25.0], [0.0, 0.55, 0.85, 1.0])
+  max_bias = interp(abs(a_target), [0.8, 1.4, 2.2, 3.5], [0.0, 0.14, 0.42, 0.70])
+  return float(min(authority_gap * 0.30, max_bias) * speed_factor)
+
+
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill, starpilot_toggles,
                              allow_stopping_release=True):
@@ -301,6 +314,10 @@ class LongControl:
       return output_accel
 
     authority_gap = max(0.0, abs(a_target) - abs(output_accel))
+    if self.is_bolt_acc_pedal_friction_car:
+      bias = get_bolt_acc_pedal_friction_bias(output_accel, a_target, CS.vEgo)
+      return output_accel - float(bias)
+
     if authority_gap <= 0.40:
       return output_accel
 

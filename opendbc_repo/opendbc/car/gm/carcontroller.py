@@ -356,7 +356,7 @@ def shape_bolt_acc_pedal_low_speed_friction(apply_brake: int, v_ego: float, stop
     return 0, False
 
   if stopping:
-    stop_fade = float(np.interp(v_ego, [0.0, 0.5, 1.0, 2.0], [0.0, 0.0, 0.45, 0.85]))
+    stop_fade = float(np.interp(v_ego, [0.0, 0.6, 0.9, 1.2, 1.8, 2.8], [0.0, 0.0, 0.05, 0.12, 0.32, 0.78]))
     apply_brake = int(round(apply_brake * stop_fade))
     if apply_brake <= 0 or apply_brake < release_threshold:
       return 0, False

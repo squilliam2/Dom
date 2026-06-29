@@ -8,6 +8,7 @@ from openpilot.common.constants import CV
 from openpilot.starpilot.common.testing_grounds import testing_ground
 
 CIVIC_BOSCH_MODIFIED_B_FIXED_FRICTION_THRESHOLD = 0.30
+HKG_CANFD_BASE_FRICTION_THRESHOLD = 0.39
 CIVIC_BOSCH_MODIFIED_B_LAT_ACCEL_FACTOR_MULT = 1.20
 CIVIC_BOSCH_MODIFIED_A_VARIANT_LAT_ACCEL_FACTOR_MULT = 1.00
 CIVIC_BOSCH_MODIFIED_B_VARIANT_LAT_ACCEL_FACTOR_MULT = 1.75
@@ -455,7 +456,7 @@ IONIQ_EV_OLD_CENTER_TAPER_SPEED_WIDTH = 2.2
 IONIQ_6_FF_GAIN_LEFT = 0.045
 IONIQ_6_FF_GAIN_RIGHT = 0.015
 IONIQ_6_BASE_LAT_ACCEL_FACTOR_MULT = 1.22
-IONIQ_6_BASE_FRICTION_THRESHOLD = 0.36
+IONIQ_6_BASE_FRICTION_THRESHOLD = HKG_CANFD_BASE_FRICTION_THRESHOLD
 IONIQ_6_FF_ONSET = 0.10
 IONIQ_6_FF_ONSET_WIDTH = 0.04
 IONIQ_6_FF_CUTOFF = 0.48
@@ -657,6 +658,10 @@ def _sigmoid(x: float) -> float:
 def get_friction_threshold(v_ego: float) -> float:
   # Keep the speed-scaled friction threshold behavior.
   return float(np.interp(v_ego, [1 * CV.MPH_TO_MS, 20 * CV.MPH_TO_MS, 75 * CV.MPH_TO_MS], [0.16, 0.19, 0.27]))
+
+
+def get_hkg_canfd_base_friction_threshold(v_ego: float) -> float:
+  return max(get_friction_threshold(v_ego), HKG_CANFD_BASE_FRICTION_THRESHOLD)
 
 
 def get_trailer_lateral_assist_factor(trailer_load_kg: float, v_ego: float, desired_lateral_accel: float) -> float:
@@ -1631,7 +1636,7 @@ def get_ioniq_5_ff_scale(desired_lateral_accel: float, desired_lateral_jerk: flo
 
 
 def get_ioniq_5_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_hkg_canfd_base_friction_threshold(v_ego)
   envelope = _ioniq_5_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _ioniq_5_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1771,7 +1776,7 @@ def get_ioniq_6_ff_scale(desired_lateral_accel: float, desired_lateral_jerk: flo
 
 
 def get_ioniq_6_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = max(get_friction_threshold(v_ego), IONIQ_6_BASE_FRICTION_THRESHOLD)
+  base_threshold = max(get_hkg_canfd_base_friction_threshold(v_ego), IONIQ_6_BASE_FRICTION_THRESHOLD)
   transition_envelope = _ioniq_6_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _ioniq_6_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1964,7 +1969,7 @@ def get_kia_ev6_ff_scale(desired_lateral_accel: float, desired_lateral_jerk: flo
 
 
 def get_kia_ev6_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_hkg_canfd_base_friction_threshold(v_ego)
   transition_envelope = _kia_ev6_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _kia_ev6_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)

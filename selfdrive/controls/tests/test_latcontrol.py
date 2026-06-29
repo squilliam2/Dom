@@ -19,6 +19,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_pid import (
   get_civic_bosch_modified_pid_output_alpha,
   get_civic_bosch_modified_pid_output_scale,
 )
+from openpilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import get_hkg_canfd_base_friction_threshold
 from openpilot.selfdrive.controls.lib.latcontrol_torque import (
   get_civic_bosch_modified_a_center_taper_scale,
   LatControlTorque,
@@ -432,7 +433,7 @@ class TestLatControl:
     assert unwind_right < unwind_left
 
   def test_ioniq_5_friction_curves(self):
-    base = get_friction_threshold(12.0)
+    base = get_hkg_canfd_base_friction_threshold(12.0)
     turn_in_left_threshold = get_ioniq_5_friction_threshold(12.0, 0.7, 0.8)
     turn_in_right_threshold = get_ioniq_5_friction_threshold(12.0, -0.7, -0.8)
     unwind_left_threshold = get_ioniq_5_friction_threshold(12.0, 0.7, -0.8)
@@ -449,6 +450,7 @@ class TestLatControl:
     assert turn_in_left_scale > turn_in_right_scale > 1.0
     assert unwind_left_scale < 1.0
     assert unwind_right_scale <= unwind_left_scale
+    assert get_ioniq_5_friction_threshold(25.0, 0.0, 0.0) >= get_hkg_canfd_base_friction_threshold(25.0)
 
   def test_ioniq_5_center_taper_curve(self):
     assert get_ioniq_5_center_taper_scale(0.0, 25.0) < get_ioniq_5_center_taper_scale(0.0, 10.0)
@@ -519,7 +521,7 @@ class TestLatControl:
     assert get_ioniq_6_output_taper_scale(-1.2, 0.7, 25.0) <= get_ioniq_6_output_taper_scale(-1.2, 0.0, 25.0)
 
   def test_ioniq_6_friction_threshold_curve(self):
-    base = max(get_friction_threshold(6.0), 0.36)
+    base = get_hkg_canfd_base_friction_threshold(6.0)
     left_turn_in = get_ioniq_6_friction_threshold(6.0, 0.5, 0.8)
     right_turn_in = get_ioniq_6_friction_threshold(6.0, -0.5, -0.8)
     left_unwind = get_ioniq_6_friction_threshold(6.0, 0.5, -0.8)
@@ -527,7 +529,7 @@ class TestLatControl:
     assert max(left_turn_in, right_turn_in) < base
     assert left_unwind >= base
     assert right_unwind >= base
-    assert get_ioniq_6_friction_threshold(25.0, 0.0, 0.0) >= 0.36
+    assert get_ioniq_6_friction_threshold(25.0, 0.0, 0.0) >= get_hkg_canfd_base_friction_threshold(25.0)
 
   def test_ioniq_6_friction_scale_curve(self):
     base = get_ioniq_6_friction_scale(25.0, 0.5, 0.8)
@@ -555,12 +557,13 @@ class TestLatControl:
     assert get_kia_ev6_ff_scale(1.2, 0.0, 20.0) < get_kia_ev6_ff_scale(0.4, 0.0, 20.0)
 
   def test_kia_ev6_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_hkg_canfd_base_friction_threshold(6.0)
     left_turn_in = get_kia_ev6_friction_threshold(6.0, 0.5, 0.8)
     right_turn_in = get_kia_ev6_friction_threshold(6.0, -0.5, -0.8)
     left_unwind = get_kia_ev6_friction_threshold(6.0, 0.5, -0.8)
     right_unwind = get_kia_ev6_friction_threshold(6.0, -0.5, 0.8)
     assert right_turn_in < left_turn_in < base < right_unwind <= left_unwind
+    assert get_kia_ev6_friction_threshold(25.0, 0.0, 0.0) >= get_hkg_canfd_base_friction_threshold(25.0)
 
   def test_kia_ev6_friction_scale_curve(self):
     base = get_kia_ev6_friction_scale(25.0, 0.5, 0.8)

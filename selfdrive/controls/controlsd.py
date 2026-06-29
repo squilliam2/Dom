@@ -176,11 +176,13 @@ class Controls:
 
     # Check which actuators can be enabled
     standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, 0.3) or CS.standstill
+    always_on_lateral_enabled = self.sm['starpilotCarState'].alwaysOnLateralEnabled
+    lateral_check = self.sm['starpilotPlan'].lateralCheck or always_on_lateral_enabled
     CC.latActive = get_lateral_active(CC.enabled, self.sm['selfdriveState'].active,
-                                      self.sm['starpilotCarState'].alwaysOnLateralEnabled,
+                                      always_on_lateral_enabled,
                                       CS.steerFaultTemporary, CS.steerFaultPermanent,
                                       standstill, self.CP.steerAtStandstill,
-                                      self.sm['starpilotPlan'].lateralCheck)
+                                      lateral_check)
     # EcuDisableFailed is set when car started in READY mode (ECU disable was rejected)
     # Disable longitudinal so stock ACC works instead
     self.update_ecu_disable_failed()

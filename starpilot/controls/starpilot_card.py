@@ -43,7 +43,6 @@ class StarPilotCard:
       getattr(self.CP, "carFingerprint", None) == HYUNDAI_CAR.HYUNDAI_SONATA_HYBRID and
       getattr(self.CP, "pcmCruise", True)
     )
-    self.sonata_hybrid_main_cruise_pending = False
     self.hyundai_aol_ready = False
     self.prev_active = False
     self.prev_cruise_enabled = False
@@ -124,7 +123,6 @@ class StarPilotCard:
     if self.hyundai_aol_needs_engagement:
       if carState.gearShifter in NON_DRIVING_GEARS:
         self.hyundai_aol_ready = False
-        self.sonata_hybrid_main_cruise_pending = False
         self.always_on_lateral_allowed = False
       elif sm["selfdriveState"].active or carState.cruiseState.enabled or sonata_hybrid_cruise_ready:
         self.hyundai_aol_ready = True
@@ -144,18 +142,12 @@ class StarPilotCard:
         elif be_type == ButtonType.mainCruise:
           if starpilot_toggles.main_cruise_aol_toggle:
             aol_button_pressed = True
-            if self.sonata_hybrid_stock_scc:
-              if be.pressed:
-                self.sonata_hybrid_main_cruise_pending = True
-              elif self.sonata_hybrid_main_cruise_pending:
-                self.always_on_lateral_allowed = sonata_hybrid_cruise_ready
-                self.hyundai_aol_ready = sonata_hybrid_cruise_ready
-                self.pause_lateral &= not self.always_on_lateral_allowed
-                self.sonata_hybrid_main_cruise_pending = False
-            elif be.pressed:
+            if be.pressed:
               if self.hyundai_aol_needs_engagement:
-                self.hyundai_aol_ready = True
+                self.hyundai_aol_ready = not self.always_on_lateral_allowed
               self.always_on_lateral_allowed = not self.always_on_lateral_allowed
+              if carState.cruiseState.enabled or self.pause_lateral:
+                self.pause_lateral = not self.always_on_lateral_allowed
           elif be.pressed and starpilot_toggles.main_cruise_slc_adopt and starpilot_toggles.speed_limit_controller:
             self.params_memory.put_bool("SLCAdoptSpeedLimit", True)
     elif starpilot_toggles.always_on_lateral_main:
@@ -184,8 +176,7 @@ class StarPilotCard:
     self.always_on_lateral_enabled = self.always_on_lateral_allowed and self.always_on_lateral_set
     self.always_on_lateral_enabled &= carState.gearShifter not in NON_DRIVING_GEARS
     self.always_on_lateral_enabled &= not self.hyundai_aol_needs_engagement or self.hyundai_aol_ready
-    self.always_on_lateral_enabled &= not self.sonata_hybrid_stock_scc or sonata_hybrid_cruise_ready
-    self.always_on_lateral_enabled &= sm["starpilotPlan"].lateralCheck
+    self.always_on_lateral_enabled &= not self.pause_lateral
     self.always_on_lateral_enabled &= sm["liveCalibration"].calPerc >= 1
     self.always_on_lateral_enabled &= (ET.IMMEDIATE_DISABLE not in sm["selfdriveState"].alertType + sm["starpilotSelfdriveState"].alertType) or self.frogs_go_moo
     self.always_on_lateral_enabled &= not (carState.brakePressed and carState.vEgo < starpilot_toggles.always_on_lateral_pause_speed) or carState.standstill

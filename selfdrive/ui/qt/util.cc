@@ -32,7 +32,7 @@ QString getBrand() {
 }
 
 QString getStarPilotDisplayVersion() {
-  return "7.26";
+  return "6.7";
 }
 
 QString formatStarPilotDisplayVersionDescription(const QString &description) {

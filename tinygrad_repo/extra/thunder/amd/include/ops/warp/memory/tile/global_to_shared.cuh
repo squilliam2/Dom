@@ -22,7 +22,7 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx)
     constexpr int bytes_per_warp = bytes_per_thread * kittens::WARP_THREADS;
     constexpr int memcpy_per_tile = ST::rows * ST::cols * sizeof(T) / (bytes_per_thread * N_THREADS);
     static_assert(ST::rows * ST::cols * sizeof(T) >= bytes_per_warp, "shared tile must be at least 1024 bytes");
-
+    
     constexpr int num_warps = N_THREADS / kittens::WARP_THREADS;
     const int laneid = kittens::laneid();
     const int warpid = kittens::warpid() % num_warps;
@@ -63,7 +63,7 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx)
                 lds_ptr,
                 bytes_per_thread,
                 swizzled_global_byte_offset,
-                0,
+                0, 
                 0, // instruction offset
                 static_cast<int>(coherency::cache_all)); // cache coherency
         }
@@ -99,7 +99,7 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx)
                 lds_ptr,
                 bytes_per_thread,
                 swizzled_global_byte_offset,
-                0,
+                0, 
                 0, // instruction offset
                 static_cast<int>(coherency::cache_all)); // cache coherency
         }
@@ -118,7 +118,7 @@ __device__ inline void prefill_swizzled_offsets(
     ST& dst, const GL& src, uint32_t* swizzled_offsets)
 {
     using T = typename ST::dtype;
-
+ 
     constexpr int bytes_per_thread = ST::underlying_subtile_bytes_per_thread;
     constexpr int bytes_per_warp = bytes_per_thread * kittens::WARP_THREADS;
     constexpr int memcpy_per_tile =  ST::rows * ST::cols * sizeof(T) / (bytes_per_thread * N_THREADS);
@@ -189,7 +189,7 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx, const uint
     constexpr int elements_per_warp = bytes_per_warp / sizeof(T);
     constexpr int memcpy_per_tile = ST::rows * ST::cols * sizeof(T) / (bytes_per_thread * N_THREADS);
     static_assert(ST::rows * ST::cols * sizeof(T) >= bytes_per_warp, "shared tile must be at least 1024 bytes");
-
+    
     constexpr int num_warps = N_THREADS / kittens::WARP_THREADS;
     const int warpid = kittens::warpid() % num_warps;
 
@@ -212,7 +212,7 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx, const uint
             lds_ptr,
             bytes_per_thread,
             swizzled_offsets[i],
-            0,
+            0, 
             0, // instruction offset
             static_cast<int>(coherency::cache_all)); // cache coherency
     }
@@ -235,7 +235,7 @@ __device__ inline void load(ST& dst, const GL& src, const COORD& idx, const uint
                 lds_ptr,
                 bytes_per_thread,
                 swizzled_offsets[memcpy_per_tile],
-                0,
+                0, 
                 0, // instruction offset
                 static_cast<int>(coherency::cache_all)); // cache coherency
         }
@@ -256,7 +256,7 @@ inline __device__ __forceinline__ uint32_t to_sgpr_u32(uint32_t x) {
 }
 
 template<int axis, bool assume_aligned, ducks::st::all ST, ducks::gl::all GL, ducks::coord::tile COORD = coord<ST>, int N_THREADS = WARP_THREADS>
-__attribute__((always_inline))
+__attribute__((always_inline)) 
 __device__ __forceinline__ void load(ST& dst, const GL& src, const COORD& idx,
                                 const uint32_t* __restrict__ swizzled_offsets,
                                 i32x4 SRD,
@@ -290,7 +290,7 @@ __device__ __forceinline__ void load(ST& dst, const GL& src, const COORD& idx,
 
     // ---- SGPR cursor we bump each iteration (no new readfirstlane) ----
     uint32_t lds_cur = lds_base;
-    asm volatile("" : "+s"(lds_cur));
+    asm volatile("" : "+s"(lds_cur)); 
 
     #pragma unroll
     for (int i = 0; i < memcpy_per_tile; ++i) {
@@ -299,11 +299,11 @@ __device__ __forceinline__ void load(ST& dst, const GL& src, const COORD& idx,
 
         asm volatile("s_mov_b32 m0, %0" :: "s"(lds_byte));
         llvm_amdgcn_raw_buffer_load_lds(
-            SRD,
-            (as3_uint32_ptr)0,
-            16,
-            swizzled_offsets[i],
-            SOFF,
+            SRD, 
+            (as3_uint32_ptr)0, 
+            16, 
+            swizzled_offsets[i], 
+            SOFF, 
             0,
             static_cast<int>(coherency::cache_all)
         );
@@ -326,8 +326,8 @@ __device__ static inline void load(ST &dst, const GL &src, const COORD &idx, con
  * @param row_stride[in] The stride between rows in the destination array.
  */
 
-template<int axis, bool assume_aligned,
-        ducks::st::all ST, ducks::gl::all GL,
+template<int axis, bool assume_aligned, 
+        ducks::st::all ST, ducks::gl::all GL, 
         ducks::coord::tile COORD=coord<ST>, int N_THREADS=WARP_THREADS>
 __device__ static inline void store(const GL &dst, const ST &src, const COORD &idx) {
 

@@ -1,9 +1,9 @@
 /**
  * @file
  * @brief Declarations, manipulations, and wrappers for basic types.
- *
+ * 
  * This file is a bunch of utilities for going back and forth between different types.
- *
+ * 
  * Many of them are for the compiler, so as to clean up the code. It unfortunately
  * seems necessary when we have types we really care about that are less than word width.
  */
@@ -350,8 +350,8 @@ template<> struct convertor<float2, bf16_2> {
 template<> struct convertor<bf16_2, float2> {
     static __host__ __device__ inline bf16_2 convert(const float2 &u) {
         uint32_t result;
-        asm volatile("v_cvt_pk_bf16_f32 %0, %1, %2"
-                     : "=v"(result)
+        asm volatile("v_cvt_pk_bf16_f32 %0, %1, %2" 
+                     : "=v"(result) 
                      : "v"(u.x), "v"(u.y));
         return *reinterpret_cast<bf16_2*>(&result);
     }

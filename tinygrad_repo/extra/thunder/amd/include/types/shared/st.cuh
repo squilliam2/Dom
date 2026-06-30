@@ -16,13 +16,13 @@ namespace kittens {
 namespace ducks {
 /**
  * @namespace st
- *
+ * 
  * @brief The namespace where concepts and abstract types for shared tiles live.
  */
 namespace st {
 /**
  * @brief A dummy type used to identify shared tiles.
- *
+ * 
  * For a type to quack like an st, it should define its identifier as ducks::st::identifier.
  * If a type quacks like ducks::st::identifier, it will be treated as an st by compiler checks.
  * This is particularly useful for subtiles.
@@ -125,7 +125,7 @@ struct st_subtile {
     static constexpr int underlying_subtile_elements  = ST::underlying_subtile_elements;
     static constexpr int underlying_subtile_bytes     = ST::underlying_subtile_bytes;
     static constexpr int underlying_subtile_bytes_per_thread = ST::underlying_subtile_bytes_per_thread;
-
+    
     static constexpr int underlying_subtiles_per_row  = ST::underlying_subtiles_per_row;
     static constexpr int underlying_subtiles_per_col  = ST::underlying_subtiles_per_col;
 

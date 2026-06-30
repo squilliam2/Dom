@@ -46,11 +46,11 @@ __device__ inline float2 load_global_vec2(const float2* gptr) {
     asm volatile(
         "global_load_dwordx2 %0, %1, off\n"
         "s_waitcnt vmcnt(0)\n"
-        : "=v"(v)
+        : "=v"(v) 
         : "v"(gptr)
         : "memory"
     );
-    return v;
+    return v;   
 }
 
 __device__ inline float4 load_global_vec4(const float4* gptr) {
@@ -59,11 +59,11 @@ __device__ inline float4 load_global_vec4(const float4* gptr) {
     asm volatile(
         "global_load_dwordx4 %0, %1, off\n"
         "s_waitcnt vmcnt(0)\n"
-        : "=v"(v)
+        : "=v"(v) 
         : "v"(gptr)
         : "memory"
     );
-    return v;
+    return v;   
 }
 
 __device__ inline buffer_resource make_buffer_resource(uint64_t ptr, uint32_t range, uint32_t config) {
@@ -114,12 +114,12 @@ __device__ void llvm_amdgcn_raw_buffer_store_b128(__uint128_t vdata, i32x4 srsrc
 using as3_uint32_ptr = uint32_t __attribute__((address_space(3)))*;
 using int32x4_t = int32_t __attribute__((ext_vector_type(4)));
 
-extern "C" __device__ void
+extern "C" __device__ void 
 llvm_amdgcn_raw_buffer_load_lds(int32x4_t rsrc,
                                 as3_uint32_ptr lds_ptr,
                                 int size,
-                                int voffset,
-                                int soffset,
+                                int voffset, 
+                                int soffset, 
                                 int offset,  // does not change (0); instruction offset
                                 int aux) __asm("llvm.amdgcn.raw.buffer.load.lds"); // cache coherency
 

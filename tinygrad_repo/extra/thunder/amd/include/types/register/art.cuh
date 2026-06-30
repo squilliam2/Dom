@@ -6,15 +6,15 @@
  #pragma once
 
  #include <type_traits>
-
+ 
  #include "../../common/common.cuh"
  #include "art_base.cuh"
  #include "rv.cuh"
-
+ 
  namespace kittens {
-
+ 
  /* ----------  MAIN TILE STRUCT WITH ASSEMBLY MODE  ---------- */
-
+ 
  // helper struct for type inference
  namespace ducks {
  /**
@@ -23,17 +23,17 @@
   * @brief The namespace where concepts and abstract types for register tiles with assembly mode live.
   */
  namespace art {
-
+ 
  // Primitives to define register ranges
  // ---------- type-list ----------
  template <typename... Ts> struct type_list {
      static constexpr int size = sizeof...(Ts);
  };
-
+ 
  template <typename L1, typename L2> struct concat;
  template <typename... A, typename... B>
  struct concat<type_list<A...>, type_list<B...>> { using type = type_list<A..., B...>; };
-
+ 
  // Helper to get size of type_list
  template <typename TList> struct type_list_size;
  template <typename... Ts>
@@ -42,7 +42,7 @@
  };
  template <typename TList>
  static constexpr int type_list_size_v = type_list_size<TList>::value;
-
+ 
  // ---------- range ----------
  template <int L, int R>
  struct range {
@@ -50,15 +50,15 @@
      static constexpr int lo = L, hi = R;
      static constexpr int size = R - L + 1; ///< Number of registers in this range
  };
-
+ 
  // ---------- split one range with alignment to multiples of N ----------
  template <int L, int R, int N, bool Done = (L > R)>
  struct split_one;
-
+ 
  // base
  template <int L, int R, int N>
  struct split_one<L, R, N, true> { using type = type_list<>; };
-
+ 
  // step
  template <int L, int R, int N>
  struct split_one<L, R, N, false> {
@@ -66,57 +66,57 @@
      static_assert(L + N - 1 <= R, "L + N - 1 must be <= R");
      // Highest index within L's alignment block: floor(L/N)*N + (N-1)
      static constexpr int end = L + N - 1;
-
+ 
      using head = range<L, end>;
      using tail = typename split_one<end + 1, R, N>::type;
      using type = typename concat<type_list<head>, tail>::type;
  };
-
+ 
  // ---------- split many ranges ----------
  template <typename RList, int N> struct split_many;
  template <int N>
  struct split_many<type_list<>, N> { using type = type_list<>; };
-
+ 
  template <typename R1, typename... Rs, int N>
  struct split_many<type_list<R1, Rs...>, N> {
      using first = typename split_one<R1::lo, R1::hi, N>::type;
      using rest  = typename split_many<type_list<Rs...>, N>::type;
      using type  = typename concat<first, rest>::type;
  };
-
+ 
  template <typename RList, int N>
  using split_many_t = typename split_many<RList, N>::type;
-
+ 
  // Helper to get the Nth range from a type_list
  template <typename RangeList, int N>
  struct get_nth_range;
-
+ 
  template <typename R1, typename... Rs, int N>
  struct get_nth_range<type_list<R1, Rs...>, N> {
      using type = typename std::conditional_t<N == 0, R1, typename get_nth_range<type_list<Rs...>, N-1>::type>;
  };
-
+ 
  template <typename R1, typename... Rs>
  struct get_nth_range<type_list<R1, Rs...>, 0> {
      using type = R1;
  };
-
+ 
  template <typename RangeList, int N>
  using get_nth_range_t = typename get_nth_range<RangeList, N>::type;
-
+ 
  // ---------- transpose 2D layout ----------
  // Transposes a type_list representing an H×W grid into W×H
  // Original: ranges are in row-major order [r0c0, r0c1, ..., r1c0, r1c1, ...]
  // Result: ranges are in column-major order [r0c0, r1c0, ..., r0c1, r1c1, ...]
  template <typename TList, int H, int W, int... Indices>
  struct transpose_2d_impl;
-
+ 
  // Base case: no more indices to process
  template <typename TList, int H, int W>
  struct transpose_2d_impl<TList, H, W> {
      using type = type_list<>;
  };
-
+ 
  // Recursive case: process one index at a time
  template <typename TList, int H, int W, int I, int... Rest>
  struct transpose_2d_impl<TList, H, W, I, Rest...> {
@@ -126,27 +126,27 @@
      static constexpr int r = I % H;  // row index
      static constexpr int c = I / H;  // column index
      static constexpr int src_idx = r * W + c;  // source index in row-major
-
+ 
      using current = type_list<get_nth_range_t<TList, src_idx>>;
      using rest = typename transpose_2d_impl<TList, H, W, Rest...>::type;
      using type = typename concat<current, rest>::type;
  };
-
+ 
  // Helper to generate index sequence and call impl
  template <typename TList, int H, int W>
  struct transpose_2d_helper {
      static_assert(type_list_size_v<TList> == H * W, "List size must equal H * W");
-
+ 
      template <int... Is>
      static auto make_impl(std::integer_sequence<int, Is...>)
          -> typename transpose_2d_impl<TList, H, W, Is...>::type;
-
+ 
      using type = decltype(make_impl(std::make_integer_sequence<int, H * W>{}));
  };
-
+ 
  template <typename TList, int H, int W>
  using transpose_2d = typename transpose_2d_helper<TList, H, W>::type;
-
+ 
  // Type alias for register range types - any range type works
  template<typename T>
  concept register_range_t = requires {
@@ -154,19 +154,19 @@
      T::hi;
      T::size;
  };
-
+ 
  template<typename RList>
  __device__ inline static void clobber() {
-
+ 
    using registers = ducks::art::split_many_t<RList, 1>;
    [&]<std::size_t... Rs>(std::index_sequence<Rs...>) {
      ([&]<std::size_t R>() {
        macros::clobber_gpr<ducks::art::get_nth_range_t<registers, R>::lo>();
      }.template operator()<Rs>(), ...);
    }(std::make_index_sequence<registers::size>{});
-
+ 
  }
-
+ 
  /**
   * @brief A dummy type used to identify register tiles with assembly mode.
   *
@@ -176,7 +176,7 @@
  struct asm_identifier {}; ///< Unique identifier for assembly-mode tiles only
  } // namespace art
  } // namespace ducks
-
+ 
  /**
   * @brief Main tile structure for manipulating data in registers with assembly mode.
   *
@@ -200,14 +200,14 @@
      using T2 = kittens::base_types::packing<_T>::packed_type;
      using dtype = T2; ///< Data type of the matrix elements
      using register_ranges = _register_ranges; ///< The list of register ranges for distribution
-
+ 
      static constexpr int rows                = _rows; ///< Total number of rows.
      static_assert(rows % art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::rows == 0, "Rows must be divisible by the tile size");
      static constexpr int cols                = _cols; ///< Total number of columns.
      static_assert(cols % art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::cols == 0, "Columns must be divisible by the tile size");
      static constexpr int height              = rows / art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::rows; ///< Height in subtiles.
      static constexpr int width               = cols / art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::cols; ///< Width in subtiles.
-
+     
      // Base tile attributes
      static constexpr int base_tile_rows        = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::rows;        ///< Size of the base tile.
      static constexpr int base_tile_cols        = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::cols;        ///< Size of the base tile.
@@ -216,15 +216,15 @@
      static constexpr int base_tile_reductions  = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::reductions;        ///< Number of reductions of the base tile.
      static constexpr int base_tile_threads_per_reduction = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::threads_per_reduction;        ///< Number of threads per reduction of the base tile.
      static constexpr int base_tile_elements_per_stride_group = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::elements_per_stride_group;        ///< Number of elements per stride group of the base tile.
-
+     
      static constexpr int num_elements        = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::num_elements        * width * height; ///< Total number of elements.
      static constexpr int elements_per_thread = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::elements_per_thread * width * height; ///< Elements handled per thread.
      static constexpr int packed_per_thread   = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::packed_per_thread   * width * height; ///< Packed elements per thread.
      static constexpr int packed_per_base_tile    = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::packed_per_thread; ///< Packed elements per tile.
      static constexpr int elements_per_base_tile  = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::elements_per_thread; ///< Elements per thread per base tile.
-
+ 
      static constexpr int registers_per_stride = art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::registers_per_stride;        ///< Number of registers per stride of the base tile.
-
+ 
      // Static assertion to ensure we have enough register ranges for all base tiles
      static_assert(ducks::art::type_list_size_v<register_ranges> == height * width,
          "Not enough register ranges provided for all base tiles in art");
@@ -235,9 +235,9 @@
     using row_vec = rv<T, cols, base_tile_cols, shape, typename art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::row_vec_layout>; ///< A type representing a row vector for this tile.
     using col_vec = rv<T, rows, base_tile_rows, shape, typename art_base<T, layout, shape, ducks::art::get_nth_range_t<register_ranges, 0>>::col_vec_layout>; ///< A type representing a column vector for this tile.
  };
-
+ 
  /* ----------  CONCEPTS  ---------- */
-
+ 
  namespace ducks {
      namespace art {
      /**
@@ -270,15 +270,15 @@
      */
      template<typename T>
      concept col_layout = all<T> && std::is_same_v<typename T::layout, ducks::rt_layout::col>;
-
-
+     
+     
      } // namespace art
      } // namespace ducks
-
+ 
  /* ----------  WRAPPERS FOR PRETTINESS  ---------- */
-
+ 
  template<int _r, int _c, ducks::rt_layout::all layout=ducks::rt_layout::row, ducks::rt_shape::all shape=ducks::rt_shape::rt_16x16, typename ranges=ducks::art::type_list<ducks::art::range<0, 1>>> using art_fl = art<float, _r, _c, layout, shape, ranges>;
  template<int _r, int _c, ducks::rt_layout::all layout=ducks::rt_layout::row, ducks::rt_shape::all shape=ducks::rt_shape::rt_16x16, typename ranges=ducks::art::type_list<ducks::art::range<0, 1>>> using art_bf = art<bf16,  _r, _c, layout, shape, ranges>;
  template<int _r, int _c, ducks::rt_layout::all layout=ducks::rt_layout::row, ducks::rt_shape::all shape=ducks::rt_shape::rt_16x16, typename ranges=ducks::art::type_list<ducks::art::range<0, 1>>> using art_hf = art<half,  _r, _c, layout, shape, ranges>;
-
+ 
  } // namespace kittens

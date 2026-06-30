@@ -356,7 +356,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -431,7 +431,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 1
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 1));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 1));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col);
@@ -613,7 +613,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {1, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -687,7 +687,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 2
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 2));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 2));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -869,7 +869,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][1], {0, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -943,7 +943,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 3
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 3));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 3));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -1124,7 +1124,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][1], {1, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -1198,7 +1198,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 0 - next iteration
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[toc], 0));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[toc], 0));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -1288,7 +1288,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       tic ^= 1; toc ^= 1;
     }
 
-    // 9. for 1 <= i <= T_r (1024 / 32 = 32)
+    // 9. for 1 <= i <= T_r (1024 / 32 = 32)  
     for (int i = 1; i < num_steps - 1; ++i, tic ^= 1, toc ^= 1) {
       const int last_q_head_idx = (i - 1) / num_steps_per_head + first_q_head;
       const int last_q_seq_idx = ((i - 1) % num_steps_per_head) + first_step;
@@ -1397,7 +1397,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -1471,7 +1471,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 1
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 1));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 1));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -1657,7 +1657,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {1, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -1731,7 +1731,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 2
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 2));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 2));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -1913,7 +1913,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][1], {0, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -1987,7 +1987,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 3
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 3));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 3));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -2168,7 +2168,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // Compute Q_i_col_addr
         // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
         Q_i_col_addr = [&] {
-          const int laneid = kittens::laneid();
+          const int laneid = kittens::laneid();  
           const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][1], {1, 0}).data[0]);
           const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
           const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -2242,7 +2242,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
         // dot slice 0 - next iteration
         load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[toc], 0));
         load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[toc], 0));
-
+        
         store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
         mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -2436,7 +2436,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // Compute Q_i_col_addr
       // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
       Q_i_col_addr = [&] {
-        const int laneid = kittens::laneid();
+        const int laneid = kittens::laneid();  
         const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}).data[0]);
         const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
         const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -2510,7 +2510,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // dot slice 1
       load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 1));
       load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 1));
-
+      
       store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -2696,7 +2696,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // Compute Q_i_col_addr
       // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
       Q_i_col_addr = [&] {
-        const int laneid = kittens::laneid();
+        const int laneid = kittens::laneid();  
         const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {1, 0}).data[0]);
         const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
         const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -2770,7 +2770,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // dot slice 2
       load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 2));
       load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 2));
-
+      
       store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -2951,7 +2951,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // Compute Q_i_col_addr
       // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
       Q_i_col_addr = [&] {
-        const int laneid = kittens::laneid();
+        const int laneid = kittens::laneid();  
         const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][1], {0, 0}).data[0]);
         const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
         const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -3025,7 +3025,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // dot slice 3
       load<L_i>(subvec_inplace<DOT_SLICE_QO>(L_smem[tic], 3));
       load<delta_i>(subvec_inplace<DOT_SLICE_QO>(delta_smem[tic], 3));
-
+      
       store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
@@ -3206,7 +3206,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       // Compute Q_i_col_addr
       // uint32_t Q_i_col_addr = get_address(Q_i_col, subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][0], {0, 0}));
       Q_i_col_addr = [&] {
-        const int laneid = kittens::laneid();
+        const int laneid = kittens::laneid();  
         const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&subtile_inplace<DOT_SLICE_QO, D>(Q_i_smem[tic][1], {1, 0}).data[0]);
         const int row_offset = (laneid % 16) / 4 + (laneid / 32) * 8;
         const int col_offset = ((laneid % 4) * 4) + 16*((laneid % 32)/16);
@@ -3278,7 +3278,7 @@ __global__ void attend_bwd_combined_ker(bf16 *dQ_ptr, bf16 *dK_ptr, bf16 *dV_ptr
       mma_AtB<3, 0, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);
 
       // dot slice 0 - next iteration
-
+      
       store<2, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       store<3, 0>(attn_i_smem_subtile, dP_ij_bf16_accum_row, dP_ij_bf16_accum_row_addr);
       mma_AtB<3, 1, 0>(dV_j_T, dO_i_col, P_ij_bf16_col, dV_j_T);

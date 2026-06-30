@@ -2,7 +2,7 @@
  * @file
  * @brief The basic register tile on which larger register tiles are built.
  */
-
+ 
 #pragma once
 
 #include <type_traits>
@@ -17,13 +17,13 @@ namespace kittens {
 namespace ducks {
 /**
  * @namespace rt_base
- *
+ * 
  * @brief The namespace where concepts and abstract types for register base tiles live.
  */
 namespace rt_base {
 /**
  * @brief A dummy type used to identify register base tiles.
- *
+ * 
  * For a type to quack like an rt_base, it should define its identifier as ducks::rt_base::identifier.
  * If a type quacks like ducks::rt_base::identifier, it will be treated as an rt_base by compiler checks.
  */
@@ -39,7 +39,7 @@ struct identifier {};
  *
  * This type is a primarily utility for building larger inline templates
  * out of PTX primitives and managing layouts.
- *
+ * 
  * In general, you probably want a row-major tile, unless you specifically want to call mma
  */
 template<typename _T, ducks::rt_layout::all _layout, ducks::rt_shape::all _shape> struct rt_base {
@@ -76,7 +76,7 @@ template<typename _T, ducks::rt_layout::all _layout, ducks::rt_shape::all _shape
 
     using row_vec_layout = std::conditional_t<std::is_same_v<layout, ducks::rt_layout::row>, ducks::rv_layout::align, ducks::rv_layout::ortho>; // for holding column reductions
     using col_vec_layout = std::conditional_t<std::is_same_v<layout, ducks::rt_layout::row>, ducks::rv_layout::ortho, ducks::rv_layout::align>; // for holding row reductions
-
+    
     dtype data[packed_per_thread]; ///< The actual storage for the base tile
 };
 

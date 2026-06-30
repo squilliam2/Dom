@@ -30,9 +30,9 @@ __device__ inline static void load(RV &dst, const SV &src) {
 
     static_assert(!std::is_same_v<T, fp8e4m3> && !std::is_same_v<U, fp8e4m3>, "Unsupported type for load");
     static_assert(SV::length == RV::length);
-
+    
     int laneid = ::kittens::laneid();
-
+    
     // TODO: this uses no inter-thread communication and is therefore not optimal.
     if constexpr (std::is_same_v<typename RV::layout, align_l>) {
         #pragma unroll

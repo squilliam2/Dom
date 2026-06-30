@@ -223,7 +223,7 @@ template<ducks::art::all D, ducks::art::all A, ducks::art::all B>
 __device__ static inline void mma_ABt(D &d,
                                 const A &a,
                                 const B &b) {
-
+                                
     static_assert(std::is_same_v<typename D::layout, ducks::rt_layout::col>, "D must be a col layout");
     static_assert(std::is_same_v<typename A::layout, ducks::rt_layout::row>, "A must be a row layout");
     static_assert(std::is_same_v<typename B::layout, ducks::rt_layout::row>, "B must be a row layout");
@@ -293,7 +293,7 @@ __device__ static inline void mma_AtB(D &d,
                                 const A &a,
                                 const B &b,
                                 const C &c) {
-
+    
     static_assert(std::is_same_v<typename D::layout, ducks::rt_layout::col>, "D must be a col layout");
     static_assert(std::is_same_v<typename A::layout, ducks::rt_layout::col>, "A must be a col layout");
     static_assert(std::is_same_v<typename B::layout, ducks::rt_layout::col>, "B must be a col layout");
@@ -323,7 +323,7 @@ __device__ static inline void mma_AtB(D &d,
                                 const A &a,
                                 const B &b,
                                 const C &c) {
-
+    
     static_assert(std::is_same_v<typename D::layout, ducks::rt_layout::col>, "D must be a col layout");
     static_assert(std::is_same_v<typename A::layout, ducks::rt_layout::col>, "A must be a col layout");
     static_assert(std::is_same_v<typename B::layout, ducks::rt_layout::col>, "B must be a col layout");
@@ -380,7 +380,7 @@ template<int N, int M, int K, ducks::art::all D, ducks::art::all A, ducks::art::
 __device__ static inline void mma_AtB(D &d,
                                 const A &a,
                                 const B &b) {
-
+                                    
     static_assert(std::is_same_v<typename D::layout, ducks::rt_layout::col>, "D must be a col layout");
     static_assert(std::is_same_v<typename A::layout, ducks::rt_layout::col>, "A must be a col layout");
     static_assert(std::is_same_v<typename B::layout, ducks::rt_layout::col>, "B must be a col layout");
@@ -406,7 +406,7 @@ template<ducks::art::all D, ducks::art::all A, ducks::art::all B>
 __device__ static inline void mma_AtB(D &d,
                                 const A &a,
                                 const B &b) {
-
+    
     static_assert(std::is_same_v<typename D::layout, ducks::rt_layout::col>, "D must be a col layout");
     static_assert(std::is_same_v<typename A::layout, ducks::rt_layout::col>, "A must be a col layout");
     static_assert(std::is_same_v<typename B::layout, ducks::rt_layout::col>, "B must be a col layout");

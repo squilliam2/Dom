@@ -2,7 +2,7 @@
  * @file
  * @brief Templated layouts for global memory.
  */
-
+ 
 #pragma once
 
 #include "../../common/common.cuh"
@@ -81,7 +81,7 @@ struct gl {
         else if constexpr (axis==2) { return size_t(rows()); }
         else if constexpr (axis==3) { return size_t(cols()); }
     }
-    template<int axis> __device__ inline size_t stride() const {
+    template<int axis> __device__ inline size_t stride() const { 
         static_assert(axis==0 || axis==1 || axis==2 || axis==3, "Axis must be 0, 1, 2, or 3.");
         if      constexpr (axis==0) { return depth()*rows()*cols(); }
         else if constexpr (axis==1) { return rows()*cols(); }

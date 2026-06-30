@@ -25,15 +25,15 @@ namespace kittens {
      static_assert(T0::width == T1::width);
      static_assert(T0::height == T1::height);
      static_assert(std::is_same_v<typename T0::dtype, typename T1::dtype>);
-
+ 
      using range_type_T0 = ducks::art::get_nth_range_t<typename T0::register_ranges, N * T0::width + M>;
      using registers_T0 = ducks::art::split_many_t<ducks::art::type_list<range_type_T0>, 1>;
-
+ 
      using range_type_T1 = ducks::art::get_nth_range_t<typename T1::register_ranges, N * T1::width + M>;
      using registers_T1 = ducks::art::split_many_t<ducks::art::type_list<range_type_T1>, 1>;
-
+ 
      static_assert(registers_T0::size == registers_T1::size);
-
+ 
      op::template op<ducks::art::get_nth_range_t<registers_T0, R>::lo, ducks::art::get_nth_range_t<registers_T1, R>::lo>();
  }
 
@@ -63,7 +63,7 @@ __device__ static inline void unary_map() {
     static_assert(T0::width == T1::width);
     static_assert(T0::height == T1::height);
     static_assert(std::is_same_v<typename T0::dtype, typename T1::dtype>);
-
+    
     auto perform_unary_map_at = [&]<int N, int M>() {
         using range_type_T0 = ducks::art::get_nth_range_t<typename T0::register_ranges, N * T0::width + M>;
         using registers_T0 = ducks::art::split_many_t<ducks::art::type_list<range_type_T0>, 1>;
@@ -106,15 +106,15 @@ __device__ static inline void unary_map() {
      static_assert(T0::width == T1::width);
      static_assert(T0::height == T1::height);
      static_assert(std::is_same_v<typename T0::dtype, typename T1::dtype>);
-
+ 
      using range_type_T0 = ducks::art::get_nth_range_t<typename T0::register_ranges, N * T0::width + M>;
      using registers_T0 = ducks::art::split_many_t<ducks::art::type_list<range_type_T0>, 1>;
-
+ 
      using range_type_T1 = ducks::art::get_nth_range_t<typename T1::register_ranges, N * T1::width + M>;
      using registers_T1 = ducks::art::split_many_t<ducks::art::type_list<range_type_T1>, 1>;
-
+ 
      static_assert(registers_T0::size == registers_T1::size);
-
+ 
      op::template op<ducks::art::get_nth_range_t<registers_T0, R>::lo, ducks::art::get_nth_range_t<registers_T1, R>::lo>(param);
  }
 
@@ -358,7 +358,7 @@ __device__ static inline void mov(T0 &dst) {
 
 template<int GPR, ducks::art::all T0>
 __device__ static inline void mov(T0 &dst) {
-
+    
     auto perform_mov_at = [&]<int N, int M>() {
         using range_type_T0 = ducks::art::get_nth_range_t<typename T0::register_ranges, N * T0::width + M>;
         using registers_T0 = ducks::art::split_many_t<ducks::art::type_list<range_type_T0>, 1>;
@@ -427,11 +427,11 @@ __device__ static inline void mul_vgpr(T0 &dst, const T1 &lhs, const U &rhs) {
  */
 template<int N, int M, int GPR, ducks::art::all T0, ducks::art::all T1>
 __device__ static inline void sub_row(T0 &dst, const T1 &src) {
-
+ 
     static_assert(T0::width == T1::width);
     static_assert(T0::height == T1::height);
     static_assert(std::is_same_v<typename T0::dtype, typename T1::dtype>);
-
+ 
     using range_type_T0 = ducks::art::get_nth_range_t<typename T0::register_ranges, N * T0::width + M>;
     using registers_T0 = ducks::art::split_many_t<ducks::art::type_list<range_type_T0>, 1>;
 

@@ -34,7 +34,7 @@ __device__ inline static void load(RV &dst, const GL &src, const COORD &idx) {
     std::uintptr_t as_int = reinterpret_cast<std::uintptr_t>(src_ptr);
     std::uint64_t  as_u64 = static_cast<std::uint64_t>(as_int);    // widen if host is 32-bit
     buffer_resource br = make_buffer_resource(as_u64, buffer_size, 0x00020000);
-
+    
     // TODO: this uses no inter-thread communication and is therefore not optimal.
     if constexpr (std::is_same_v<typename RV::layout, align_l>) {
         #pragma unroll
@@ -45,7 +45,7 @@ __device__ inline static void load(RV &dst, const GL &src, const COORD &idx) {
             for(int i = 0; i < RV::strides_per_tile; i++) {
                 #pragma unroll
                 for(int j = 0; j < RV::packed_per_stride; j++) {
-                    dst[w][i * RV::packed_per_stride + j] =
+                    dst[w][i * RV::packed_per_stride + j] = 
                         base_types::convertor<T2, U2>::convert(*(U2*)&src_ptr[idx + i * RV::elements_per_stride_group + j * RV::packing]);
                 }
             }
@@ -150,7 +150,7 @@ __device__ inline static void store(const GL &dst, const RV &src, const COORD &i
     std::uintptr_t as_int = reinterpret_cast<std::uintptr_t>(dst_ptr);
     std::uint64_t  as_u64 = static_cast<std::uint64_t>(as_int);    // widen if host is 32-bit
     buffer_resource br = make_buffer_resource(as_u64, buffer_size, 0x00020000);
-
+    
     if constexpr (std::is_same_v<typename RV::layout, align_l>) {
         #pragma unroll
         for(auto w = 0; w < RV::outer_dim; w++) {

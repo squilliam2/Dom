@@ -36,7 +36,7 @@ constexpr int WARP_THREADS{64};
  * @brief Get the warp ID of the current thread.
  * @return The warp ID.
  */
-__device__ __forceinline__ int warpid() { return threadIdx.x >> 6; }
+__device__ __forceinline__ int warpid() { return threadIdx.x >> 6; } 
 
 /**
  * @brief Get the number of warps in the threadblock.
@@ -80,10 +80,10 @@ __host__ __device__ inline int ceil_div(int a, int b) {
    * @return The new workgroup ID.
    */
    __host__ __device__ inline int chiplet_transform_chunked(
-    int workgroup_id,
+    int workgroup_id, 
     int num_workgroups,
     int num_xcds,
-    int chunk_size
+    int chunk_size 
 ) {
     // Current XCD
     int xcd = workgroup_id % num_xcds;
@@ -119,7 +119,7 @@ typedef uint32_t      uint2_t __attribute__((ext_vector_type(2)));
  * @namespace ducks
  *
  * @brief ThunderKittens' namespace for template metaprogramming..
- *
+ * 
  * This includes primarily dummy types and concept wrappers, along
  * with a few additional utilities.
  */
@@ -163,7 +163,7 @@ __device__ static inline T packed_shfl_down(uint64_t mask, const T &f, int delta
         if constexpr (std::is_same_v<T, bf16_2>) {
             u.bf162 = *reinterpret_cast<const __hip_bfloat162*>(&f);
         } else {
-            u.bf162 = __hip_bfloat162{*reinterpret_cast<const __hip_bfloat16*>(&f),
+            u.bf162 = __hip_bfloat162{*reinterpret_cast<const __hip_bfloat16*>(&f), 
                                        *reinterpret_cast<const __hip_bfloat16*>(&f)};
         }
 
@@ -265,7 +265,7 @@ struct KITTENS_DEFAULT_ALIGN alignment_dummy { int dummy; };
  * @brief Very simple allocator for dynamic shared memory. Advances pointer and tracks alignments.
  * @tparam default_alignment The default alignment this allocator will enforce. If <=0 (default -1) it will not align.
  */
-template<int default_alignment=16>
+template<int default_alignment=16> 
 struct shared_allocator {
     int *ptr;
 
@@ -281,7 +281,7 @@ struct shared_allocator {
         struct variadic_array<A> {
             using type = A;
         };
-        template<typename A, size_t... dims>
+        template<typename A, size_t... dims> 
         using variadic_array_t = typename variadic_array<A, dims...>::type;
 
         template<int alignment>
@@ -306,7 +306,7 @@ struct shared_allocator {
         * @tparam dims... A list of dimensions for the N-dimensional array.
         * @return Reference to the allocated object.
         */
-        template<typename A, size_t... dims>
+        template<typename A, size_t... dims> 
         __device__ inline variadic_array_t<A, dims...>& allocate() {
             // static_assert(sizeof(A) % default_alignment == 0, "Type is not aligned properly for array allocation");
             align_ptr<default_alignment>();
@@ -322,7 +322,7 @@ struct shared_allocator {
         * @tparam dims... A list of dimensions for the N-dimensional array.
         * @return Reference to the allocated object.
         */
-        template<int alignment, typename A, size_t... dims>
+        template<int alignment, typename A, size_t... dims> 
         __device__ inline variadic_array_t<A, dims...>& allocate() {
             // static_assert(sizeof(A) % alignment == 0, "Type is not aligned properly for array allocation");
             align_ptr<alignment>();

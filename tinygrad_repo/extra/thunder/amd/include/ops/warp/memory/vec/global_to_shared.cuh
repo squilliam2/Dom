@@ -64,7 +64,7 @@ __device__ static inline void load(SV &dst, const GL &src, const COORD &idx) {
         constexpr int leftover_bytes = SV::length * sizeof(T) - num_memcpys * (N_THREADS*bytes_per_thread);
         constexpr int leftover_threads = leftover_bytes / bytes_per_thread;
         constexpr int leftover_warps = leftover_threads / kittens::WARP_THREADS;
-
+        
         if (warpid < leftover_warps) {
             const int warp_offset = warpid + num_memcpys * num_warps;
             const int lane_byte_offset = warp_offset * bytes_per_warp + laneid * bytes_per_thread;
@@ -133,7 +133,7 @@ __device__ static inline void store(const GL &dst, const SV &src, const COORD &i
         constexpr int leftover_bytes = SV::length * sizeof(T) - num_memcpys * (N_THREADS*bytes_per_thread);
         constexpr int leftover_threads = leftover_bytes / bytes_per_thread;
         constexpr int leftover_warps = leftover_threads / kittens::WARP_THREADS;
-
+        
         if (warpid < leftover_warps) {
             const int lane_elem_offset = ((warpid + num_memcpys * num_warps) * elem_per_warp) + laneid * elems_per_thread;
 

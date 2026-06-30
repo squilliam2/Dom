@@ -44,7 +44,7 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
     #pragma unroll
     for(int i = 0; i < dst.height; i++) {
         const int row = dst.base_tile_rows*i + row_offset;
-
+        
         #pragma unroll
         for(int j = 0; j < dst.width; j++) {
 
@@ -139,7 +139,7 @@ __device__ inline static void load(RT &dst, const GL &src, const COORD &idx) {
     static_assert(!std::is_same_v<T, fp8e4m3>, "Unsupported type for load/store");
 
     constexpr int packing = base_types::packing<typename RT::dtype>::num();
-
+    
     U *src_ptr = (U*)&src[(idx.template unit_coord<axis, 3>())];
     const int row_stride = src.template stride<axis>();
     int laneid = kittens::laneid();
@@ -206,7 +206,7 @@ __device__ inline static void store(const GL &dst, const RT &src, const COORD &i
     #pragma unroll
     for(int i = 0; i < src.height; i++) {
         int row = src.base_tile_rows*i + row_offset;
-
+        
         #pragma unroll
         for(int j = 0; j < src.width; j++) {
 

@@ -27,23 +27,23 @@ __device__ inline static void load(const SV &src) {
     using U2 = base_types::packing<U>::packed_type;
 
     static_assert(std::is_same_v<U, float>, "shared_to_register only supports float");
-
+    
     int laneid = ::kittens::laneid();
-
+    
     const int lane_offset = 4*(laneid/16) + laneid%4;
     const uint32_t addr = reinterpret_cast<uintptr_t>(&src.data[0]) + lane_offset * sizeof(U);
 
     if constexpr (GPR >= 256) {
         asm volatile(
             "ds_read_b32 a[%0], %1 offset:%2\n"
-            :
+            : 
             : "n"(GPR - 256), "v"(addr), "i"(0)
             : "memory"
         );
     } else {
         asm volatile(
             "ds_read_b32 v[%0], %1 offset:%2\n"
-            :
+            : 
             : "n"(GPR), "v"(addr), "i"(0)
             : "memory"
         );

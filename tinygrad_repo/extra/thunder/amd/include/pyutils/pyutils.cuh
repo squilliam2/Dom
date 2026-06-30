@@ -14,9 +14,9 @@ template<typename T> struct from_object {
 template<ducks::gl::all GL> struct from_object<GL> {
     static GL make(pybind11::object obj) {
         // Check if argument is a torch.Tensor
-        if (pybind11::hasattr(obj, "__class__") &&
+        if (pybind11::hasattr(obj, "__class__") && 
             obj.attr("__class__").attr("__name__").cast<std::string>() == "Tensor") {
-
+        
             // Check if tensor is contiguous
             if (!obj.attr("is_contiguous")().cast<bool>()) {
                 throw std::runtime_error("Tensor must be contiguous");
@@ -24,7 +24,7 @@ template<ducks::gl::all GL> struct from_object<GL> {
             if (obj.attr("device").attr("type").cast<std::string>() == "cpu") {
                 throw std::runtime_error("Tensor must be on CUDA device");
             }
-
+            
             // Get shape, pad with 1s if needed
             std::array<int, 4> shape = {1, 1, 1, 1};
             auto py_shape = obj.attr("shape").cast<pybind11::tuple>();
@@ -35,10 +35,10 @@ template<ducks::gl::all GL> struct from_object<GL> {
             for (size_t i = 0; i < dims; ++i) {
                 shape[4 - dims + i] = pybind11::cast<int>(py_shape[i]);
             }
-
+            
             // Get data pointer using data_ptr()
             uint64_t data_ptr = obj.attr("data_ptr")().cast<uint64_t>();
-
+            
             // Create GL object using make_gl
             return make_gl<GL>(data_ptr, shape[0], shape[1], shape[2], shape[3]);
         }

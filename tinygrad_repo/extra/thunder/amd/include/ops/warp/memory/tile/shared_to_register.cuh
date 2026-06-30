@@ -50,7 +50,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
     if constexpr (ST::underlying_subtile_rows >= RT::base_tile_rows && ST::underlying_subtile_cols >= RT::base_tile_cols) {
         constexpr int register_subtiles_per_shared_subtile_row = ST::underlying_subtile_cols / RT::base_tile_cols;
         constexpr int register_subtiles_per_shared_subtile_col = ST::underlying_subtile_rows / RT::base_tile_rows;
-
+        
         #pragma unroll
         for (int k = 0; k < RT::base_tile_num_strides; k++) {
             #pragma unroll
@@ -124,7 +124,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
         for (int k = 0; k < RT::base_tile_num_strides; k++) {
             const int col = (col_offset + k * RT::base_tile_elements_per_stride_group) % ST::underlying_subtile_cols;
             const int shared_base_col = (col_offset + k * RT::base_tile_elements_per_stride_group) / ST::underlying_subtile_cols;
-
+            
             const int shared_base_subtile_id = shared_base_row * ST::underlying_subtiles_per_row + shared_base_col;
             const int shared_base_offset = shared_base_subtile_id * ST::underlying_subtile_bytes;
 
@@ -210,12 +210,12 @@ __device__ inline static void load(RT &dst, const ST &src) {
     const int col_offset = ((laneid % 4) * 4) + (16 * ((laneid % dst.base_tile_cols) / 16));
 
     const uint32_t src_ptr = reinterpret_cast<uintptr_t>(&src.data[0]);
-
+    
     // shared subtile is greater than or equal to register subtile
     if constexpr (ST::underlying_subtile_rows >= RT::base_tile_rows && ST::underlying_subtile_cols >= RT::base_tile_cols) {
         constexpr int register_subtiles_per_shared_subtile_row = ST::underlying_subtile_cols / RT::base_tile_cols;
         constexpr int register_subtiles_per_shared_subtile_col = ST::underlying_subtile_rows / RT::base_tile_rows;
-
+        
         #pragma unroll
         for (int k = 0; k < RT::base_tile_num_strides; k++) {
             #pragma unroll
@@ -248,7 +248,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                                         "ds_read_b64_tr_b16 %0, %2 offset:%3\n"
                                         "ds_read_b64_tr_b16 %1, %2 offset:%4\n"
                                         // "s_waitcnt lgkmcnt(0)\n"
-                                        : "=v"(*reinterpret_cast<float2*>(&dst.tiles[register_row][register_col].data[idx])),
+                                        : "=v"(*reinterpret_cast<float2*>(&dst.tiles[register_row][register_col].data[idx])), 
                                         "=v"(*reinterpret_cast<float2*>(&dst.tiles[register_row][register_col].data[idx + 2]))
                                         : "v"(addr), "i"(offset), "i"(offset + 4 * ST::underlying_subtile_row_bytes)
                                         : "memory"
@@ -259,7 +259,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                                         "ds_read_b64_tr_b16 %0, %2 offset:%4\n"
                                         "ds_read_b64_tr_b16 %1, %3 offset:%4\n"
                                         // "s_waitcnt lgkmcnt(0)\n"
-                                        : "=v"(*reinterpret_cast<float2*>(&dst.tiles[register_row][register_col].data[idx])),
+                                        : "=v"(*reinterpret_cast<float2*>(&dst.tiles[register_row][register_col].data[idx])), 
                                         "=v"(*reinterpret_cast<float2*>(&dst.tiles[register_row][register_col].data[idx + 2]))
                                         : "v"(addr), "v"(next_addr), "i"(offset)
                                         : "memory"
@@ -330,7 +330,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                                     asm volatile(
                                         "ds_read_b64_tr_b16 %0, %2 offset:%4\n"
                                         "ds_read_b64_tr_b16 %1, %3 offset:%4\n"
-                                        : "=v"(*reinterpret_cast<float2*>(&dst.tiles[i][j].data[idx])),
+                                        : "=v"(*reinterpret_cast<float2*>(&dst.tiles[i][j].data[idx])), 
                                         "=v"(*reinterpret_cast<float2*>(&dst.tiles[i][j].data[idx + 2]))
                                         : "v"(addr), "v"(next_addr), "i"(offset)
                                         : "memory"
@@ -351,7 +351,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                             }
                         }
                     }
-                }
+                } 
             }
         } else {
             const int col = (col_offset) % ST::underlying_subtile_cols;
@@ -386,7 +386,7 @@ __device__ inline static void load(RT &dst, const ST &src) {
                                 asm volatile(
                                     "ds_read_b64_tr_b16 %0, %2 offset:%4\n"
                                     "ds_read_b64_tr_b16 %1, %3 offset:%4\n"
-                                    : "=v"(*reinterpret_cast<float2*>(&dst.tiles[i][j].data[idx])),
+                                    : "=v"(*reinterpret_cast<float2*>(&dst.tiles[i][j].data[idx])), 
                                     "=v"(*reinterpret_cast<float2*>(&dst.tiles[i][j].data[idx + 2]))
                                     : "v"(addr), "v"(next_addr), "i"(offset)
                                     : "memory"
@@ -447,7 +447,7 @@ __device__ inline static void store(ST &dst, const RT &src) {
     if constexpr (ST::underlying_subtile_rows >= RT::base_tile_rows && ST::underlying_subtile_cols >= RT::base_tile_cols) {
         constexpr int register_subtiles_per_shared_subtile_row = ST::underlying_subtile_cols / RT::base_tile_cols;
         constexpr int register_subtiles_per_shared_subtile_col = ST::underlying_subtile_rows / RT::base_tile_rows;
-
+        
         #pragma unroll
         for (int k = 0; k < RT::base_tile_num_strides; k++) {
             #pragma unroll
@@ -479,7 +479,7 @@ __device__ inline static void store(ST &dst, const RT &src) {
                                     asm volatile(
                                         "ds_write_b64 %0, %2 offset:%4\n"
                                         "ds_write_b64 %1, %3 offset:%4\n"
-                                        :
+                                        : 
                                         : "v"(addr),
                                           "v"(next_addr),
                                           "v"(*reinterpret_cast<const float2*>(&src.tiles[register_row][register_col].data[idx])),
@@ -490,8 +490,8 @@ __device__ inline static void store(ST &dst, const RT &src) {
                                 } else if constexpr (RT::base_tile_stride == 4) {
                                     asm volatile(
                                         "ds_write_b64 %0, %1 offset:%2\n"
-                                        :
-                                        : "v"(addr),
+                                        : 
+                                        : "v"(addr), 
                                           "v"(*reinterpret_cast<const float2*>(&src.tiles[register_row][register_col].data[idx])),
                                           "i"(offset)
                                     );
@@ -542,8 +542,8 @@ __device__ inline static void store(ST &dst, const RT &src) {
                             asm volatile(
                                 "ds_write_b64 %0, %1 offset:%3\n"
                                 "ds_write_b64 %0, %2 offset:%4\n"
-                                :
-                                : "v"(addr),
+                                : 
+                                : "v"(addr), 
                                     "v"(*reinterpret_cast<const float2*>(&src.tiles[i][j].data[idx])),
                                     "v"(*reinterpret_cast<const float2*>(&src.tiles[i][j].data[idx + 2])),
                                     "i"(offset),
@@ -553,8 +553,8 @@ __device__ inline static void store(ST &dst, const RT &src) {
                         } else if constexpr (RT::base_tile_stride == 4) {
                             asm volatile(
                                 "ds_write_b64 %0, %1 offset:%2\n"
-                                :
-                                : "v"(addr),
+                                : 
+                                : "v"(addr), 
                                     "v"(*reinterpret_cast<const float2*>(&src.tiles[i][j].data[idx])),
                                     "i"(offset)
                             );
@@ -595,7 +595,7 @@ __device__ inline static void store(ST &dst, const RT &src) {
     if constexpr (ST::underlying_subtile_rows >= RT::base_tile_rows && ST::underlying_subtile_cols >= RT::base_tile_cols) {
         constexpr int register_subtiles_per_shared_subtile_row = ST::underlying_subtile_cols / RT::base_tile_cols;
         constexpr int register_subtiles_per_shared_subtile_col = ST::underlying_subtile_rows / RT::base_tile_rows;
-
+        
         #pragma unroll
         for (int k = 0; k < RT::base_tile_num_strides; k++) {
             #pragma unroll

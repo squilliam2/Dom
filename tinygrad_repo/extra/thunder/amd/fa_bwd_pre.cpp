@@ -43,9 +43,9 @@ template<int D, typename T=bf16, typename L=col_l, typename S=rt_32x16_s> using 
 template<int D, typename T=bf16, typename L=col_l, typename S=rt_32x16_s> using attn_tile_T_dq = rt<T, 256, 16, L, S>;
 template<int D, typename T=bf16, typename L=row_l, typename S=rt_16x32_s> using kv_tile_dq = rt<T, 256, 32, L, S>;
 
-template<int D> struct attn_prep_globals {
+template<int D> struct attn_prep_globals { 
     gl<bf16, -1, -1, -1, -1> Og;
-    gl<bf16, -1, -1, -1, -1> dOg;
+    gl<bf16, -1, -1, -1, -1> dOg; 
     gl<float, -1, -1, -1, -1> delta;
     dim3 grid() { return dim3(ATTN_B, ATTN_H, ATTN_N / (DOT_SLICE_QO * NUM_WARPS)); }
     dim3 block() { return dim3(NUM_THREADS); }

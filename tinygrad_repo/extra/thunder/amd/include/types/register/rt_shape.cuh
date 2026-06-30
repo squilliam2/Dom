@@ -11,12 +11,12 @@ namespace kittens {
 namespace ducks {
 /**
 * @namespace rt_shape
-*
+* 
 * @brief A namespace for template metaprogramming with register tile layouts.
 * Assumption below is that the col is the reduction dimension
 */
 namespace rt_shape {
-
+ 
 template<int _rows, int _cols, int _stride>
 struct rt_shape {
     static constexpr int rows = _rows;

@@ -3,7 +3,7 @@
 using namespace kittens;
 
 template<int axis, int N, int M, ducks::art::all RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
-__device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, const RT &src, const COORD &idx, int warpid) {
+__device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, const RT &src, const COORD &idx, int warpid) { 
     using T = base_types::packing<typename RT::dtype>::unpacked_type;
     using T2 = base_types::packing<typename RT::dtype>::packed_type;
     using U = typename GL::dtype;
@@ -18,7 +18,7 @@ __device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, cons
     const int row_stride = dst.template stride<axis>();
     int laneid = kittens::laneid();
 
-    const uint32_t buffer_size = row_stride * RT::rows * sizeof(U);
+    const uint32_t buffer_size = row_stride * RT::rows * sizeof(U); 
     std::uintptr_t as_int = reinterpret_cast<std::uintptr_t>(dst_ptr);
     std::uint64_t  as_u64 = static_cast<std::uint64_t>(as_int);
     buffer_resource br = make_buffer_resource(as_u64, buffer_size, 0x00020000);
@@ -45,7 +45,7 @@ __device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, cons
 }
 
 template<int axis, ducks::art::all RT, ducks::gl::all GL, ducks::coord::tile COORD=coord<RT>>
-__device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, const RT &src, const COORD &idx, int warpid) {
+__device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, const RT &src, const COORD &idx, int warpid) { 
     using T = base_types::packing<typename RT::dtype>::unpacked_type;
     using T2 = base_types::packing<typename RT::dtype>::packed_type;
     using U = typename GL::dtype;
@@ -60,7 +60,7 @@ __device__ inline static void atomic_pk_add_bf16_with_warpid(const GL &dst, cons
     const int row_stride = dst.template stride<axis>();
     int laneid = kittens::laneid();
 
-    const uint32_t buffer_size = row_stride * RT::rows * sizeof(U);
+    const uint32_t buffer_size = row_stride * RT::rows * sizeof(U); 
     std::uintptr_t as_int = reinterpret_cast<std::uintptr_t>(dst_ptr);
     std::uint64_t  as_u64 = static_cast<std::uint64_t>(as_int);
     buffer_resource br = make_buffer_resource(as_u64, buffer_size, 0x00020000);

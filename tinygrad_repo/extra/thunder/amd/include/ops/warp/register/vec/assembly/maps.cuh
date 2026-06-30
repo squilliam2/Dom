@@ -7,11 +7,11 @@
 
  #include "../../../../../common/common.cuh"
  #include "../../../../../types/types.cuh"
-
+ 
  namespace kittens {
-
+ 
  /* ----------  Vector Maps  ---------- */
-
+ 
  /**
   * @brief Computes the element-wise product of two register vectors.
   *
@@ -31,5 +31,5 @@
    macros::zero::template op<GPR0, GPR0>();
  }
 
-
+ 
  }

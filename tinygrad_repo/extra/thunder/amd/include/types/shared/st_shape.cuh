@@ -11,7 +11,7 @@ namespace kittens {
 namespace ducks {
 /**
 * @namespace st_shape
-*
+* 
 * @brief A namespace for template metaprogramming with shared tile layouts.
 */
 namespace st_shape {
@@ -41,7 +41,7 @@ struct st_16x16 {
         } else {
             static_assert(false, "Unsupported type");
         }
-
+        
     }
 };
 
@@ -76,7 +76,7 @@ struct st_16x16_swizzled {
         } else {
             static_assert(false, "Unsupported type");
         }
-
+        
     }
 };
 
@@ -236,11 +236,11 @@ struct st_16x128 {
 };
 
 template<typename T>
-concept all = std::is_same_v<T, st_16x16> ||
-              std::is_same_v<T, st_16x16_swizzled> ||
-              std::is_same_v<T, st_32x32> ||
-              std::is_same_v<T, st_16x32> ||
-              std::is_same_v<T, st_32x16> ||
+concept all = std::is_same_v<T, st_16x16> || 
+              std::is_same_v<T, st_16x16_swizzled> || 
+              std::is_same_v<T, st_32x32> || 
+              std::is_same_v<T, st_16x32> || 
+              std::is_same_v<T, st_32x16> || 
               std::is_same_v<T, st_8x32>  ||
               std::is_same_v<T, st_16x128>;
 

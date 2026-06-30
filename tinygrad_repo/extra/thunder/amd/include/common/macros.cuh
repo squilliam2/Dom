@@ -587,67 +587,67 @@ template<int GPR_START_A, int GPR_START_B, int GPR_START_C, int GPR_START_D>
 __device__ __forceinline__ void mfma_f32_16x16x32_bf16() {
   if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], a[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], a[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], a[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], v[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], a[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], a[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], a[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], v[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], v[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], v[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], a[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], a[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], v[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], v[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B < 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], v[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   } else {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], v[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 3));
   }
 }
@@ -656,67 +656,67 @@ template<int GPR_START_A, int GPR_START_B, int GPR_START_C, int GPR_START_D>
 __device__ __forceinline__ void mfma_f32_32x32x16_bf16() {
   if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], a[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], a[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], a[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], v[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], a[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], a[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], a[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], v[%2:%3], a[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], v[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], v[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], a[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B < 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], a[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B >= 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], v[%2:%3], a[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B < 256 && GPR_START_C >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], v[%2:%3], v[%4:%5], a[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C - 256), "n"(GPR_START_C + 15 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B < 256 && GPR_START_C < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], v[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   } else {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], v[%2:%3], v[%4:%5], v[%6:%7]"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3), "n"(GPR_START_C), "n"(GPR_START_C + 15));
   }
 }
@@ -794,35 +794,35 @@ template<int GPR_START_A, int GPR_START_B, int GPR_START_D>
 __device__ __forceinline__ void mfma_f32_16x16x32_bf16_zero_accum() {
   if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], a[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], a[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], v[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], a[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], a[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], v[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B < 256) {
     asm volatile("v_mfma_f32_16x16x32_bf16 a[%0:%1], v[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 3 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   } else {
     asm volatile("v_mfma_f32_16x16x32_bf16 v[%0:%1], v[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 3), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   }
 }
@@ -831,35 +831,35 @@ template<int GPR_START_A, int GPR_START_B, int GPR_START_D>
 __device__ __forceinline__ void mfma_f32_32x32x16_bf16_zero_accum() {
   if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], a[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], a[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], v[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A >= 256 && GPR_START_B < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], a[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A >= 256 && GPR_START_B < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], a[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A - 256), "n"(GPR_START_A + 3 - 256), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   } else if constexpr (GPR_START_D < 256 && GPR_START_A < 256 && GPR_START_B >= 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], v[%2:%3], a[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B - 256), "n"(GPR_START_B + 3 - 256));
   } else if constexpr (GPR_START_D >= 256 && GPR_START_A < 256 && GPR_START_B < 256) {
     asm volatile("v_mfma_f32_32x32x16_bf16 a[%0:%1], v[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D - 256), "n"(GPR_START_D + 15 - 256), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   } else {
     asm volatile("v_mfma_f32_32x32x16_bf16 v[%0:%1], v[%2:%3], v[%4:%5], 0"
-      :
+      : 
       : "n"(GPR_START_D), "n"(GPR_START_D + 15), "n"(GPR_START_A), "n"(GPR_START_A + 3), "n"(GPR_START_B), "n"(GPR_START_B + 3));
   }
 }
@@ -906,16 +906,16 @@ __device__ __forceinline__ void v_subrev_f32_dpp() {
 
   if constexpr (GPR0_START + 3 < 256 && GPR1_START + 3 < 256 && GPR < 256) {
     asm volatile("v_subrev_f32_dpp v[%0], v[%1], v[%2] quad_perm:[0, 0, 0, 0] row_mask:0xf bank_mask:0xf"
-      :
+      : 
       : "n"(GPR0_START), "n"(GPR), "n"(GPR1_START));
     asm volatile("v_subrev_f32_dpp v[%0], v[%1], v[%2] quad_perm:[1, 1, 1, 1] row_mask:0xf bank_mask:0xf"
-      :
+      : 
       : "n"(GPR0_START + 1), "n"(GPR), "n"(GPR1_START + 1));
     asm volatile("v_subrev_f32_dpp v[%0], v[%1], v[%2] quad_perm:[2, 2, 2, 2] row_mask:0xf bank_mask:0xf"
-      :
+      : 
       : "n"(GPR0_START + 2), "n"(GPR), "n"(GPR1_START + 2));
     asm volatile("v_subrev_f32_dpp v[%0], v[%1], v[%2] quad_perm:[3, 3, 3, 3] row_mask:0xf bank_mask:0xf"
-      :
+      : 
       : "n"(GPR0_START + 3), "n"(GPR), "n"(GPR1_START + 3));
   } else {
     static_assert(false, "Invalid operand for instruction: v_subrev_f32_dpp");
@@ -926,7 +926,7 @@ template<int DST_GPR, int SRC_GPR_0, int SRC_GPR_1>
 __device__ __forceinline__ void v_cvt_pk_bf16_f32() {
   if constexpr (DST_GPR < 256 && SRC_GPR_0 < 256 && SRC_GPR_1 < 256) {
     asm volatile("v_cvt_pk_bf16_f32 v[%0], v[%1], v[%2]"
-      :
+      : 
       : "n"(DST_GPR), "n"(SRC_GPR_0), "n"(SRC_GPR_1));
   } else {
     static_assert(false, "Invalid operand for instruction: v_cvt_pk_bf16_f32");
@@ -937,7 +937,7 @@ template<int GPR0, int GPR1>
 __device__ __forceinline__ void v_permlane16_swap_b32_e32() {
   if constexpr (GPR0 < 256 && GPR1 < 256) {
     asm volatile("v_permlane16_swap_b32_e32 v[%0], v[%1]"
-      :
+      : 
       : "n"(GPR0), "n"(GPR1));
   } else {
     static_assert(false, "Invalid operand for instruction: v_permlane16_swap_b32_e32");
@@ -947,7 +947,7 @@ __device__ __forceinline__ void v_permlane16_swap_b32_e32() {
 template<int GPR0, int GPR1>
 __device__ __forceinline__ void v_accvgpr_read_b32() {
   asm volatile("v_accvgpr_read_b32 v[%0], a[%1]"
-    :
+    : 
     : "n"(GPR0), "n"(GPR1 - 256));
 }
 
@@ -955,7 +955,7 @@ template<int GPR, typename T>
 __device__ __forceinline__ void v_mov_b32_up2p(const T value) {
   static_assert(sizeof(T) == sizeof(uint32_t));
   asm volatile("v_mov_b32 v[%0], %1"
-    :
+    : 
     : "n"(GPR), "v"(value));
 }
 
@@ -979,14 +979,14 @@ __device__ __forceinline__ T v_mov_b32_p2up() {
 template<int GPR0, int GPR1>
 __device__ __forceinline__ void v_mov_b32_e32() {
   asm volatile("v_mov_b32_e32 v[%0], v[%1]"
-    :
+    : 
     : "n"(GPR0), "n"(GPR1));
 }
 
 template<int GPR0, int GPR1, int GPR2>
 __device__ __forceinline__ void v_cndmask_b32_e64(uint64_t mask) {
   asm volatile("v_cndmask_b32_e64 v[%0], v[%1], v[%2], %3"
-    :
+    : 
     : "n"(GPR0), "n"(GPR1), "n"(GPR2), "s"(mask));
 }
 
@@ -994,19 +994,19 @@ __device__ __forceinline__ void v_cndmask_b32_e64(uint64_t mask) {
  * @brief Multiplication operation on explicit registers and immediate operand.
  */
 struct mul {
-  template<int GPR0, int GPR1>
+  template<int GPR0, int GPR1> 
   static __device__ inline void op(const float &param) {
     const uint32_t hex = *reinterpret_cast<const uint32_t*>(&param);
     if constexpr (GPR0 < 256 && GPR1 < 256) {
       asm volatile("v_mul_f32_e32 v[%0], %2, v[%1]"
-        :
+        : 
         : "n"(GPR0), "n"(GPR1), "i"(hex));
     } else {
       static_assert(false, "Invalid operand for instruction: v_mul_f32_e32");
     }
   }
 
-  template<int GPR0, int GPR1>
+  template<int GPR0, int GPR1> 
   static __device__ inline void op_pk2(const float &param) {
     op<GPR0, GPR1>(param);
     op<GPR0 + 1, GPR1 + 1>(param);
@@ -1016,7 +1016,7 @@ struct mul {
   static __device__ inline void op() {
     if constexpr (GPR0 < 256 && GPR1 < 256 && GPR2 < 256) {
       asm volatile("v_mul_f32_e32 v[%0], v[%2], v[%1]"
-        :
+        : 
         : "n"(GPR0), "n"(GPR1), "n"(GPR2));
     } else {
       static_assert(false, "Invalid operand for instruction: v_mul_f32_e32");
@@ -1027,32 +1027,32 @@ struct mul {
   static __device__ inline void op_pk2() {
     if constexpr (GPR0 < (256 - 1) && GPR1 < (256 - 1) && GPR2 < (256 - 1)) {
       asm volatile("v_pk_mul_f32 v[%0:%1], v[%4:%5], v[%2:%3]"
-        :
+        : 
         : "n"(GPR0), "n"(GPR0 + 1), "n"(GPR1), "n"(GPR1 + 1), "n"(GPR2), "n"(GPR2 + 1));
     } else {
       static_assert(false, "Invalid operand for instruction: v_pk_mul_f32");
     }
   }
-};
+}; 
 
  struct mul_vgpr {
-  template<int GPR0, int GPR1>
+  template<int GPR0, int GPR1> 
   static __device__ inline void op(const float &param) {
     if constexpr (GPR0 < 256 && GPR1 < 256) {
       asm volatile("v_mul_f32_e32 v[%0], %2, v[%1]"
-        :
+        : 
         : "n"(GPR0), "n"(GPR1), "v"(param));
     } else {
       static_assert(false, "Invalid operand for instruction: v_mul_f32_e32");
     }
   }
 
-  template<int GPR0, int GPR1>
+  template<int GPR0, int GPR1> 
   static __device__ inline void op_pk2(const float &param) {
     if constexpr (GPR0 < (256 - 1) && GPR1 < (256 - 1)) {
       const float2 param2 = {param, param};
       asm volatile("v_pk_mul_f32 v[%0:%1], %4, v[%2:%3]"
-        :
+        : 
         : "n"(GPR0), "n"(GPR0 + 1), "n"(GPR1), "n"(GPR1 + 1), "v"(param2));
     } else {
       static_assert(false, "Invalid operand for instruction: v_pk_mul_f32");
@@ -1061,18 +1061,18 @@ struct mul {
 };
 
 struct exp2 {
-  template<int GPR0, int GPR1>
+  template<int GPR0, int GPR1> 
   static __device__ inline void op() {
     if constexpr (GPR0 < 256 && GPR1 < 256) {
       asm volatile(
         "v_exp_f32_e32 v[%0], v[%1]"
-        :
+        : 
         : "n"(GPR0), "n"(GPR1));
     } else {
       static_assert(false, "Invalid operand for instruction: exp2");
     }
   }
-};
+}; 
 
 struct zero {
   template<int GPR0, int GPR1>
@@ -1080,7 +1080,7 @@ struct zero {
     static_assert(GPR0 == GPR1, "GPR0 and GPR1 must be the same");
     if constexpr (GPR0 < 256) {
       asm volatile("v_mov_b32 v[%0], 0"
-        :
+        : 
         : "n"(GPR0));
     } else {
       static_assert(false, "Invalid operand for instruction: zero");

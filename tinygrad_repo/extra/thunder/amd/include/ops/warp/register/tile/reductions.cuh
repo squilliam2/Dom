@@ -276,7 +276,7 @@ __device__ static inline void col_reduce(V &col_accum, const T &src, const V &sr
         }
 
         RT accum_single = op::template op<RT>(accum_packed.x, accum_packed.y);
-
+        
         // Graciously taken from https://github.com/triton-lang/triton/pull/7321/files
         // When numLaneToReduce == 2 && interleave == 32:
         //   step 1: use permlane32_swap() to swap the row 2 and 3 of acc and

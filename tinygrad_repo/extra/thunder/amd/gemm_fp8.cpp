@@ -44,7 +44,7 @@ __device__ inline static void load_st_to_rt(RT &dst, const ST &src) {
 
     constexpr int register_subtiles_per_shared_subtile_row = ST::underlying_subtile_cols / RT::base_tile_cols;
     constexpr int register_subtiles_per_shared_subtile_col = ST::underlying_subtile_rows / RT::base_tile_rows;
-
+    
     #pragma unroll
     for (int k = 0; k < RT::base_tile_num_strides; k++) {
         #pragma unroll
@@ -203,7 +203,7 @@ __global__ __launch_bounds__(512, 2) void hk_fp8_gemm(bf16 *C_ptr, fp8e4m3 *A_pt
     // Inner loop over K dimension
     #pragma unroll 2
     for (int k = 0; k < k_iters - 2; k++, tic^=1, toc^=1) {
-
+        
         auto bs_subtile0 = kittens::subtile_inplace<REG_BLOCK_N, BLOCK_K>(Bs[tic][0], {warp_n, 0});
         load_st_to_rt<RT_B, decltype(bs_subtile0)>(b0, bs_subtile0);
         auto as_subtile0 = kittens::subtile_inplace<REG_BLOCK_M, BLOCK_K>(As[tic][0], {warp_m, 0});

@@ -14,7 +14,7 @@ __device__ static inline void mfma161632(      float2 (&D)[2],
                                          const half_2 (&A)[4],
                                          const half_2 (&B)[4],
                                          const float2 (&C)[2]) {
-
+    
     typedef __attribute__((__vector_size__(8 * sizeof(__fp16)))) __fp16 fp16x8_t;
     typedef __attribute__((__vector_size__(4 * sizeof(float)))) float floatx4_t;
     *(floatx4_t*)D = __builtin_amdgcn_mfma_f32_16x16x32_f16(
@@ -62,7 +62,7 @@ __device__ static inline void mfma323216(      float2 (&D)[8],
     // Cast to the correct vector types that the intrinsic expects
     typedef __attribute__((__vector_size__(8 * sizeof(__fp16)))) __fp16 fp16x8_t;
     typedef __attribute__((__vector_size__(16 * sizeof(float)))) float floatx16_t;
-
+    
     *(floatx16_t*)D = __builtin_amdgcn_mfma_f32_32x32x16_f16(
         *(fp16x8_t*)(A),
         *(fp16x8_t*)(B),
@@ -78,7 +78,7 @@ __device__ static inline void mfma323232(      float2 (&D)[8],
     // Cast to the correct vector types that the intrinsic expects
     typedef __attribute__((__vector_size__(8 * sizeof(__bf16)))) __bf16 bf16x8_t;
     typedef __attribute__((__vector_size__(16 * sizeof(float)))) float floatx16_t;
-
+    
     *(floatx16_t*)C = __builtin_amdgcn_mfma_f32_32x32x16_bf16(
         *(bf16x8_t*)A,
         *(bf16x8_t*)B,
@@ -174,13 +174,13 @@ __device__ static inline void mma_AB_base(rt_base<float, ducks::rt_layout::col, 
     constexpr int A_stride = A_shape::stride;
     constexpr int B_stride = B_shape::stride;
     static_assert(A_stride == B_stride, "A and B must have the same stride");
-
-    if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_16x16> &&
+    
+    if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_16x16> && 
                   A_rows == 16 && A_cols == 32 &&
                   B_rows == 32 && B_cols == 16 &&
                   std::is_same_v<C_shape, typename ducks::rt_shape::rt_16x16>) {
         mfma161632(d.data, a.data, b.data, c.data);
-    } else if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_32x32> &&
+    } else if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_32x32> && 
                   A_rows == 32 && A_cols == 16 &&
                   B_rows == 16 && B_cols == 32 &&
                   std::is_same_v<C_shape, typename ducks::rt_shape::rt_32x32>) {
@@ -310,13 +310,13 @@ __device__ static inline void mma_AtB_base(rt_base<float, ducks::rt_layout::col,
     constexpr int A_stride = A_shape::stride;
     constexpr int B_stride = B_shape::stride;
     static_assert(A_stride == B_stride, "A and B must have the same stride");
-
-    if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_16x16> &&
+    
+    if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_16x16> && 
                   A_rows == 32 && A_cols == 16 &&
                   B_rows == 32 && B_cols == 16 &&
                   std::is_same_v<C_shape, typename ducks::rt_shape::rt_16x16>) {
         mfma161632(d.data, a.data, b.data, c.data);
-    } else if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_32x32> &&
+    } else if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_32x32> && 
                   A_rows == 16 && A_cols == 32 &&
                   B_rows == 16 && B_cols == 32 &&
                   std::is_same_v<C_shape, typename ducks::rt_shape::rt_32x32>) {
@@ -357,13 +357,13 @@ __device__ static inline void mma_AtBt_base(rt_base<float, ducks::rt_layout::col
     constexpr int A_stride = A_shape::stride;
     constexpr int B_stride = B_shape::stride;
     static_assert(A_stride == B_stride, "A and B must have the same stride");
-
-    if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_16x16> &&
+    
+    if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_16x16> && 
                   A_rows == 32 && A_cols == 16 &&
                   B_rows == 16 && B_cols == 32 &&
                   std::is_same_v<C_shape, typename ducks::rt_shape::rt_16x16>) {
         mfma161632(d.data, a.data, b.data, c.data);
-    } else if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_32x32> &&
+    } else if constexpr (std::is_same_v<D_shape, typename ducks::rt_shape::rt_32x32> && 
                   A_rows == 16 && A_cols == 32 &&
                   B_rows == 32 && B_cols == 16 &&
                   std::is_same_v<C_shape, typename ducks::rt_shape::rt_32x32>) {

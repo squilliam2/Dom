@@ -5,7 +5,11 @@ import pytest
 
 import openpilot.selfdrive.controls.lib.longcontrol as longcontrol
 from opendbc.car.gm.values import CAR, GMFlags
-from openpilot.selfdrive.controls.lib.longcontrol import LongControl, LongCtrlState, long_control_state_trans
+from openpilot.selfdrive.controls.lib.longcontrol import (
+  LongControl,
+  LongCtrlState,
+  long_control_state_trans,
+)
 
 
 def make_toggles(**overrides):
@@ -510,10 +514,28 @@ def test_bolt_acc_pedal_friction_feedforward_blends_back_in_for_small_friction_r
   pedal_regen_limit = float(longcontrol.interp(20.0, longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_BP,
                                                longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_V))
   a_target = pedal_regen_limit - 0.10
-  gain_restore = float(longcontrol.interp(0.10, [0.0, 0.25, 0.75], [0.0, 0.6, 1.0]))
-  expected = a_target * (0.20 + ((1.0 - 0.20) * gain_restore))
+  expected_gain = longcontrol.get_bolt_acc_pedal_feedforward_gain(0.20, a_target, 20.0, pedal_regen_limit, 0.0)
+  expected = a_target * expected_gain
 
   assert lc._get_longitudinal_feedforward(a_target, 20.0) == pytest.approx(expected)
+
+
+def test_bolt_acc_pedal_feedforward_gain_stays_base_for_mild_regen():
+  gain = longcontrol.get_bolt_acc_pedal_feedforward_gain(0.2, -1.0, 10.0, -2.75, -0.4)
+
+  assert gain == pytest.approx(0.2)
+
+
+def test_bolt_acc_pedal_feedforward_gain_restores_for_authority_gap():
+  gain = longcontrol.get_bolt_acc_pedal_feedforward_gain(0.2, -1.83, 12.38, -2.79, -0.70)
+
+  assert gain > 0.55
+
+
+def test_bolt_acc_pedal_feedforward_gain_restores_near_friction_handoff():
+  gain = longcontrol.get_bolt_acc_pedal_feedforward_gain(0.2, -2.63, 9.35, -2.69, -1.30)
+
+  assert gain > 0.45
 
 
 def test_bolt_cc_pedal_friction_feedforward_remains_fully_scaled_by_kf():

@@ -817,6 +817,21 @@ def test_shape_truck_positive_accel_is_inactive_when_disabled_or_low_speed():
   assert shape_truck_positive_accel(0.12, 6.0, True) == 0.12
 
 
+def test_shape_truck_positive_accel_preserves_more_follow_authority_with_lead():
+  base = shape_truck_positive_accel(0.28, 26.0, True)
+  relieved = shape_truck_positive_accel(0.28, 26.0, True, lead_visible=True, set_speed_error=6.0)
+
+  assert relieved > base
+  assert relieved < 0.28
+
+
+def test_shape_truck_positive_accel_does_not_relax_without_speed_error():
+  base = shape_truck_positive_accel(0.28, 26.0, True)
+  no_error = shape_truck_positive_accel(0.28, 26.0, True, lead_visible=True, set_speed_error=0.0)
+
+  assert no_error == base
+
+
 def test_use_interceptor_sng_launch_requires_actual_near_stop():
   CP = SimpleNamespace(vEgoStarting=0.25)
 

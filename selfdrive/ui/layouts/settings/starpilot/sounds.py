@@ -23,7 +23,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   TileGrid,
   ToggleTile,
   DEFAULT_PANEL_STYLE,
-  _point_hits,
+  point_hits,
   draw_action_pill,
   draw_list_group_shell,
   draw_section_header,
@@ -34,12 +34,12 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   GROUP_HAIRLINE_COLOR,
   GROUP_HEADER_COLOR,
   draw_group_header,
+  SECTION_GAP,
+  SECTION_HEADER_HEIGHT,
+  SECTION_HEADER_GAP,
 )
 
 PANEL_STYLE = DEFAULT_PANEL_STYLE
-SECTION_GAP = AETHER_LIST_METRICS.section_gap
-SECTION_HEADER_HEIGHT = AETHER_LIST_METRICS.section_header_height
-SECTION_HEADER_GAP = AETHER_LIST_METRICS.section_header_gap
 SOUNDS_PANEL_METRICS = replace(
   COMPACT_PANEL_METRICS,
   outer_margin_y=14,
@@ -219,7 +219,7 @@ class SoundsManagerView(PanelManagerView):
     self._toggle_grid._handle_mouse_event(mouse_event)
 
   def _target_at(self, mouse_pos: MousePos) -> str | None:
-    if _point_hits(mouse_pos, self._reset_rect, None, pad_x=6, pad_y=0):
+    if point_hits(mouse_pos, self._reset_rect, None, pad_x=6, pad_y=0):
       return "action:restore_defaults"
     return None
 
@@ -302,10 +302,10 @@ class SoundsManagerView(PanelManagerView):
     btn_x = rect.x + col_width - btn_w - 8
     btn_y = y + (SECTION_HEADER_HEIGHT - btn_h) / 2
     self._reset_rect = rl.Rectangle(btn_x, btn_y, btn_w, btn_h)
-
+    
     self._interactive_rects["action:restore_defaults"] = self._reset_rect
-
-    hovered = _point_hits(gui_app.last_mouse_event.pos, self._reset_rect, self._scroll_rect, pad_x=6, pad_y=0)
+    
+    hovered = point_hits(gui_app.last_mouse_event.pos, self._reset_rect, self._scroll_rect, pad_x=6, pad_y=0)
     pressed = self._pressed_target == "action:restore_defaults"
     draw_action_pill(
       self._reset_rect, tr("Reset All"),

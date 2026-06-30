@@ -187,12 +187,18 @@ def get_testing_ground_1_brake_switch_bias(v_ego: float) -> int:
   return int(round(np.interp(v_ego, [0.0, 6.0, 15.0, 30.0], [40.0, 85.0, 130.0, 170.0])))
 
 
-def shape_truck_positive_accel(accel: float, v_ego: float, enabled: bool) -> float:
+def shape_truck_positive_accel(accel: float, v_ego: float, enabled: bool,
+                               lead_visible: bool = False, set_speed_error: float = 0.0) -> float:
   if not enabled or accel <= 0.0 or v_ego < 12.0:
     return accel
 
   low_scale = float(np.interp(v_ego, [12.0, 18.0, 25.0, 35.0], [0.95, 0.88, 0.82, 0.76]))
   mid_scale = float(np.interp(v_ego, [12.0, 18.0, 25.0, 35.0], [0.98, 0.94, 0.89, 0.84]))
+
+  if lead_visible and set_speed_error > 0.0:
+    follow_relief = float(np.interp(set_speed_error, [0.0, 1.0, 2.5, 4.0, 6.0], [0.0, 0.08, 0.18, 0.35, 0.55]))
+    low_scale += (1.0 - low_scale) * follow_relief
+    mid_scale += (1.0 - mid_scale) * follow_relief
 
   if accel <= 0.12:
     return accel * low_scale
@@ -939,7 +945,13 @@ class CarController(CarControllerBase):
               getattr(self.CP, "transmissionType", None) == TransmissionType.automatic and
               not self.CP.enableGasInterceptorDEPRECATED
             ):
-              accel_input = shape_truck_positive_accel(accel_input, CS.out.vEgo, True)
+              accel_input = shape_truck_positive_accel(
+                accel_input,
+                CS.out.vEgo,
+                True,
+                lead_visible=CC.hudControl.leadVisible,
+                set_speed_error=max(CC.hudControl.setSpeed - CS.out.vEgo, 0.0),
+              )
 
             accel_cmd = float(np.clip(accel_input, self.params.ACCEL_MIN, accel_max))
             torque = self.tireRadius * ((self.mass * accel_cmd) + (0.5 * self.coeffDrag * self.frontalArea * self.airDensity * CS.out.vEgo ** 2))

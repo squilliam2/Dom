@@ -39,7 +39,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   draw_settings_panel_header,
   draw_soft_card,
   init_list_panel,
-  _point_hits,
+  point_hits,
   wrap_text,
 )
 from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanel
@@ -164,13 +164,13 @@ class MapStatusCard(Widget):
   def _handle_mouse_press(self, mouse_pos: MousePos):
     if not self._touch_valid():
       return
-    if _point_hits(mouse_pos, self._remove_rect, pad_x=10, pad_y=6) and self._controller._remove_enabled():
+    if point_hits(mouse_pos, self._remove_rect, pad_x=10, pad_y=6) and self._controller._remove_enabled():
       self._pressed_remove = True
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if self._pressed_remove:
       self._pressed_remove = False
-      if self._touch_valid() and _point_hits(mouse_pos, self._remove_rect, pad_x=10, pad_y=6) and self._controller._remove_enabled():
+      if self._touch_valid() and point_hits(mouse_pos, self._remove_rect, pad_x=10, pad_y=6) and self._controller._remove_enabled():
         self._controller._on_remove()
 
   def _render(self, rect: rl.Rectangle):
@@ -311,13 +311,13 @@ class MapBrowserCard(Widget):
     if parent_rect is not None and not rl.check_collision_point_rec(mouse_pos, parent_rect):
       return None
     for source_key, rect in self._source_rects.items():
-      if _point_hits(mouse_pos, rect, parent_rect, pad_x=6, pad_y=6):
+      if point_hits(mouse_pos, rect, parent_rect, pad_x=6, pad_y=6):
         return f"source:{source_key}"
     for group_key, rect in self._context_tab_rects.items():
-      if _point_hits(mouse_pos, rect, parent_rect, pad_x=4, pad_y=4):
+      if point_hits(mouse_pos, rect, parent_rect, pad_x=4, pad_y=4):
         return f"group:{group_key}"
     for token, rect in self._region_row_rects.items():
-      if _point_hits(mouse_pos, rect, parent_rect, pad_x=6, pad_y=0):
+      if point_hits(mouse_pos, rect, parent_rect, pad_x=6, pad_y=0):
         return f"region:{token}"
     return None
 
@@ -344,7 +344,7 @@ class MapBrowserCard(Widget):
     for index, (source_key, title) in enumerate(sources):
       button_rect = rl.Rectangle(rect.x + index * (button_w + BROWSER_TAB_GAP), rect.y, button_w, BROWSER_CONTEXT_TAB_HEIGHT)
       self._source_rects[source_key] = button_rect
-      hovered = _point_hits(mouse_pos, button_rect, self._parent_rect, pad_x=6, pad_y=6)
+      hovered = point_hits(mouse_pos, button_rect, self._parent_rect, pad_x=6, pad_y=6)
       pressed = self._pressed_target == f"source:{source_key}"
       current = self._controller._active_source_key() == source_key
 
@@ -383,7 +383,7 @@ class MapBrowserCard(Widget):
       tab_rect = rl.Rectangle(rect.x + index * (tab_w + tab_gap), rect.y, tab_w, BROWSER_CONTEXT_TAB_HEIGHT)
       self._context_tab_rects[group["key"]] = tab_rect
       current = self._controller._active_tab_key() == group["key"]
-      hovered = _point_hits(mouse_pos, tab_rect, self._parent_rect, pad_x=4, pad_y=4)
+      hovered = point_hits(mouse_pos, tab_rect, self._parent_rect, pad_x=4, pad_y=4)
       pressed = self._pressed_target == f"group:{group['key']}"
 
       draw_tab_card(
@@ -426,7 +426,7 @@ class MapBrowserCard(Widget):
       selected = self._controller._get_map_state(token)
       row_rect = rl.Rectangle(rect.x, rect.y + index * BROWSER_REGION_ROW_HEIGHT, rect.width, BROWSER_REGION_ROW_HEIGHT)
       self._region_row_rects[token] = row_rect
-      hovered = _point_hits(mouse_pos, row_rect, self._parent_rect, pad_x=6, pad_y=0)
+      hovered = point_hits(mouse_pos, row_rect, self._parent_rect, pad_x=6, pad_y=0)
       target_key = f"region:{token}"
       action_text = self._controller._region_action_text(token)
       draw_selection_list_row(
@@ -1136,6 +1136,7 @@ class StarPilotMapsLayout(StarPilotPanel):
     self._browser_card.render(rl.Rectangle(rect.x, y, width, browser_height))
 
   def _render(self, rect: rl.Rectangle):
+    self._update_state()
     self.set_rect(rect)
     frame, scroll_rect, content_width = init_list_panel(rect, PANEL_STYLE, MAPS_METRICS)
 

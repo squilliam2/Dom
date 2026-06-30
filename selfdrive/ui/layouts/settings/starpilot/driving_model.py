@@ -38,7 +38,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   AetherListColors,
   AetherScrollbar,
   DEFAULT_PANEL_STYLE,
-  _point_hits,
+  point_hits,
   draw_action_rail,
   draw_action_pill,
   draw_busy_ring,
@@ -59,13 +59,11 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   draw_interactive_rect,
   resolve_interactive_target,
   wrap_text,
+  SECTION_GAP,
+  SECTION_HEADER_HEIGHT,
+  SECTION_HEADER_GAP,
+  ROW_HEIGHT,
 )
-
-
-SECTION_GAP = AETHER_LIST_METRICS.section_gap
-SECTION_HEADER_HEIGHT = AETHER_LIST_METRICS.section_header_height
-SECTION_HEADER_GAP = AETHER_LIST_METRICS.section_header_gap
-ROW_HEIGHT = AETHER_LIST_METRICS.row_height
 UTILITY_ROW_HEIGHT = AETHER_LIST_METRICS.utility_row_height
 ROW_RADIUS = AETHER_LIST_METRICS.row_radius
 ACTION_WIDTH = AETHER_LIST_METRICS.action_width
@@ -199,7 +197,7 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
       for target_id, rect in self._interactive_rects.items():
         if target_id.startswith(prefix):
           pad_y = 6 if prefix == "menu:" else 0
-          if _point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=pad_y):
+          if point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=pad_y):
             return target_id
     return None
 
@@ -386,7 +384,7 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
 
   def _draw_model_row(self, rect: rl.Rectangle, entry: ModelCatalogEntry, is_last: bool):
     mouse_pos = gui_app.last_mouse_event.pos
-    row_hovered = bool(_point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=0))
+    row_hovered = bool(point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=0))
     target_key = f"row:{entry.key}"
     pressed = self._pressed_target == target_key
     current = self._controller.is_current_model(entry.key)
@@ -559,7 +557,7 @@ class DrivingModelManagerView(AetherInteractiveMixin, Widget):
 
   def _draw_utility_row(self, rect: rl.Rectangle, row: dict, is_last: bool):
     mouse_pos = gui_app.last_mouse_event.pos
-    hovered = bool(_point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=0))
+    hovered = bool(point_hits(mouse_pos, rect, self._scroll_rect, pad_x=6, pad_y=0))
     pressed = self._pressed_target == f"utility:{row['id']}"
     self._interactive_rects[f"utility:{row['id']}"] = rect
     draw_settings_list_row(

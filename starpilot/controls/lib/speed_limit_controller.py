@@ -439,8 +439,13 @@ class SpeedLimitController:
                    custom.WaySelectionType.extended):
       self.map_speed_limit = sm["mapdOut"].speedLimit
       self.next_speed_limit = sm["mapdOut"].nextSpeedLimit
+    elif way_sel in (custom.WaySelectionType.predicted,
+                     custom.WaySelectionType.possible):
+      speed = sm["mapdOut"].speedLimit
+      if speed > 0 and (self.map_speed_limit == 0 or speed < self.map_speed_limit):
+        self.map_speed_limit = speed
+      self.next_speed_limit = 0
     else:
-      self.map_speed_limit = 0
       self.next_speed_limit = 0
 
     if self.next_speed_limit > 0:

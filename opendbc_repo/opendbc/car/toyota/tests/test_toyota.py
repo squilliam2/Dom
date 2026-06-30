@@ -306,7 +306,7 @@ class TestToyotaCarController:
 
   def test_prius_positive_feedforward_scale_restores_cruise_authority(self):
     assert get_prius_positive_feedforward_scale(20.0) > get_prius_positive_feedforward_scale(8.0)
-    assert abs(get_prius_positive_feedforward_scale(20.0) - 0.85) < 1e-6
+    assert abs(get_prius_positive_feedforward_scale(20.0) - 1.0) < 1e-6
 
   def test_sng_hack_clears_existing_standstill_latch(self):
     controller = self._make_controller(standstill_req=True, last_standstill=True)

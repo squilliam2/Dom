@@ -17,7 +17,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.system_settings import St
 from openpilot.selfdrive.ui.layouts.settings.starpilot.appearance import StarPilotAppearanceLayout
 from openpilot.selfdrive.ui.layouts.settings.starpilot.vehicle import StarPilotVehicleSettingsLayout
 
-from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import TileGrid, HubTile, RadioTileGroup, SPACING, BreadcrumbController
+from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import TileGrid, HubTile, SPACING, BreadcrumbController, AETHER_LIST_METRICS, draw_rounded_fill, draw_rounded_stroke
 
 class StarPilotLayout(Widget):
   CATEGORIES = [
@@ -64,8 +64,8 @@ class StarPilotLayout(Widget):
 
     StarPilotLayout.active_instance = self
 
-    self._panel_stack: list[tuple[StarPilotPanelType, str]] = []
-    self._sub_panel_callbacks: dict[str, Callable] = {}
+    self._panel_stack: list[tuple[StarPilotPanelType, str]] = []  
+    self._sub_panel_callbacks: dict[str, Callable] = {}  
 
     self._panels = {
       StarPilotPanelType.MAIN: StarPilotPanelInfo("", None),
@@ -102,8 +102,7 @@ class StarPilotLayout(Widget):
   def navigate_back(self):
     if self._panel_stack:
       self._panel_stack.pop()
-      self._update_sub_panel_visibility()
-      self._update_depth()
+      self._commit_navigation()
     elif self._current_panel != StarPilotPanelType.MAIN:
       if self._current_category_idx is not None:
         cat_info = self.CATEGORIES[self._current_category_idx]
@@ -116,9 +115,7 @@ class StarPilotLayout(Widget):
         self._set_current_panel(StarPilotPanelType.MAIN)
     elif self._current_category_idx is not None:
       self._current_category_idx = None
-      self._rebuild_grid()
-      if self._depth_callback:
-        self._depth_callback(0)
+      self._set_current_panel(StarPilotPanelType.MAIN)
 
   def _update_depth(self):
     depth = 0
@@ -133,9 +130,13 @@ class StarPilotLayout(Widget):
         depth += len(self._panel_stack)
     elif self._current_category_idx is not None:
       depth = 1
-
+    
     if self._depth_callback:
       self._depth_callback(depth)
+
+  def _commit_navigation(self):
+    self._update_sub_panel_visibility()
+    self._update_depth()
 
   def _push_sub_panel(self, sub_panel_name: str):
     if sub_panel_name:
@@ -143,8 +144,7 @@ class StarPilotLayout(Widget):
     else:
       while self._panel_stack and self._panel_stack[-1][0] == self._current_panel:
         self._panel_stack.pop()
-    self._update_sub_panel_visibility()
-    self._update_depth()
+    self._commit_navigation()
 
   def _update_sub_panel_visibility(self):
     panel = self._panels[self._current_panel].instance
@@ -165,7 +165,7 @@ class StarPilotLayout(Widget):
 
   def _rebuild_grid(self):
     self._main_grid.clear()
-
+    
     panel_type_map = {
       "SOUNDS": StarPilotPanelType.SOUNDS,
       "SYSTEM": StarPilotPanelType.SYSTEM,
@@ -203,14 +203,14 @@ class StarPilotLayout(Widget):
       # Sub-buttons Grid for selected Category
       cat = self.CATEGORIES[self._current_category_idx]
       visible_buttons = cat["buttons"]
-
+      
       for button_info in visible_buttons:
         if len(button_info) == 3:
           label, panel_key, btn_icon = button_info
         else:
           label, panel_key = button_info
           btn_icon = cat["icon"]
-
+          
         p_type = panel_type_map[panel_key]
         def on_btn_click(p=p_type):
           self._set_current_panel(p)
@@ -227,24 +227,28 @@ class StarPilotLayout(Widget):
   def _set_current_panel(self, panel_type: StarPilotPanelType):
     if panel_type != self._current_panel:
       if self._current_panel != StarPilotPanelType.MAIN:
-        self._panels[self._current_panel].instance.hide_event()
+        old = self._panels[self._current_panel].instance
+        old.hide_event()
+        if hasattr(old, 'set_current_sub_panel'):
+          old.set_current_sub_panel("")
       self._current_panel = panel_type
+      self._panel_stack.clear()
       if panel_type != StarPilotPanelType.MAIN:
         self._panels[panel_type].instance.show_event()
       else:
         self._rebuild_grid()
+    elif panel_type == StarPilotPanelType.MAIN:
+      self._rebuild_grid()
+      self._panel_stack.clear()
 
-    self._update_depth()
+    self._commit_navigation()
 
   def _render(self, rect: rl.Rectangle):
-    import openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid as aethergrid
-    metrics = aethergrid.AETHER_LIST_METRICS
-
     TOP_BAR_HEIGHT = 80
     content_rect = rl.Rectangle(rect.x, rect.y + TOP_BAR_HEIGHT, rect.width, rect.height - TOP_BAR_HEIGHT)
 
     # Standardize width to perfectly match subpanel shells
-    shell_w = min(rect.width - metrics.outer_margin_x * 2, metrics.max_content_width)
+    shell_w = min(rect.width - AETHER_LIST_METRICS.outer_margin_x * 2, AETHER_LIST_METRICS.max_content_width)
     shell_x = rect.x + (rect.width - shell_w) / 2
 
     # 0. Draw top bar with HubTile-style purple glow
@@ -255,13 +259,13 @@ class StarPilotLayout(Widget):
       off = i * 2.5
       gr = rl.Rectangle(glass_rect.x - off, glass_rect.y - off, glass_rect.width + off * 2, glass_rect.height + off * 2)
       a = int(25 * (1.0 - i / 5))
-      aethergrid._draw_rounded_fill(gr, rl.Color(139, 92, 246, max(0, min(255, a))), radius_px=100)
+      draw_rounded_fill(gr, rl.Color(139, 92, 246, max(0, min(255, a))), radius_px=100)
 
     # 0b. Dark fill — strict parity with HubTile _HUD_BG_ON
-    aethergrid._draw_rounded_fill(glass_rect, rl.Color(12, 10, 18, 230), radius_px=100)
+    draw_rounded_fill(glass_rect, rl.Color(12, 10, 18, 255), radius_px=100)
 
     # 0c. Full bright purple border — strict parity
-    aethergrid._draw_rounded_stroke(glass_rect, rl.Color(139, 92, 246, 255), radius_px=100)
+    draw_rounded_stroke(glass_rect, rl.Color(139, 92, 246, 255), radius_px=100)
 
     # 1. Draw breadcrumbs in top bar
     crumb_rect = rl.Rectangle(glass_rect.x, glass_rect.y, glass_rect.width, glass_rect.height)
@@ -269,7 +273,7 @@ class StarPilotLayout(Widget):
 
     # 4. Render active content panel
     if self._current_panel == StarPilotPanelType.MAIN:
-      grid_rect = rl.Rectangle(shell_x, content_rect.y + metrics.outer_margin_y, shell_w, content_rect.height - metrics.outer_margin_y * 2)
+      grid_rect = rl.Rectangle(shell_x, content_rect.y + AETHER_LIST_METRICS.outer_margin_y, shell_w, content_rect.height - AETHER_LIST_METRICS.outer_margin_y * 2)
       self._main_grid.render(grid_rect)
     else:
       panel = self._panels[self._current_panel]

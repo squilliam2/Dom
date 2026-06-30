@@ -3617,6 +3617,28 @@
         "precision": 2
       },
       {
+        "key": "HondaLateralPidKpScale",
+        "label": "Honda PID Kp Scale",
+        "description": "Scale the active Honda lateralTuning.pid.kpV values from openDBC. Applies live to Honda PID lateral only.",
+        "data_type": "float",
+        "ui_type": "numeric",
+        "min": 0.1,
+        "max": 4.0,
+        "step": 0.05,
+        "precision": 2
+      },
+      {
+        "key": "HondaLateralPidKiScale",
+        "label": "Honda PID Ki Scale",
+        "description": "Scale the active Honda lateralTuning.pid.kiV values from openDBC. Applies live to Honda PID lateral only.",
+        "data_type": "float",
+        "ui_type": "numeric",
+        "min": 0.1,
+        "max": 4.0,
+        "step": 0.05,
+        "precision": 2
+      },
+      {
         "key": "AllowImpossibleAcceleration",
         "label": "Allow Impossible Acceleration",
         "description": "WARNING: This suppresses openpilot's excessive longitudinal actuation diagnostic when measured acceleration looks impossible for the requested gas/brake command.\n\nLeave this OFF unless you are intentionally testing edge cases like shifting to neutral and understand that it can hide a real actuation problem.",

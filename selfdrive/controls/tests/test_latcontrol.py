@@ -707,6 +707,24 @@ class TestLatControl:
 
     assert tapered_output == pytest.approx(base_output)
 
+  def test_honda_pid_gain_scales_update_live_from_opendbc_baseline(self):
+    controller, VM, CS, params, _ = self._build_pid_controller(HONDA.HONDA_ACCORD)
+    base_kp_v = list(controller.base_kp_v)
+    base_ki_v = list(controller.base_ki_v)
+
+    starpilot_toggles = SimpleNamespace(honda_lateral_pid_kp_scale=1.5, honda_lateral_pid_ki_scale=0.75)
+    controller.update(True, CS, VM, params, False, 0.0025, False, 0.2, None, None, starpilot_toggles)
+
+    assert controller.pid._k_p[1] == pytest.approx([value * 1.5 for value in base_kp_v])
+    assert controller.pid._k_i[1] == pytest.approx([value * 0.75 for value in base_ki_v])
+
+    starpilot_toggles.honda_lateral_pid_kp_scale = 2.0
+    starpilot_toggles.honda_lateral_pid_ki_scale = 1.25
+    controller.update(True, CS, VM, params, False, 0.0025, False, 0.2, None, None, starpilot_toggles)
+
+    assert controller.pid._k_p[1] == pytest.approx([value * 2.0 for value in base_kp_v])
+    assert controller.pid._k_i[1] == pytest.approx([value * 1.25 for value in base_ki_v])
+
   def test_modified_civic_b_torque_path_uses_fixed_friction_threshold(self, monkeypatch):
     CarInterface = interfaces[HONDA.HONDA_CIVIC_BOSCH]
     CP = CarInterface.get_non_essential_params(HONDA.HONDA_CIVIC_BOSCH)

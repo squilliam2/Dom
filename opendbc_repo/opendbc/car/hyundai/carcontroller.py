@@ -69,6 +69,8 @@ DEFAULT_ANGLE_SMOOTHING_ALPHA_V = [0.2, 0.1, 0.0]
 EV9_HIGH_ANGLE_GAIN_BP = [70.0, 120.0, 220.0, 320.0]
 EV9_HIGH_ANGLE_GAIN_CAP_V = [0.85, 0.55, 0.30, 0.16]
 EV9_HIGH_ANGLE_GAIN_MIN = 0.004
+EV9_DRIVER_OVERRIDE_GAIN_BP = [125.0, 250.0, 375.0]
+EV9_DRIVER_OVERRIDE_GAIN_CAP_V = [0.70, 0.12, 0.0]
 
 
 def egmp_dynamic_longitudinal_tuning(CP) -> bool:
@@ -246,12 +248,20 @@ def compute_torque_reduction_gain(steering_torque, v_ego, lat_active, last_gain)
   return round(gain / 0.004) * 0.004
 
 
-def apply_ev9_high_angle_gain_cap(CP, gain: float, steering_angle_deg: float, lat_active: bool) -> float:
+def apply_ev9_high_angle_gain_cap(CP, gain: float, steering_angle_deg: float, lat_active: bool,
+                                  steering_torque: float = 0.0, steering_pressed: bool = False) -> float:
   if CP.carFingerprint != CAR.KIA_EV9 or not CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING or not lat_active:
     return gain
 
   cap = float(np.interp(abs(steering_angle_deg), EV9_HIGH_ANGLE_GAIN_BP, EV9_HIGH_ANGLE_GAIN_CAP_V))
-  return max(EV9_HIGH_ANGLE_GAIN_MIN, min(gain, cap))
+  gain = max(EV9_HIGH_ANGLE_GAIN_MIN, min(gain, cap))
+
+  if steering_pressed or abs(steering_torque) >= EV9_DRIVER_OVERRIDE_GAIN_BP[0]:
+    driver_override_cap = float(np.interp(abs(steering_torque), EV9_DRIVER_OVERRIDE_GAIN_BP,
+                                          EV9_DRIVER_OVERRIDE_GAIN_CAP_V))
+    gain = min(gain, driver_override_cap)
+
+  return gain
 
 
 def process_hud_alert(enabled, fingerprint, hud_control):
@@ -410,7 +420,8 @@ class CarController(CarControllerBase):
                                                   CS.out.steeringAngleDeg, CC.latActive, self.params, self.BASELINE_VM)
 
       apply_torque = compute_torque_reduction_gain(CS.out.steeringTorque, v_ego_raw, CC.latActive, self.apply_torque_last)
-      apply_torque = apply_ev9_high_angle_gain_cap(self.CP, apply_torque, CS.out.steeringAngleDeg, CC.latActive)
+      apply_torque = apply_ev9_high_angle_gain_cap(self.CP, apply_torque, CS.out.steeringAngleDeg, CC.latActive,
+                                                   CS.out.steeringTorque, CS.out.steeringPressed)
       apply_steer_req = CC.latActive and apply_torque != 0.0
       torque_fault = False
 

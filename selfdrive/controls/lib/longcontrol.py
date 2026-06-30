@@ -45,6 +45,27 @@ def get_bolt_acc_pedal_friction_bias(output_accel, a_target, v_ego):
   return float(min(authority_gap * 0.30, max_bias) * speed_factor)
 
 
+def get_bolt_acc_pedal_feedforward_gain(feedforward_gain, a_target, v_ego, pedal_regen_limit, last_output_accel):
+  effective_gain = feedforward_gain
+  if a_target >= 0.0:
+    return effective_gain
+
+  restore = 0.0
+
+  if a_target < pedal_regen_limit:
+    friction_gap = pedal_regen_limit - a_target
+    restore = float(interp(friction_gap, [0.0, 0.25, 0.75], [0.0, 0.6, 1.0]))
+
+  if v_ego > 5.0 and a_target < -1.10:
+    authority_gap = max(0.0, abs(a_target) - abs(min(last_output_accel, 0.0)))
+    target_restore = float(interp(abs(a_target), [1.1, 1.6, 2.2, 3.0], [0.0, 0.25, 0.55, 1.0]))
+    gap_restore = float(interp(authority_gap, [0.2, 0.6, 1.0, 1.6], [0.0, 0.25, 0.60, 1.0]))
+    speed_factor = float(interp(v_ego, [5.0, 8.0, 12.0, 18.0], [0.0, 0.35, 0.75, 1.0]))
+    restore = max(restore, max(target_restore, gap_restore) * speed_factor)
+
+  return float(feedforward_gain + ((1.0 - feedforward_gain) * clip(restore, 0.0, 1.0)))
+
+
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill, starpilot_toggles,
                              allow_stopping_release=True):
@@ -346,12 +367,9 @@ class LongControl:
       return feedforward
 
     pedal_regen_limit = float(interp(v_ego, BOLT_ACC_PEDAL_REGEN_LIMIT_BP, BOLT_ACC_PEDAL_REGEN_LIMIT_V))
-    if a_target >= pedal_regen_limit:
-      return feedforward
-
-    friction_gap = pedal_regen_limit - a_target
-    gain_restore = float(interp(friction_gap, [0.0, 0.25, 0.75], [0.0, 0.6, 1.0]))
-    effective_gain = self.feedforward_gain + ((1.0 - self.feedforward_gain) * gain_restore)
+    effective_gain = get_bolt_acc_pedal_feedforward_gain(
+      self.feedforward_gain, a_target, v_ego, pedal_regen_limit, self.last_output_accel,
+    )
     return a_target * effective_gain
 
   def update(self, active, CS, a_target, should_stop, accel_limits, starpilot_toggles):

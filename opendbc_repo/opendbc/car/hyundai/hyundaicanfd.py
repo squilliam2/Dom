@@ -131,47 +131,25 @@ def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque,
     lkas_values["LKAS_ANGLE_ACTIVE"] = 2 if lat_active else 1
     lkas_values["ADAS_ACIAnglTqRedcGainVal"] = apply_torque if lat_active else 0.0
     if ev9_angle_lkas_alt:
-      if lat_active:
-        lkas_values.update({
-          "LKA_MODE": 0,
-          "LKA_AVAILABLE": 3,
-          "LKA_WARNING": 0,
-          "LKA_ICON": lka_icon,
-          "FCA_SYSWARN": 0,
-          "TORQUE_REQUEST": 0,
-          "STEER_REQ": 0,
-          "LFA_BUTTON": 0,
-          "LKA_ASSIST": 0,
-          "DAMP_FACTOR": 100,
-          "HAS_LANE_SAFETY": 0,
-        })
-      elif lkas_base_values:
-        for signal in ("LKA_MODE", "LKA_AVAILABLE", "LKA_WARNING", "LKA_ICON", "FCA_SYSWARN",
-                       "LFA_BUTTON", "LKA_ASSIST", "DAMP_FACTOR", "HAS_LANE_SAFETY"):
-          if signal in lkas_base_values:
-            lkas_values[signal] = lkas_base_values[signal]
-        lkas_values.update({
-          "TORQUE_REQUEST": 0,
-          "STEER_REQ": 0,
-        })
-      else:
-        lkas_values.update({
-          "LKA_MODE": 0,
-          "LKA_AVAILABLE": 0,
-          "LKA_WARNING": 0,
-          "LKA_ICON": lka_icon,
-          "FCA_SYSWARN": 0,
-          "TORQUE_REQUEST": 0,
-          "STEER_REQ": 0,
-          "LFA_BUTTON": 0,
-          "LKA_ASSIST": 0,
-          "DAMP_FACTOR": 100,
-          "HAS_LANE_SAFETY": 0,
-        })
-      # These signals overlap DAMP_FACTOR in the local DBC naming; omitting them
-      # preserves the stock angle-steering damping byte expected by the ADAS ECU.
-      lkas_values.pop("STEER_MODE", None)
-      lkas_values.pop("NEW_SIGNAL_2", None)
+      lkas_values = {
+        "LKA_OptUsmSta": 0,
+        "LKA_RcgSta": 3 if lat_active else 0,
+        "LKA_LHLnWrnSta": 0,
+        "LKA_RHLnWrnSta": 0,
+        "LKA_HndsoffSnd": 0,
+        "LKA_StrSnd": 0,
+        "LKA_SysIndReq": 2 if enabled or lat_active else 1,
+        "StrTqReqVal": 0,
+        "ActToiSta": 0,
+        "ToiFltSta": 0,
+        "LFA_BUTTON": 0,
+        "LKA_SysWrn": 0,
+        "Damping_Gain": 100,
+        "LKAS_ANGLE_ACTIVE": 2 if lat_active else 1,
+        "LKA_UsmMod": 0,
+        "ADAS_StrAnglReqVal": apply_angle,
+        "ADAS_ACIAnglTqRedcGainVal": apply_torque if lat_active else 0.0,
+      }
 
   ret = []
   if CP.flags & HyundaiFlags.CANFD_LKA_STEERING:

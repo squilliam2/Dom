@@ -28,9 +28,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   draw_soft_card,
   TileGrid,
   ToggleTile,
-  _with_alpha,
-  _draw_rounded_fill,
-  _draw_rounded_stroke,
+  with_alpha,
   draw_status_badges,
   wrap_text,
 )
@@ -470,8 +468,8 @@ class VehicleSettingsManagerView(PanelManagerView):
         action_pill_width=row.get("pill_width", 108), action_pill_height=44,
         title_size=34, subtitle_size=22, action_text_size=18,
         row_separator=PANEL_STYLE.divider_color,
-        action_fill=PANEL_STYLE.current_fill if is_enabled else _with_alpha(PANEL_STYLE.current_fill, 120),
-        action_border=PANEL_STYLE.current_border if is_enabled else _with_alpha(PANEL_STYLE.current_border, 100),
+        action_fill=PANEL_STYLE.current_fill if is_enabled else with_alpha(PANEL_STYLE.current_fill, 120),
+        action_border=PANEL_STYLE.current_border if is_enabled else with_alpha(PANEL_STYLE.current_border, 100),
         action_text_color=AetherListColors.HEADER if is_enabled else AetherListColors.MUTED,
       )
     elif row_type == "info":

@@ -407,6 +407,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"NavDesiresAllowed", {PERSISTENT, BOOL, "1", "0", 2}},
     {"NavLongitudinalAllowed", {PERSISTENT, BOOL, "1", "0", 2}},
     {"ClearNavOnOffroad", {PERSISTENT, BOOL, "1", "1", 2}},
+    {"ClearNavOnOffroadTimeoutMinutes", {PERSISTENT, INT, "0", "0", 2}},
     {"NavDestination", {PERSISTENT | CLEAR_ON_MANAGER_START, STRING, "", ""}},
     {"NavInstructionCollapsed", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL, "0", "0"}},
     {"NavInstructionState", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON, "{}", "{}"}},

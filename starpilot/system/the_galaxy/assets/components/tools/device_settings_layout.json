@@ -2024,6 +2024,17 @@
         "ui_type": "toggle"
       },
       {
+        "key": "ClearNavOnOffroadTimeoutMinutes",
+        "label": "Clear Route Delay",
+        "description": "How long the device can stay offroad before clearing the active route. Set to 0 for immediate clearing.",
+        "data_type": "int",
+        "ui_type": "numeric",
+        "min": 0,
+        "max": 180,
+        "step": 1,
+        "parent_key": "ClearNavOnOffroad"
+      },
+      {
         "key": "RoadNameUI",
         "label": "Road Name",
         "description": "Display the road name at the bottom of the driving screen using data from \"OpenStreetMap (OSM)\".",

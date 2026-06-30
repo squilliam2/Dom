@@ -37,6 +37,36 @@ _NODE_NUM_MIN = 3
 _NODE_NUM_MAX = 5
 
 
+_GLOBAL_SCISSOR_LIMIT: rl.Rectangle | None = None
+
+def aether_begin_scissor_mode(x: int, y: int, w: int, h: int) -> None:
+  global _GLOBAL_SCISSOR_LIMIT
+  if _GLOBAL_SCISSOR_LIMIT is not None:
+    limit = _GLOBAL_SCISSOR_LIMIT
+    ix1 = max(x, int(limit.x))
+    iy1 = max(y, int(limit.y))
+    ix2 = min(x + w, int(limit.x + limit.width))
+    iy2 = min(y + h, int(limit.y + limit.height))
+    iw = max(0, ix2 - ix1)
+    ih = max(0, iy2 - iy1)
+    rl.begin_scissor_mode(ix1, iy1, iw, ih)
+  else:
+    rl.begin_scissor_mode(x, y, w, h)
+
+def aether_end_scissor_mode() -> None:
+  global _GLOBAL_SCISSOR_LIMIT
+  if _GLOBAL_SCISSOR_LIMIT is not None:
+    limit = _GLOBAL_SCISSOR_LIMIT
+    rl.begin_scissor_mode(int(limit.x), int(limit.y), int(limit.width), int(limit.height))
+  else:
+    rl.end_scissor_mode()
+
+# Custom vector icon layout constants (scribble.py coordinate system)
+CUSTOM_ICON_BASE_SIZE = 100.0
+CUSTOM_ICON_SCALE_MULT = 1.25
+CUSTOM_ICON_CANVAS_SIZE = 60.0
+
+
 class SPACING:
   xs: int = 4
   sm: int = 8
@@ -76,6 +106,28 @@ def _get_rgba(color) -> tuple[int, int, int, int]:
 def with_alpha(color, alpha: int) -> rl.Color:
   r, g, b, a = _get_rgba(color)
   return rl.Color(r, g, b, max(0, min(a, int(alpha))))
+
+
+def clamp_and_snap(value: float, min_val: float, max_val: float, step: float) -> float:
+    if step <= 0:
+        return max(min_val, min(max_val, value))
+    snapped = round((value - min_val) / step) * step + min_val
+    return max(min_val, min(max_val, snapped))
+
+
+def value_fraction(value: float, min_val: float, max_val: float) -> float:
+    val_range = max_val - min_val
+    if val_range == 0:
+        return 0.0
+    return max(0.0, min(1.0, (value - min_val) / val_range))
+
+
+def update_val_from_mouse(mouse_pos: MousePos, track_rect: rl.Rectangle, min_val: float, max_val: float, step: float) -> float:
+    if track_rect.width <= 0:
+        return min_val
+    rel_x = max(0.0, min(1.0, (mouse_pos.x - track_rect.x) / track_rect.width))
+    val = min_val + rel_x * (max_val - min_val)
+    return clamp_and_snap(val, min_val, max_val, step)
 
 
 def mix_colors(base, accent, weight: float, alpha: int | None = None) -> rl.Color:
@@ -610,11 +662,11 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
     if scroll_disabled:
       self._scroll_offset = 0.0
 
-    rl.begin_scissor_mode(
+    aether_begin_scissor_mode(
       int(scroll_rect.x), int(scroll_rect.y),
       int(scroll_rect.width), int(scroll_rect.height))
     self._draw_scroll_content(scroll_rect, content_width)
-    rl.end_scissor_mode()
+    aether_end_scissor_mode()
 
     self._draw_static_elements(scroll_rect, content_width)
 
@@ -674,11 +726,11 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
   def _make_toggle_tile(self, d: dict) -> ToggleTile:
     return ToggleTile(
       title=d["title"],
-      get_state=d.get("get_state", d.get("get")),
-      set_state=d.get("set_state", d.get("set")),
+      get_state=d["get_state"],
+      set_state=d["set_state"],
       bg_color=self.PANEL_STYLE.accent,
-      desc=d.get("subtitle", d.get("desc", "")),
-      is_enabled=d.get("is_enabled", d.get("enabled")),
+      desc=d.get("subtitle", ""),
+      is_enabled=d.get("is_enabled"),
       disabled_label=d.get("disabled_label", ""),
     )
 
@@ -686,11 +738,11 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
     return AetherMultiSelectTile(
       title=d["title"],
       options=d["options"],
-      get_values=d.get("get_values", d.get("get")),
-      set_values=d.get("set_values", d.get("set")),
+      get_values=d["get_values"],
+      set_values=d["set_values"],
       bg_color=self.PANEL_STYLE.accent,
-      desc=d.get("subtitle", d.get("desc", "")),
-      is_enabled=d.get("is_enabled", d.get("enabled")),
+      desc=d.get("subtitle", ""),
+      is_enabled=d.get("is_enabled"),
     )
 
   # ── pagination ─────────────────────────────────────────────
@@ -742,13 +794,13 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
   def _page_scissor_push(self, rect: rl.Rectangle | None) -> None:
     if rect is None:
       return
-    rl.end_scissor_mode()
-    rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+    aether_end_scissor_mode()
+    aether_begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
 
   def _page_scissor_pop(self) -> None:
-    rl.end_scissor_mode()
-    rl.begin_scissor_mode(int(self._scroll_rect.x), int(self._scroll_rect.y),
-                          int(self._scroll_rect.width), int(self._scroll_rect.height))
+    aether_end_scissor_mode()
+    aether_begin_scissor_mode(int(self._scroll_rect.x), int(self._scroll_rect.y),
+                              int(self._scroll_rect.width), int(self._scroll_rect.height))
 
   # ── drag + animation ───────────────────────────────────────
 
@@ -827,14 +879,15 @@ class PanelManagerView(AetherInteractiveMixin, Widget):
 
     if self._has_pagination:
       glow_w = 60.0
+      pad = self.GRID_PADDING
       if self._current_page > 0:
         rl.draw_rectangle_gradient_h(
-          int(rect.x), int(rect.y), int(glow_w), int(rect.height),
+          int(rect.x - pad), int(rect.y - pad), int(glow_w), int(rect.height + pad * 2),
           with_alpha(self.PANEL_STYLE.accent, 10), rl.Color(0, 0, 0, 0),
         )
       if self._current_page < self._page_count - 1:
         rl.draw_rectangle_gradient_h(
-          int(rect.x + rect.width - glow_w), int(rect.y), int(glow_w), int(rect.height),
+          int(rect.x + rect.width - glow_w + pad), int(rect.y - pad), int(glow_w), int(rect.height + pad * 2),
           rl.Color(0, 0, 0, 0), with_alpha(self.PANEL_STYLE.accent, 10),
         )
 
@@ -1923,10 +1976,7 @@ class AetherInlineRangeControl(Widget):
     self.reset_interaction()
 
   def _clamp_and_snap(self, value: float) -> float:
-    if self.step <= 0:
-      return max(self.min_val, min(self.max_val, value))
-    snapped = round((value - self.min_val) / self.step) * self.step + self.min_val
-    return max(self.min_val, min(self.max_val, snapped))
+    return clamp_and_snap(value, self.min_val, self.max_val, self.step)
 
   def _step_value(self, direction: int) -> bool:
     new_val = self._clamp_and_snap(self.current_val + direction * self.step)
@@ -1938,19 +1988,12 @@ class AetherInlineRangeControl(Widget):
     return True
 
   def _value_fraction(self, value: float) -> float:
-    value_range = self.max_val - self.min_val
-    if value_range == 0:
-      return 0.0
-    return max(0.0, min(1.0, (value - self.min_val) / value_range))
+    return value_fraction(value, self.min_val, self.max_val)
 
   def _update_val_from_mouse(self, mouse_pos: MousePos) -> None:
-    if self._track_rect.width <= 0:
-      return
-    rel_x = max(0.0, min(1.0, (mouse_pos.x - self._track_rect.x) / self._track_rect.width))
-    value = self.min_val + rel_x * (self.max_val - self.min_val)
-    snapped = self._clamp_and_snap(value)
-    if snapped != self.current_val:
-      self.current_val = snapped
+    new_val = update_val_from_mouse(mouse_pos, self._track_rect, self.min_val, self.max_val, self.step)
+    if new_val != self.current_val:
+      self.current_val = new_val
       self._on_change(self.current_val)
 
   def _commit_if_needed(self) -> None:
@@ -2816,10 +2859,10 @@ class AetherSettingsView(PanelManagerView):
     if scroll_disabled:
       self._scroll_offset = 0.0
 
-    rl.begin_scissor_mode(int(self._scroll_rect.x), int(self._scroll_rect.y),
-                           int(self._scroll_rect.width), int(self._scroll_rect.height))
+    aether_begin_scissor_mode(int(self._scroll_rect.x), int(self._scroll_rect.y),
+                              int(self._scroll_rect.width), int(self._scroll_rect.height))
     self._draw_scroll_content(self._scroll_rect, content_width)
-    rl.end_scissor_mode()
+    aether_end_scissor_mode()
 
     if self._content_height > self._scroll_rect.height and not scroll_disabled:
       self._scrollbar.render(self._scroll_rect, self._content_height, self._scroll_offset)
@@ -3055,169 +3098,121 @@ def draw_back_button(pill_rect: rl.Rectangle, center_y: float, pressed: bool, ho
 BACK_BTN = "__back__"
 
 
-# ── AetherCategoryTileView — dynamic nesting doll tile view ──
+# ── AetherCategoryDrawer — touch-optimized sliding drawer ──
 
-class AetherCategoryTileView(AetherSettingsView):
-  """Reusable nested tile view that maps SettingRows to interactive tiles."""
+class AetherCategoryDrawer(AetherSettingsView):
+  """Reusable nested drawer view that maps SettingRows to a slide-out vertical settings list."""
 
   def __init__(self, controller, title: str, rows: list[SettingRow],
                *, color: rl.Color | str = "#8B5CF6", subtitle: str = "",
                panel_style=None):
-    super().__init__(controller, [], header_title=title, header_subtitle=subtitle, panel_style=panel_style)
+    # Group the rows in a single SettingSection with an empty title
+    sections = [SettingSection(title="", rows=rows)]
+    super().__init__(controller, sections, header_title=title, header_subtitle=subtitle, panel_style=panel_style)
     self._color = hex_to_color(color) if isinstance(color, str) else color
     self._rows = rows
-    
-    self._scroll_panel = GuiScrollPanel2(horizontal=True)
-    self._scroll_panel.snap_interval = 364.0
-    self._tile_grid = TileGrid(padding=16, tile_height=178.0, carousel_rows=3, carousel_tile_width=348.0)
-    self._tile_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
-    self._child(self._tile_grid)
-    
-    self._row_to_tile_map = {}
-    for row in self._rows:
-      tile = self._map_row_to_tile(row)
-      if tile is not None:
-        self._row_to_tile_map[row.id] = tile
-
+    self._slide_progress = 0.0
     self._back_btn_rect = None
-
-  def _map_row_to_tile(self, row: SettingRow) -> Widget | None:
-    enabled_fn = row.enabled if row.enabled is not None else (lambda: True)
-    subtitle_text = row.subtitle
+    self._scroll_panel = GuiScrollPanel2(horizontal=False)
+    self._scrollbar = AetherScrollbar()
     
-    if row.type == "toggle":
-      return RowToggleTile(
-        title=tr(row.title),
-        get_state=row.get_state,
-        set_state=row.set_state,
-        bg_color=self._color,
-        desc=tr(subtitle_text),
-        is_enabled=enabled_fn,
-        disabled_label=tr(row.disabled_label) if row.disabled_label else "",
-      )
-    elif row.type == "value":
-      return RowPanelTile(
-        title=tr(row.title),
-        get_status=row.get_value,
-        on_click=row.on_click,
-        bg_color=self._color,
-        desc=tr(subtitle_text),
-      )
-    elif row.type == "action":
-      return RowPanelTile(
-        title=tr(row.title),
-        get_status=lambda: tr(row.action_text) if hasattr(row, 'action_text') and row.action_text else "",
-        on_click=row.on_click,
-        bg_color=self._color,
-        desc=tr(subtitle_text),
-      )
-    return None
+    # Read driving side dynamically for ergonomic layout (LHD vs RHD)
+    try:
+      from openpilot.common.params import Params
+      self._is_rhd = Params().get_bool("IsRHD")
+    except Exception:
+      self._is_rhd = False
 
-  def _visible_rows(self) -> list[SettingRow]:
+  def _visible_rows(self, section: SettingSection) -> list[SettingRow]:
     return [row for row in self._rows if row.visible is None or row.visible()]
-
-  def _update_visible_tiles(self):
-    visible_rows = self._visible_rows()
-    visible_ids = [row.id for row in visible_rows]
-    if getattr(self, "_last_visible_ids", None) == visible_ids:
-      return
-    self._last_visible_ids = visible_ids
-    self._tile_grid.clear()
-    for row in visible_rows:
-      tile = self._row_to_tile_map.get(row.id)
-      if tile is not None:
-        self._tile_grid.add_tile(tile)
-
-  def _measure_content_height(self, width: float) -> float:
-    self._update_visible_tiles()
-    return self._tile_grid.measure_height(width)
 
   def _render(self, rect: rl.Rectangle):
     self.set_rect(rect)
     self._interactive_rects.clear()
 
-    # Dim background outside the dialog
+    # Dim the screen area outside the drawer
     rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height), rl.Color(0, 0, 0, 160))
 
-    dialog_w = 1600
-    dialog_h = 750
-    dx = rect.x + (rect.width - dialog_w) / 2
-    dy = rect.y + (rect.height - dialog_h) / 2
+    # Drawer slide-in animation (exponential smoothing)
+    dt = rl.get_frame_time()
+    self._slide_progress += (1.0 - self._slide_progress) * (1.0 - math.exp(-dt / 0.12))
 
-    # Draw custom dialog background and top color band
-    d_rect = snap_rect(rl.Rectangle(dx, dy, dialog_w, dialog_h))
-    draw_rounded_fill(d_rect, rl.Color(10, 12, 16, 255), radius_px=24)
-    draw_rounded_stroke(d_rect, rl.Color(255, 255, 255, 16), radius_px=24)
-    rl.draw_rectangle_rec(rl.Rectangle(d_rect.x, d_rect.y, d_rect.width, 3), self._color)
+    drawer_w = 850
+    if self._is_rhd:
+      # RHD: slide out from the right (driver side)
+      drawer_x = rect.x + rect.width - drawer_w * self._slide_progress
+      drawer_rect = rl.Rectangle(drawer_x, rect.y + 12, drawer_w - 12, rect.height - 24)
+    else:
+      # LHD: slide out from the left (driver side)
+      drawer_x = rect.x - drawer_w + drawer_w * self._slide_progress
+      drawer_rect = rl.Rectangle(drawer_x + 12, rect.y + 12, drawer_w - 12, rect.height - 24)
 
-    header_rect = rl.Rectangle(dx + 60, dy + 24, dialog_w - 120, 100)
+    # Draw drawer background and border
+    draw_rounded_fill(drawer_rect, rl.Color(12, 10, 18, 250), radius_px=24)
+    draw_rounded_stroke(drawer_rect, rl.Color(255, 255, 255, 18), radius_px=24)
+    
+    # Draw accent stripe on the side separating it from the dimmed area
+    if self._is_rhd:
+      rl.draw_rectangle_rec(rl.Rectangle(drawer_rect.x, drawer_rect.y, 4, drawer_rect.height), self._color)
+    else:
+      rl.draw_rectangle_rec(rl.Rectangle(drawer_rect.x + drawer_rect.width - 4, drawer_rect.y, 4, drawer_rect.height), self._color)
+
+    # Draw header with navigation breadcrumbs
+    header_rect = rl.Rectangle(drawer_rect.x + 36, drawer_rect.y + 24, drawer_rect.width - 72, 80)
     if self._has_header:
       self._draw_header(header_rect)
 
-    # Configure precise margins for the scroll area (80px sides)
-    self._scroll_rect = rl.Rectangle(dx + 80, dy + 140, dialog_w - 160, dialog_h - 180)
+    # Set up scroll area (vertical scroll list)
+    self._scroll_rect = rl.Rectangle(
+      drawer_rect.x + 36,
+      drawer_rect.y + 120,
+      drawer_rect.width - 72,
+      drawer_rect.height - 144
+    )
 
-    self._update_visible_tiles()
-    content_width_needed = self._tile_grid.measure_width()
-    content_height_needed = self._tile_grid.measure_height(self._scroll_rect.width)
-    
-    scrolling_enabled = self.is_visible and (content_width_needed > self._scroll_rect.width)
-    self._scroll_panel.set_enabled(scrolling_enabled)
+    content_width = self._scroll_rect.width - AETHER_LIST_METRICS.content_right_gutter
+    self._content_height = self._measure_content_height(content_width)
+    self._scroll_panel.set_enabled(self.is_visible)
 
     self._scroll_offset = self._scroll_panel.update(
-      self._scroll_rect, max(content_width_needed, self._scroll_rect.width))
-
-    x_pad = 12
-    y_pad = 24
-    rl.begin_scissor_mode(int(self._scroll_rect.x - x_pad), int(self._scroll_rect.y - y_pad),
-                           int(self._scroll_rect.width + x_pad * 2), int(self._scroll_rect.height + y_pad * 2))
-    
-    self._tile_grid._parent_rect = self._scroll_rect
-    
-    y_margin = max(0, (self._scroll_rect.height - content_height_needed) / 2)
-    x_margin = max(0, (self._scroll_rect.width - content_width_needed) / 2)
-    
-    grid_rect = rl.Rectangle(
-      self._scroll_rect.x + self._scroll_offset + x_margin, 
-      self._scroll_rect.y + y_margin, 
-      max(content_width_needed, self._scroll_rect.width), 
-      self._scroll_rect.height
+      self._scroll_rect, max(self._content_height, self._scroll_rect.height)
     )
-    self._tile_grid.render(grid_rect)
-    
-    rl.end_scissor_mode()
 
-    # Draw horizontal scroll indicator glows on the sides using the thematic color
-    if scrolling_enabled:
-      glow_w = 120
-      fade_dist = 100.0
-      left_remaining = -self._scroll_offset
-      right_remaining = (content_width_needed - self._scroll_rect.width) + self._scroll_offset
-      
-      left_alpha = int(max(0.0, min(1.0, left_remaining / fade_dist)) * 60)
-      right_alpha = int(max(0.0, min(1.0, right_remaining / fade_dist)) * 60)
-      
-      glow_y = int(d_rect.y)
-      glow_h = int(d_rect.height)
-      
-      if left_alpha > 0:
-        rl.draw_rectangle_gradient_h(
-          int(d_rect.x + 2), glow_y, glow_w, glow_h,
-          with_alpha(self._color, left_alpha), with_alpha(self._color, 0)
-        )
-      if right_alpha > 0:
-        rl.draw_rectangle_gradient_h(
-          int(d_rect.x + d_rect.width - glow_w - 2), glow_y, glow_w, glow_h,
-          with_alpha(self._color, 0), with_alpha(self._color, right_alpha)
-        )
+    # Scissor and render settings rows
+    aether_begin_scissor_mode(
+      int(self._scroll_rect.x), int(self._scroll_rect.y),
+      int(self._scroll_rect.width), int(self._scroll_rect.height)
+    )
+    self._draw_scroll_content(self._scroll_rect, content_width)
+    aether_end_scissor_mode()
+
+    if self._content_height > self._scroll_rect.height:
+      self._scrollbar.render(self._scroll_rect, self._content_height, self._scroll_offset)
+
+    draw_list_scroll_fades(
+      self._scroll_rect, self._content_height, self._scroll_offset,
+      rl.Color(12, 10, 18, 250), fade_height=self._fade_height
+    )
 
   def _target_at(self, mouse_pos: MousePos) -> str | None:
     if self._back_btn_rect and point_hits(mouse_pos, self._back_btn_rect, None, pad_x=8, pad_y=8):
       return BACK_BTN
+
+    # Tap outside the drawer to dismiss
+    drawer_w = 850
+    if self._is_rhd:
+      drawer_x = self._rect.x + self._rect.width - drawer_w * self._slide_progress
+      if mouse_pos.x < drawer_x:
+        return "__dismiss__"
+    else:
+      drawer_x = self._rect.x - drawer_w + drawer_w * self._slide_progress
+      if mouse_pos.x > drawer_x + drawer_w:
+        return "__dismiss__"
+
     return super()._target_at(mouse_pos)
 
   def _activate_target(self, target_id: str | None):
-    if target_id == BACK_BTN:
+    if target_id == BACK_BTN or target_id == "__dismiss__":
       gui_app.pop_widget()
     else:
       super()._activate_target(target_id)
@@ -3242,6 +3237,120 @@ class AetherCategoryTileView(AetherSettingsView):
     self._breadcrumbs.draw(crumb_rect)
 
 
+# Compatibility Alias
+AetherCategoryTileView = AetherCategoryDrawer
+
+
+# ── AetherTransitionManager — Spatial Parallax Page Transitions ──
+
+class AetherTransitionManager:
+  def __init__(self, duration: float = 0.24):
+    self.duration = duration
+    self._time = 0.0
+    self._progress = 1.0
+    self._direction = 1 # 1 = forward (right to left), -1 = backward (left to right)
+    self._active = False
+    self._outgoing_render_fn = None
+    self._incoming_render_fn = None
+
+  def start(self, outgoing_render_fn, incoming_render_fn, direction: int):
+    self._outgoing_render_fn = outgoing_render_fn
+    self._incoming_render_fn = incoming_render_fn
+    self._direction = direction
+    self._time = 0.0
+    self._progress = 0.0
+    self._active = True
+
+  def is_animating(self) -> bool:
+    return self._active
+
+  def update(self, dt: float):
+    if not self._active:
+      return
+    # Cap dt to avoid large visual jumps on frame spikes
+    dt = min(0.016, dt)
+    self._time += dt
+    
+    t = self._time / self.duration
+    if t >= 1.0:
+      t = 1.0
+      self._progress = 1.0
+      self._active = False
+      self._outgoing_render_fn = None
+      self._incoming_render_fn = None
+    else:
+      # Ease-in-out cubic curve (zero initial velocity, smooth acceleration & deceleration)
+      if t < 0.5:
+        self._progress = 4.0 * t * t * t
+      else:
+        self._progress = 1.0 - (-2.0 * t + 2.0) ** 3 / 2.0
+
+  def render(self, rect: rl.Rectangle):
+    if not self._active:
+      return
+
+    global _GLOBAL_SCISSOR_LIMIT
+    _GLOBAL_SCISSOR_LIMIT = rect
+
+    # 1. Enforce strict content boundary clipping to block drawing over the sidebar on the left
+    rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+
+    # Clear the transition area with solid background to prevent ghosting/bleeding of transparent areas
+    rl.draw_rectangle_rec(rect, rl.Color(12, 10, 18, 255))
+
+    # Use progress directly since the exponential decay is already eased
+    eased = self._progress
+
+    # Outgoing and incoming rect calculations
+    if self._direction == 1:
+      # Forward: incoming slides right to left, outgoing slides left slightly (parallax)
+      out_x = rect.x - 0.25 * rect.width * eased
+      in_x = rect.x + rect.width * (1.0 - eased)
+    else:
+      # Backward: incoming slides left to right, outgoing slides right slightly (parallax)
+      out_x = rect.x + 0.25 * rect.width * eased
+      in_x = rect.x - rect.width * (1.0 - eased)
+
+    out_rect = rl.Rectangle(out_x, rect.y, rect.width, rect.height)
+    in_rect = rl.Rectangle(in_x, rect.y, rect.width, rect.height)
+
+    # 2. Render outgoing content
+    if self._outgoing_render_fn:
+      self._outgoing_render_fn(out_rect)
+
+    # Re-assert content scissor clip after child finishes rendering to override any nested disable calls
+    rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+
+    # 3. Draw dimming overlay on outgoing content
+    dim_alpha = int(120 * (1.0 - eased))
+    if dim_alpha > 0:
+      rl.draw_rectangle_rec(out_rect, rl.Color(0, 0, 0, dim_alpha))
+
+    # 4. Render incoming content
+    if self._incoming_render_fn:
+      self._incoming_render_fn(in_rect)
+
+    # Re-assert content scissor clip after child finishes rendering
+    rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+
+    # 5. Draw edge shadow/glow on incoming edge to separate layers
+    shadow_w = 40
+    if self._direction == 1:
+      rl.draw_rectangle_gradient_h(
+        int(in_rect.x - shadow_w), int(in_rect.y), shadow_w, int(in_rect.height),
+        rl.Color(0, 0, 0, 0), rl.Color(0, 0, 0, 100)
+      )
+    else:
+      rl.draw_rectangle_gradient_h(
+        int(in_rect.x + in_rect.width), int(in_rect.y), shadow_w, int(in_rect.height),
+        rl.Color(0, 0, 0, 100), rl.Color(0, 0, 0, 0)
+      )
+
+    # 6. Disable scissor globally when exiting transition rendering and clear global limit
+    rl.end_scissor_mode()
+    _GLOBAL_SCISSOR_LIMIT = None
+
+
 class AetherTile(Widget):
   def __init__(self, surface_color: rl.Color | str | None = None, substrate_color: rl.Color | str | None = None, on_click: Callable | None = None):
     super().__init__()
@@ -3259,6 +3368,7 @@ class AetherTile(Widget):
     self._plate_offset: float = 0.0
     self._plate_target: float = 0.0
     self._is_pressed: bool = False
+    self._squish: float = 1.0
 
   def _surface_rect(self, rect: rl.Rectangle) -> rl.Rectangle:
     return _inset_rect(snap_rect(rect), TILE_INSET)
@@ -3282,6 +3392,7 @@ class AetherTile(Widget):
     if rl.check_collision_point_rec(mouse_pos, self._hit_rect):
       self._is_pressed = True
       self._plate_target = 1.0
+      self._squish = 0.95
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if not self.enabled:
@@ -3305,6 +3416,14 @@ class AetherTile(Widget):
     if self._plate_offset == self._plate_target:
       return
     self._plate_offset += (self._plate_target - self._plate_offset) * (1 - math.exp(-dt / PLATE_TAU))
+
+  def _update_squish(self):
+    dt = rl.get_frame_time()
+    if self._squish < 1.0:
+      self._squish += (1.0 - self._squish) * 15.0 * dt
+
+  def _update_state(self):
+    self._update_squish()
 
   def _render_layers(self, rect: rl.Rectangle, radius: float = TILE_RADIUS, segments: int = TILE_SEGMENTS):
     self._animate_plate(rl.get_frame_time())
@@ -3495,12 +3614,6 @@ class AetherTile(Widget):
     desc_size: int = 18,
     custom_icon_key: str | None = None,
   ):
-    # Parameters for custom vector icons: base 100x100 layout footprint,
-    # 25% scale increase, and 60x60 canvas size defined in scribble.py coordinates.
-    custom_icon_base_size = 100.0
-    custom_icon_scale_mult = 1.25
-    custom_icon_canvas_size = 60.0
-
     content_pad = SPACING.tile_content
     max_w = face.width - (content_pad * 2)
     scale = max(0.82, min(1.12, min(face.width / 360.0, face.height / 205.0)))
@@ -3511,7 +3624,7 @@ class AetherTile(Widget):
     has_icon = (icon is not None) or (custom_icon_key is not None)
     icon_scale = min(0.80, max(0.56, scale * 0.72)) if has_icon else 0.0
     if custom_icon_key:
-      icon_height = custom_icon_base_size * custom_icon_scale_mult * icon_scale
+      icon_height = CUSTOM_ICON_BASE_SIZE * CUSTOM_ICON_SCALE_MULT * icon_scale
     elif icon:
       icon_height = icon.height * icon_scale
     else:
@@ -3528,9 +3641,9 @@ class AetherTile(Widget):
     )
 
     if custom_icon_key:
-      icon_width = custom_icon_base_size * custom_icon_scale_mult * icon_scale
+      icon_width = CUSTOM_ICON_BASE_SIZE * CUSTOM_ICON_SCALE_MULT * icon_scale
       icon_x = face.x + (face.width - icon_width) / 2
-      s = icon_scale * (custom_icon_base_size / custom_icon_canvas_size) * custom_icon_scale_mult
+      s = icon_scale * (CUSTOM_ICON_BASE_SIZE / CUSTOM_ICON_CANVAS_SIZE) * CUSTOM_ICON_SCALE_MULT
       self._draw_custom_icon(custom_icon_key, icon_x, layout["top"], s, mix_colors(rl.Color(255, 255, 255, 255), self.surface_color, 0.08))
     elif icon:
       icon_width = icon.width * icon_scale
@@ -3654,7 +3767,7 @@ class AetherTile(Widget):
       rl.draw_circle(nx, ny, int(core_r), rl.Color(col.r, col.g, col.b, min(255, ca)))
 
   def _render_hud_background(self, rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0) -> tuple[rl.Rectangle, rl.Color]:
-    sq = getattr(self, '_squish', 1.0)
+    sq = self._squish
     snapped = snap_rect(rect)
     sw = snapped.width * sq
     sh = snapped.height * sq
@@ -3689,20 +3802,6 @@ class HubTile(AetherTile):
     self._icon = None
     self._font_title = gui_app.font(FontWeight.BOLD)
     self._font_desc = gui_app.font(FontWeight.MEDIUM)
-    self._squish: float = 1.0
-
-  def _update_state(self):
-    dt = rl.get_frame_time()
-    if self._squish < 1.0:
-      self._squish += (1.0 - self._squish) * 15.0 * dt
-
-  def _handle_mouse_press(self, mouse_pos: MousePos):
-    if not self.enabled:
-      return
-    if rl.check_collision_point_rec(mouse_pos, self._hit_rect):
-      self._is_pressed = True
-      self._plate_target = 1.0
-      self._squish = 0.95
 
   def _render(self, rect: rl.Rectangle):
     self._animate_plate(rl.get_frame_time())
@@ -3724,23 +3823,17 @@ class HubTile(AetherTile):
 
     icon_h = 0.0
     if self.custom_icon_key:
-      icon_base_size = 100.0
-      icon_scale_mult = 1.25
-      icon_canvas_size = 60.0
       icon_scale = min(0.80, max(0.56, text_scale * 0.72))
-      icon_h = icon_base_size * icon_scale_mult * icon_scale
+      icon_h = CUSTOM_ICON_BASE_SIZE * CUSTOM_ICON_SCALE_MULT * icon_scale
 
     total_h = icon_h + (gap if icon_h > 0 else 0) + title_size + (gap if desc_to_render else 0) + desc_size
     content_top = ry + max(0, (rh - total_h) / 2)
 
     if self.custom_icon_key:
-      icon_base_size = 100.0
-      icon_scale_mult = 1.25
-      icon_canvas_size = 60.0
       icon_scale = min(0.80, max(0.56, text_scale * 0.72))
-      icon_width = icon_base_size * icon_scale_mult * icon_scale
+      icon_width = CUSTOM_ICON_BASE_SIZE * CUSTOM_ICON_SCALE_MULT * icon_scale
       icon_x = rx + (rw - icon_width) / 2
-      s = icon_scale * (icon_base_size / icon_canvas_size) * icon_scale_mult
+      s = icon_scale * (CUSTOM_ICON_BASE_SIZE / CUSTOM_ICON_CANVAS_SIZE) * CUSTOM_ICON_SCALE_MULT
       self._draw_custom_icon(self.custom_icon_key, icon_x, content_top, s, mix_colors(rl.Color(255, 255, 255, 255), accent, 0.08))
       content_top += icon_h + gap
 
@@ -3798,22 +3891,12 @@ class ToggleTile(AetherTile):
     self._disabled_label = disabled_label
     self._show_led = show_led
     self._glow: float = 1.0 if (self.get_state() and (is_enabled or True)) else 0.0
-    self._squish: float = 1.0
 
   def _update_state(self):
+    super()._update_state()
     dt = rl.get_frame_time()
     target = 1.0 if self.get_state() and self.enabled else 0.0
     self._glow += (target - self._glow) * 10.0 * dt
-    if self._squish < 1.0:
-      self._squish += (1.0 - self._squish) * 15.0 * dt
-
-  def _handle_mouse_press(self, mouse_pos: MousePos):
-    if not self.enabled:
-      return
-    if rl.check_collision_point_rec(mouse_pos, self._hit_rect):
-      self._is_pressed = True
-      self._plate_target = 1.0
-      self._squish = 0.95
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if self._is_pressed:
@@ -3982,20 +4065,6 @@ class ValueTile(AetherTile):
     self._font_desc = gui_app.font(FontWeight.MEDIUM)
     self._active_color = self.surface_color
     self._disabled_color = rl.Color(120, 120, 120, 255)
-    self._squish: float = 1.0
-
-  def _update_state(self):
-    dt = rl.get_frame_time()
-    if self._squish < 1.0:
-      self._squish += (1.0 - self._squish) * 15.0 * dt
-
-  def _handle_mouse_press(self, mouse_pos: MousePos):
-    if not self.enabled:
-      return
-    if rl.check_collision_point_rec(mouse_pos, self._hit_rect):
-      self._is_pressed = True
-      self._plate_target = 1.0
-      self._squish = 0.95
 
   def _render(self, rect: rl.Rectangle):
     enabled = self.enabled
@@ -4102,12 +4171,6 @@ class SliderTile(AetherTile):
         self._press_start_x = 0.0
         self._press_start_time: float | None = None
         self._long_press_triggered = False
-        self._squish: float = 1.0
-
-    def _update_state(self):
-        dt = rl.get_frame_time()
-        if self._squish < 1.0:
-            self._squish += (1.0 - self._squish) * 15.0 * dt
 
     def _handle_mouse_press(self, mouse_pos: MousePos):
         if rl.check_collision_point_rec(mouse_pos, self._hit_rect) and self.enabled:
@@ -4307,10 +4370,7 @@ class AetherSlider(Widget):
       self.on_commit(self.current_val)
 
   def _clamp_and_snap(self, val: float) -> float:
-    if self.step <= 0:
-      return max(self.min_val, min(self.max_val, val))
-    snapped = round((val - self.min_val) / self.step) * self.step + self.min_val
-    return max(self.min_val, min(self.max_val, snapped))
+    return clamp_and_snap(val, self.min_val, self.max_val, self.step)
 
   def _button_width(self, rect: rl.Rectangle) -> int:
     return min(SLIDER_BUTTON_SIZE, max(44, int(rect.width * 0.14)))
@@ -4462,11 +4522,8 @@ class AetherSlider(Widget):
     button_w = self._button_width(self._rect)
     track_x = self._rect.x + button_w
     track_w = self._rect.width - 2 * button_w
-    if track_w <= 0:
-      return
-    rel_x = max(0.0, min(1.0, (mouse_pos.x - track_x) / track_w))
-    val = self.min_val + rel_x * (self.max_val - self.min_val)
-    snapped = self._clamp_and_snap(val)
+    track_rect = rl.Rectangle(track_x, self._rect.y, track_w, self._rect.height)
+    snapped = update_val_from_mouse(mouse_pos, track_rect, self.min_val, self.max_val, self.step)
     if snapped != self.current_val:
       self.current_val = snapped
       self.on_change(self.current_val)
@@ -4519,23 +4576,14 @@ class AetherSliderDialog(Widget):
     self._thumb_rect = rl.Rectangle(0, 0, 0, 0)
 
   def _value_fraction(self, value: float) -> float:
-    val_range = self.max_val - self.min_val
-    if val_range == 0:
-      return 0.0
-    return max(0.0, min(1.0, (value - self.min_val) / val_range))
+    return value_fraction(value, self.min_val, self.max_val)
 
   def _clamp_and_snap(self, val: float) -> float:
-    if self.step <= 0:
-      return max(self.min_val, min(self.max_val, val))
-    snapped = round((val - self.min_val) / self.step) * self.step + self.min_val
-    return max(self.min_val, min(self.max_val, snapped))
+    return clamp_and_snap(val, self.min_val, self.max_val, self.step)
 
   def _update_val_from_mouse(self, mouse_pos: MousePos) -> None:
-    if self._track_rect.width <= 0:
-      return
-    rel_x = max(0.0, min(1.0, (mouse_pos.x - self._track_rect.x) / self._track_rect.width))
-    val = self.min_val + rel_x * (self.max_val - self.min_val)
-    self._current_val = self._clamp_and_snap(val)
+    new_val = update_val_from_mouse(mouse_pos, self._track_rect, self.min_val, self.max_val, self.step)
+    self._current_val = new_val
 
   def formatted_value(self) -> str:
     return format_adjustor_value(self._current_val, step=self.step, unit=self._unit, labels=self._labels)
@@ -5034,20 +5082,6 @@ class AetherMultiSelectTile(AetherTile):
     self._font_desc = gui_app.font(FontWeight.MEDIUM)
     self._active_color = self.surface_color
     self._disabled_color = rl.Color(120, 120, 120, 255)
-    self._squish: float = 1.0
-
-  def _update_state(self):
-    dt = rl.get_frame_time()
-    if self._squish < 1.0:
-      self._squish += (1.0 - self._squish) * 15.0 * dt
-
-  def _handle_mouse_press(self, mouse_pos: MousePos):
-    if not self.enabled:
-      return
-    if rl.check_collision_point_rec(mouse_pos, self._hit_rect):
-      self._is_pressed = True
-      self._plate_target = 1.0
-      self._squish = 0.95
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if self._is_pressed:

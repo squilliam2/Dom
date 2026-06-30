@@ -31,7 +31,9 @@ from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_pose_
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
 from openpilot.selfdrive.modeld.compile_modeld import (
   ARTIFACT_FORMAT_VERSION,
-  WARP_INPUTS,
+  IMAGE_HISTORY_IN_POLICY,
+  IMAGE_HISTORY_IN_WARP,
+  LEGACY_WARP_INPUTS,
   _detect_vision_keys,
   make_split_input_queues,
   make_supercombo_input_queues,
@@ -224,9 +226,12 @@ class ModelState:
     self.metadata = artifact["metadata"]
     self.policy_order = artifact.get("policy_order", [])
     self.frame_skip = int(artifact["frame_skip"])
+    self.image_history_pipeline = artifact.get("image_history_pipeline", IMAGE_HISTORY_IN_WARP)
+    self.warp_input_keys = tuple(artifact.get("warp_input_keys", LEGACY_WARP_INPUTS))
     self.policy_input_keys = tuple(artifact["policy_input_keys"])
     self.run_policy = artifact["run_policy"]
     self.warp_enqueue = artifact[(cam_w, cam_h)]
+    self.can_prepare_only = self.image_history_pipeline == IMAGE_HISTORY_IN_WARP
 
     if self.model_type == "supercombo":
       input_shapes = self.metadata["model"]["input_shapes"]
@@ -359,19 +364,26 @@ class ModelState:
     self.npy["tfm"][:] = transforms[self.road_key]
     self.npy["big_tfm"][:] = transforms[self.wide_key]
 
-    img, big_img = self.warp_enqueue(
-      **{key: self.input_queues[key] for key in WARP_INPUTS},
+    warp_output = self.warp_enqueue(
+      **{key: self.input_queues[key] for key in self.warp_input_keys},
       frame=frames[self.road_key],
       big_frame=frames[self.wide_key],
     )
-    if prepare_only:
-      return None
 
-    output_tensors = self.run_policy(
-      **{key: self.input_queues[key] for key in self.policy_input_keys},
-      img=img,
-      big_img=big_img,
-    )
+    if self.image_history_pipeline == IMAGE_HISTORY_IN_POLICY:
+      output_tensors = self.run_policy(
+        **{key: self.input_queues[key] for key in self.policy_input_keys},
+        warped=warp_output,
+      )
+    else:
+      img, big_img = warp_output
+      if prepare_only:
+        return None
+      output_tensors = self.run_policy(
+        **{key: self.input_queues[key] for key in self.policy_input_keys},
+        img=img,
+        big_img=big_img,
+      )
     outputs = [output.numpy().flatten() for output in output_tensors]
 
     if self.model_type == "supercombo":
@@ -543,7 +555,7 @@ def main(demo=False):
     run_count = run_count + 1
 
     frame_drop_ratio = frames_dropped / (1 + frames_dropped)
-    prepare_only = vipc_dropped_frames > 0
+    prepare_only = model.can_prepare_only and vipc_dropped_frames > 0
     if prepare_only:
       cloudlog.error(f"skipping model eval. Dropped {vipc_dropped_frames} frames")
 

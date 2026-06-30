@@ -16,7 +16,10 @@ def _patch_tinygrad_fetch_fw():
   import hashlib
   import pathlib
 
-  import zstandard
+  try:
+    import zstandard
+  except ImportError:
+    return
   from tinygrad import helpers
 
   original_fetch_fw = getattr(helpers, "fetch_fw", None)
@@ -45,9 +48,16 @@ from tinygrad.tensor import Tensor
 ARTIFACT_FORMAT_VERSION = 1
 MODEL_TYPES = ("vision_policy", "vision_multi_policy", "supercombo")
 NV12Frame = namedtuple("NV12Frame", ["width", "height", "stride", "y_height", "uv_height", "size"])
-WARP_INPUTS = ("img_q", "big_img_q", "tfm", "big_tfm")
-SPLIT_POLICY_INPUTS = ("feat_q", "desire_q", "packed_npy_inputs")
-SUPERCOMBO_POLICY_INPUTS = ("feat_q", "desire_q", "packed_npy_inputs")
+IMAGE_HISTORY_IN_WARP = "warp"
+IMAGE_HISTORY_IN_POLICY = "policy"
+IMAGE_HISTORY_PIPELINES = (IMAGE_HISTORY_IN_WARP, IMAGE_HISTORY_IN_POLICY)
+LEGACY_WARP_INPUTS = ("img_q", "big_img_q", "tfm", "big_tfm")
+FAST_WARP_INPUTS = ("tfm", "big_tfm")
+BASE_POLICY_INPUTS = ("feat_q", "desire_q", "packed_npy_inputs")
+FAST_POLICY_INPUTS = ("img_q", "big_img_q", *BASE_POLICY_INPUTS)
+WARP_INPUTS = LEGACY_WARP_INPUTS
+SPLIT_POLICY_INPUTS = BASE_POLICY_INPUTS
+SUPERCOMBO_POLICY_INPUTS = BASE_POLICY_INPUTS
 WARP_DEV = os.getenv("WARP_DEV")
 
 
@@ -263,8 +273,22 @@ def sample_desire(buffer, frame_skip):
   return buffer.reshape(-1, frame_skip, *buffer.shape[1:]).max(1).flatten(0, 1).unsqueeze(0)
 
 
-def make_warp(nv12, model_w, model_h, frame_skip):
+def make_warp(nv12, model_w, model_h, frame_skip, image_history_pipeline=IMAGE_HISTORY_IN_POLICY):
   frame_prepare = make_frame_prepare(nv12, model_w, model_h)
+
+  if image_history_pipeline == IMAGE_HISTORY_IN_POLICY:
+    def warp(tfm, big_tfm, frame, big_frame):
+      tfm = tfm.to(WARP_DEV)
+      big_tfm = big_tfm.to(WARP_DEV)
+      Tensor.realize(tfm, big_tfm)
+
+      return Tensor.cat(
+        frame_prepare(frame, tfm).unsqueeze(0),
+        frame_prepare(big_frame, big_tfm).unsqueeze(0),
+      )
+
+    return warp
+
   sample_skip_fn = partial(sample_skip, frame_skip=frame_skip)
 
   def warp_enqueue(img_q, big_img_q, tfm, big_tfm, frame, big_frame):
@@ -283,7 +307,8 @@ def make_warp(nv12, model_w, model_h, frame_skip):
   return warp_enqueue
 
 
-def make_run_split_policy(vision_runner, policy_runners, metadata, policy_order, frame_skip):
+def make_run_split_policy(vision_runner, policy_runners, metadata, policy_order, frame_skip,
+                          image_history_pipeline=IMAGE_HISTORY_IN_POLICY):
   sample_desire_fn = partial(sample_desire, frame_skip=frame_skip)
   sample_skip_fn = partial(sample_skip, frame_skip=frame_skip)
   vision_metadata = metadata["vision"]
@@ -293,8 +318,7 @@ def make_run_split_policy(vision_runner, policy_runners, metadata, policy_order,
   packed_shapes, packed_sizes = _packed_policy_shapes(policy_metadata["input_shapes"])
   road_key, wide_key = _detect_vision_keys(vision_metadata["input_shapes"])
 
-  def run_policy(img, big_img, feat_q, desire_q, packed_npy_inputs):
-    packed_npy_inputs = packed_npy_inputs.to(Device.DEFAULT).realize()
+  def run_model(img, big_img, feat_q, desire_q, packed_npy_inputs):
     unpacked = {
       key: tensor.reshape(shape)
       for (key, shape), tensor in zip(
@@ -319,10 +343,25 @@ def make_run_split_policy(vision_runner, policy_runners, metadata, policy_order,
     ]
     return (vision_output, *policy_outputs)
 
+  if image_history_pipeline == IMAGE_HISTORY_IN_POLICY:
+    def run_policy(warped, img_q, big_img_q, feat_q, desire_q, packed_npy_inputs):
+      packed_npy_inputs = packed_npy_inputs.to(Device.DEFAULT)
+      warped = warped.to(Device.DEFAULT)
+      Tensor.realize(packed_npy_inputs, warped)
+      img = shift_and_sample(img_q, warped[0:1], sample_skip_fn)
+      big_img = shift_and_sample(big_img_q, warped[1:2], sample_skip_fn)
+      return run_model(img, big_img, feat_q, desire_q, packed_npy_inputs)
+
+    return run_policy
+
+  def run_policy(img, big_img, feat_q, desire_q, packed_npy_inputs):
+    packed_npy_inputs = packed_npy_inputs.to(Device.DEFAULT).realize()
+    return run_model(img, big_img, feat_q, desire_q, packed_npy_inputs)
+
   return run_policy
 
 
-def make_run_supercombo(model_runner, metadata, frame_skip):
+def make_run_supercombo(model_runner, metadata, frame_skip, image_history_pipeline=IMAGE_HISTORY_IN_POLICY):
   input_shapes = metadata["model"]["input_shapes"]
   output_slices = metadata["model"]["output_slices"]
   sample_desire_fn = partial(sample_desire, frame_skip=frame_skip)
@@ -331,8 +370,7 @@ def make_run_supercombo(model_runner, metadata, frame_skip):
   packed_shapes, packed_sizes = _packed_policy_shapes(input_shapes, include_prev_feature=True)
   road_key, wide_key = _detect_vision_keys(input_shapes)
 
-  def run_policy(img, big_img, feat_q, desire_q, packed_npy_inputs):
-    packed_npy_inputs = packed_npy_inputs.to(Device.DEFAULT).realize()
+  def run_model(img, big_img, feat_q, desire_q, packed_npy_inputs):
     unpacked = {
       key: tensor.reshape(shape)
       for (key, shape), tensor in zip(
@@ -355,6 +393,21 @@ def make_run_supercombo(model_runner, metadata, frame_skip):
     }
     model_output = next(iter(model_runner(model_inputs).values())).cast("float32")
     return model_output,
+
+  if image_history_pipeline == IMAGE_HISTORY_IN_POLICY:
+    def run_policy(warped, img_q, big_img_q, feat_q, desire_q, packed_npy_inputs):
+      packed_npy_inputs = packed_npy_inputs.to(Device.DEFAULT)
+      warped = warped.to(Device.DEFAULT)
+      Tensor.realize(packed_npy_inputs, warped)
+      img = shift_and_sample(img_q, warped[0:1], sample_skip_fn)
+      big_img = shift_and_sample(big_img_q, warped[1:2], sample_skip_fn)
+      return run_model(img, big_img, feat_q, desire_q, packed_npy_inputs)
+
+    return run_policy
+
+  def run_policy(img, big_img, feat_q, desire_q, packed_npy_inputs):
+    packed_npy_inputs = packed_npy_inputs.to(Device.DEFAULT).realize()
+    return run_model(img, big_img, feat_q, desire_q, packed_npy_inputs)
 
   return run_policy
 
@@ -450,12 +503,19 @@ def main():
   parser.add_argument("--off-policy-onnx")
   parser.add_argument("--on-policy-onnx")
   parser.add_argument("--supercombo-onnx")
+  parser.add_argument(
+    "--image-history-pipeline",
+    choices=IMAGE_HISTORY_PIPELINES,
+    default=IMAGE_HISTORY_IN_POLICY,
+    help="Where img/big_img history queues are updated. 'policy' is the newer faster ABI; 'warp' reproduces legacy v22 artifacts.",
+  )
   args = parser.parse_args()
 
   output = {
     "format_version": ARTIFACT_FORMAT_VERSION,
     "model_type": args.model_type,
     "metadata": {},
+    "image_history_pipeline": args.image_history_pipeline,
   }
   if args.behavior_version:
     output["behavior_version"] = args.behavior_version
@@ -470,9 +530,11 @@ def main():
     policy_shapes = output["metadata"]["model"]["input_shapes"]
     frame_skip = args.frame_skip or derive_frame_skip(policy_shapes)
     make_policy_queues = partial(make_supercombo_input_queues, policy_shapes, frame_skip)
-    run_policy = make_run_supercombo(model_runner, output["metadata"], frame_skip)
+    run_policy = make_run_supercombo(
+      model_runner, output["metadata"], frame_skip, args.image_history_pipeline,
+    )
     image_shapes = policy_shapes
-    policy_input_keys = SUPERCOMBO_POLICY_INPUTS
+    policy_input_keys = FAST_POLICY_INPUTS if args.image_history_pipeline == IMAGE_HISTORY_IN_POLICY else SUPERCOMBO_POLICY_INPUTS
   else:
     if not args.vision_onnx:
       parser.error("--vision-onnx is required for split models")
@@ -513,19 +575,30 @@ def main():
     )
     run_policy = make_run_split_policy(
       vision_runner, policy_runners, output["metadata"], policy_order, frame_skip,
+      args.image_history_pipeline,
     )
     image_shapes = output["metadata"]["vision"]["input_shapes"]
-    policy_input_keys = SPLIT_POLICY_INPUTS
+    policy_input_keys = FAST_POLICY_INPUTS if args.image_history_pipeline == IMAGE_HISTORY_IN_POLICY else SPLIT_POLICY_INPUTS
 
   output["frame_skip"] = frame_skip
   output["policy_input_keys"] = policy_input_keys
+  warp_input_keys = FAST_WARP_INPUTS if args.image_history_pipeline == IMAGE_HISTORY_IN_POLICY else LEGACY_WARP_INPUTS
+  output["warp_input_keys"] = warp_input_keys
   run_policy_jit = TinyJit(run_policy, prune=True)
   road_key, wide_key = _detect_vision_keys(image_shapes)
-  make_random_model_inputs = partial(
-    make_random_images,
-    keys=[road_key, wide_key],
-    shape=image_shapes[road_key],
-  )
+  if args.image_history_pipeline == IMAGE_HISTORY_IN_POLICY:
+    make_random_model_inputs = partial(
+      make_random_images,
+      keys=["warped"],
+      shape=(2, 6, *image_shapes[road_key][2:]),
+      device=WARP_DEV,
+    )
+  else:
+    make_random_model_inputs = partial(
+      make_random_images,
+      keys=[road_key, wide_key],
+      shape=image_shapes[road_key],
+    )
   output["run_policy"] = compile_jit(
     run_policy_jit, make_random_model_inputs, policy_input_keys, make_policy_queues,
   )
@@ -533,13 +606,16 @@ def main():
   model_w, model_h = args.model_size
   for cam_w, cam_h in args.camera_resolutions:
     nv12 = NV12Frame(cam_w, cam_h, *get_nv12_info(cam_w, cam_h))
-    warp_enqueue = TinyJit(make_warp(nv12, model_w, model_h, frame_skip), prune=True)
+    warp_enqueue = TinyJit(
+      make_warp(nv12, model_w, model_h, frame_skip, args.image_history_pipeline),
+      prune=True,
+    )
     make_random_warp_inputs = make_random_blob_images(
       keys=["frame", "big_frame"], size=nv12.size, device=WARP_DEV,
     )
     make_warp_queues = partial(make_warp_input_queues, image_shapes, frame_skip)
     output[(cam_w, cam_h)] = compile_jit(
-      warp_enqueue, make_random_warp_inputs, WARP_INPUTS, make_warp_queues,
+      warp_enqueue, make_random_warp_inputs, warp_input_keys, make_warp_queues,
     )
 
   with open(args.output, "wb") as artifact_file:

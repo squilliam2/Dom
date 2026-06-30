@@ -22,7 +22,6 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   SettingRow,
   SettingSection,
   AetherSettingsView,
-  AetherCategoryTileView,
   TileGrid,
   HubTile,
   hex_to_color,
@@ -118,48 +117,21 @@ class LongitudinalManagerView(AetherSettingsView):
         "desc": tr("Configure acceleration profiles, smooth following, lane changes, and route speed control."),
         "icon": "steering",
         "color": "#8B5CF6",
-        "on_click": lambda: gui_app.push_widget(
-          AetherCategoryTileView(
-            self._controller,
-            tr("Longitudinal Tuning"),
-            self._controller._tune_rows,
-            color="#8B5CF6",
-            subtitle=tr("Configure acceleration profiles, smooth following, lane changes, and route speed control."),
-            panel_style=self._panel_style,
-          )
-        )
+        "on_click": lambda: self._controller._navigate_to("tune")
       },
       {
         "title": tr("Advanced Actuators"),
         "desc": tr("Adjust actuator delay, EV/Truck tuning, and launch/stop speeds/rates."),
         "icon": "vehicle",
         "color": "#8B5CF6",
-        "on_click": lambda: gui_app.push_widget(
-          AetherCategoryTileView(
-            self._controller,
-            tr("Advanced Actuators"),
-            self._controller._advanced_rows,
-            color="#8B5CF6",
-            subtitle=tr("Adjust actuator delay, EV/Truck tuning, and launch/stop speeds/rates."),
-            panel_style=self._panel_style,
-          )
-        )
+        "on_click": lambda: self._controller._navigate_to("advanced")
       },
       {
         "title": tr("Speed Limit Controller"),
         "desc": tr("Manage auto speed matching, confirmation, offsets, and source priority."),
         "icon": "navigate",
         "color": "#8B5CF6",
-        "on_click": lambda: gui_app.push_widget(
-          AetherCategoryTileView(
-            self._controller,
-            tr("Speed Limit Controller"),
-            self._controller._slc_rows,
-            color="#8B5CF6",
-            subtitle=tr("Manage auto speed matching, confirmation, offsets, and source priority."),
-            panel_style=self._panel_style,
-          )
-        )
+        "on_click": lambda: self._controller._navigate_to("slc")
       },
     ]
 
@@ -176,32 +148,14 @@ class LongitudinalManagerView(AetherSettingsView):
         "desc": tr("Customize follow distance and jerk/response metrics for each personality profile."),
         "icon": "system",
         "color": "#8B5CF6",
-        "on_click": lambda: gui_app.push_widget(
-          AetherCategoryTileView(
-            self._controller,
-            tr("Driving Personalities"),
-            self._controller._personality_rows,
-            color="#8B5CF6",
-            subtitle=tr("Customize follow distance and jerk/response metrics for each personality profile."),
-            panel_style=self._panel_style,
-          )
-        )
+        "on_click": lambda: self._controller._navigate_to("personality")
       },
       {
         "title": tr("Daily QOL & Weather"),
         "desc": tr("Configure cruise intervals, standstill behaviors, gear mapping, and weather presets."),
         "icon": "sound",
         "color": "#8B5CF6",
-        "on_click": lambda: gui_app.push_widget(
-          AetherCategoryTileView(
-            self._controller,
-            tr("Daily QOL & Weather"),
-            self._controller._daily_rows,
-            color="#8B5CF6",
-            subtitle=tr("Configure cruise intervals, standstill behaviors, gear mapping, and weather presets."),
-            panel_style=self._panel_style,
-          )
-        )
+        "on_click": lambda: self._controller._navigate_to("daily")
       },
     ]
 
@@ -734,6 +688,43 @@ class StarPilotLongitudinalLayout(_SettingsPage):
     )
 
     self._sub_panels["adaptive_speed"] = AdaptiveSpeedView(self)
+
+    # Register subpanels for Level 2 slide transitions
+    self._sub_panels["tune"] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=self._tune_rows)],
+      header_title=tr_noop("Longitudinal Tuning"),
+      header_subtitle=tr_noop("Configure acceleration profiles, smooth following, lane changes, and route speed control."),
+      panel_style=PANEL_STYLE,
+    )
+    self._sub_panels["advanced"] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=self._advanced_rows)],
+      header_title=tr_noop("Advanced Actuators"),
+      header_subtitle=tr_noop("Adjust actuator delay, EV/Truck tuning, and launch/stop speeds/rates."),
+      panel_style=PANEL_STYLE,
+    )
+    self._sub_panels["slc"] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=self._slc_rows)],
+      header_title=tr_noop("Speed Limit Controller"),
+      header_subtitle=tr_noop("Manage auto speed matching, confirmation, offsets, and source priority."),
+      panel_style=PANEL_STYLE,
+    )
+    self._sub_panels["personality"] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=self._personality_rows)],
+      header_title=tr_noop("Driving Personalities"),
+      header_subtitle=tr_noop("Customize follow distance and jerk/response metrics for each personality profile."),
+      panel_style=PANEL_STYLE,
+    )
+    self._sub_panels["daily"] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=self._daily_rows)],
+      header_title=tr_noop("Daily QOL & Weather"),
+      header_subtitle=tr_noop("Configure cruise intervals, standstill behaviors, gear mapping, and weather presets."),
+      panel_style=PANEL_STYLE,
+    )
     self._wire_sub_panels()
 
   def _get_priority_value(self) -> str:
@@ -834,42 +825,41 @@ class StarPilotLongitudinalLayout(_SettingsPage):
     return (-150, 150) if self._is_metric() else (-99, 99)
 
   def _show_slc_offsets_category(self):
-    gui_app.push_widget(
-      AetherCategoryTileView(
-        self,
-        tr("SLC Offsets"),
-        self._slc_offset_rows,
-        color="#8B5CF6",
-        subtitle=tr("Per-limit speed adjustments for the Speed Limit Controller."),
-        panel_style=PANEL_STYLE,
-      )
+    self._sub_panels["slc_offsets"] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=self._slc_offset_rows)],
+      header_title=tr_noop("SLC Offsets"),
+      header_subtitle=tr_noop("Per-limit speed adjustments for the Speed Limit Controller."),
+      panel_style=PANEL_STYLE,
     )
+    self._wire_sub_panels()
+    self._navigate_to("slc_offsets")
 
   def _show_personality_profile_category(self, profile: str):
     rows = self._build_personality_profile_rows(profile)
-    gui_app.push_widget(
-      AetherCategoryTileView(
-        self,
-        tr(f"{profile} Profile"),
-        rows,
-        color="#8B5CF6",
-        subtitle=tr("Customize follow distance and smoothness for this driving personality."),
-        panel_style=PANEL_STYLE,
-      )
+    panel_name = f"profile_{profile.lower()}"
+    self._sub_panels[panel_name] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=rows)],
+      header_title=tr_noop(f"{profile} Profile"),
+      header_subtitle=tr_noop("Customize follow distance and smoothness for this driving personality."),
+      panel_style=PANEL_STYLE,
     )
+    self._wire_sub_panels()
+    self._navigate_to(panel_name)
 
   def _show_weather_offsets_category(self, suffix: str, title: str):
     rows = self._build_weather_offsets_rows(suffix)
-    gui_app.push_widget(
-      AetherCategoryTileView(
-        self,
-        tr(title),
-        rows,
-        color="#8B5CF6",
-        subtitle=tr("Adjust driving parameters for this weather condition."),
-        panel_style=PANEL_STYLE,
-      )
+    panel_name = f"weather_{suffix.lower()}"
+    self._sub_panels[panel_name] = AetherSettingsView(
+      self,
+      [SettingSection(title="", rows=rows)],
+      header_title=tr_noop(title),
+      header_subtitle=tr_noop("Adjust driving parameters for this weather condition."),
+      panel_style=PANEL_STYLE,
     )
+    self._wire_sub_panels()
+    self._navigate_to(panel_name)
 
   def _build_personality_profile_rows(self, profile: str) -> list[SettingRow]:
     follow_min = 1.0 if profile == "Traffic" else 0.5

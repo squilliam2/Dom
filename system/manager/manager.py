@@ -70,6 +70,46 @@ def _is_numeric_stat_value(value) -> bool:
   return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _get_int_param_value(params, key: str, default: int = 0) -> int:
+  getter = getattr(params, "get_int", None)
+  if callable(getter):
+    try:
+      return int(getter(key))
+    except Exception:
+      pass
+
+  value = params.get(key)
+  if value is None:
+    return default
+  if isinstance(value, bytes):
+    value = value.decode("utf-8", errors="ignore")
+
+  try:
+    return int(float(str(value).strip()))
+  except (TypeError, ValueError):
+    return default
+
+
+def get_nav_offroad_clear_timeout_seconds(params) -> int:
+  return max(_get_int_param_value(params, "ClearNavOnOffroadTimeoutMinutes", 0), 0) * 60
+
+
+def update_nav_offroad_clear_state(params, started: bool, tracked_destination, tracked_started_at, now: float):
+  nav_destination = params.get("NavDestination")
+  if started or not params.get_bool("ClearNavOnOffroad") or not nav_destination:
+    return None, None
+
+  if nav_destination != tracked_destination or tracked_started_at is None:
+    tracked_destination = nav_destination
+    tracked_started_at = now
+
+  if now - tracked_started_at >= get_nav_offroad_clear_timeout_seconds(params):
+    params.remove("NavDestination")
+    return None, None
+
+  return tracked_destination, tracked_started_at
+
+
 def _merge_starpilot_stat_values(existing, incoming, key=None):
   if existing is None:
     return incoming
@@ -765,6 +805,8 @@ def manager_thread() -> None:
   started_prev = False
   ignition_prev = False
   warned_onroad_reboot = False
+  offroad_nav_destination = None
+  offroad_nav_started_at = None
 
   # StarPilot variables
   sm = sm.extend(['starpilotPlan'])
@@ -788,8 +830,10 @@ def manager_thread() -> None:
 
       # StarPilot variables
       params_memory.clear_all(ParamKeyFlag.CLEAR_ON_OFFROAD_TRANSITION)
-      if params.get_bool("ClearNavOnOffroad"):
-        params.remove("NavDestination")
+
+    offroad_nav_destination, offroad_nav_started_at = update_nav_offroad_clear_state(
+      params, started, offroad_nav_destination, offroad_nav_started_at, time.monotonic()
+    )
 
     ignition = any(ps.ignitionLine or ps.ignitionCan for ps in sm['pandaStates'] if ps.pandaType != log.PandaState.PandaType.unknown)
     if ignition and not ignition_prev:

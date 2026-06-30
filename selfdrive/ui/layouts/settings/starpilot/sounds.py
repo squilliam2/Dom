@@ -86,8 +86,8 @@ class SoundsManagerView(PanelManagerView):
       toggle_defs.append({
         "title": tr(info["title"]),
         "subtitle": tr(info.get("subtitle", "")),
-        "get": lambda k=key: self._controller._params.get_bool(k),
-        "set": lambda state, k=key: self._controller._params.put_bool(k, state),
+        "get_state": lambda k=key: self._controller._params.get_bool(k),
+        "set_state": lambda state, k=key: self._controller._params.put_bool(k, state),
         "is_enabled": info.get("is_enabled"),
         "disabled_label": tr(info.get("disabled_label", "")) if info.get("disabled_label") else "",
       })

@@ -446,7 +446,7 @@ class TestAethergridContracts(unittest.TestCase):
 
     grid.render(mod.rl.Rectangle(0, 50, 500, 300))
     self.assertTrue(spy.rects)
-    self.assertEqual(spy.rects[0].y, 50)
+    self.assertEqual(spy.rects[0].y, 130)
     self.assertEqual(spy.rects[0].x, 0)
 
   def test_disabled_tiles_hud_mode_rendering(self):
@@ -559,28 +559,28 @@ class TestAethergridContracts(unittest.TestCase):
 
     view = mod.AetherCategoryTileView(controller_mock, "Category Title", rows, color="#FF0000", subtitle="Category Description")
 
-    self.assertEqual(len(view._row_to_tile_map), 3)
-    self.assertIsInstance(view._row_to_tile_map["toggle_row"], mod.RowToggleTile)
-    self.assertIsInstance(view._row_to_tile_map["value_row"], mod.RowPanelTile)
-    self.assertIsInstance(view._row_to_tile_map["action_row"], mod.RowPanelTile)
+    self.assertEqual(len(view._sections), 1)
+    self.assertEqual(len(view._sections[0].rows), 3)
 
-    view._update_visible_tiles()
-    self.assertEqual(len(view._tile_grid.tiles), 3)
+    visible = view._visible_rows(view._sections[0])
+    self.assertEqual(len(visible), 3)
 
     toggle_visible = False
-    view._update_visible_tiles()
-    self.assertEqual(len(view._tile_grid.tiles), 2)
-    self.assertNotIn(view._row_to_tile_map["toggle_row"], view._tile_grid.tiles)
+    visible = view._visible_rows(view._sections[0])
+    self.assertEqual(len(visible), 2)
+    self.assertNotIn(rows[0], visible)
 
     view._back_btn_rect = mod.rl.Rectangle(196, 56, 68, 68)
+    view._slide_progress = 1.0 # fully slide-in
+    view.set_rect(mod.rl.Rectangle(0, 0, 1920, 1080))
 
-    self.assertEqual(view._target_at(mod.rl.Vector2(200, 60)), "static:back")
-    self.assertNotEqual(view._target_at(mod.rl.Vector2(0, 0)), "static:back")
+    self.assertEqual(view._target_at(mod.rl.Vector2(200, 60)), mod.BACK_BTN)
+    self.assertEqual(view._target_at(mod.rl.Vector2(1000, 60)), "__dismiss__")
 
     app_mod = sys.modules["openpilot.system.ui.lib.application"]
     app_mod.gui_app.pop_widget = MagicMock()
 
-    view._activate_target("static:back")
+    view._activate_target(mod.BACK_BTN)
     app_mod.gui_app.pop_widget.assert_called_once()
 
 

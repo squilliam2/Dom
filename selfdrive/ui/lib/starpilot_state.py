@@ -48,7 +48,7 @@ class StarPilotCarState:
     # ========== Car Values for Range Calculation ==========
     steerActuatorDelay: float = 0.0
     friction: float = 0.0
-    steerKp: float = 1.0
+    steerKp: float = 0.6
     latAccelFactor: float = 0.0
     steerRatio: float = 0.0
     longitudinalActuatorDelay: float = 0.0
@@ -215,6 +215,27 @@ class StarPilotState:
                 self.car_state.hasAutoTune = event.liveTorqueParameters.useParams
             except Exception:
                 pass
+
+        # 4. Sync CP defaults into lateral tuning params (fallback for replay)
+        self._sync_lateral_params()
+
+    def _sync_lateral_params(self):
+        """Fallback: write CP defaults into lateral tuning params if unset.
+        Mirrors starpilot_variables._sync_stock_param for replay scenarios."""
+        if self.params.get("CarParamsPersistent") is None:
+            return
+        cs = self.car_state
+        for key, live_val in (
+            ("SteerDelay", cs.steerActuatorDelay),
+            ("SteerFriction", cs.friction),
+            ("SteerKP", cs.steerKp),
+            ("SteerLatAccel", cs.latAccelFactor),
+            ("SteerRatio", cs.steerRatio),
+        ):
+            if abs(live_val) < 1e-6:
+                continue
+            if abs(self.params.get_float(key)) < 1e-6:
+                self.params.put_float(key, live_val)
 
 # Global instance
 starpilot_state = StarPilotState()

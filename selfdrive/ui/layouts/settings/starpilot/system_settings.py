@@ -113,6 +113,8 @@ class SystemSettingsManagerView(PanelManagerView):
   TAB_BOTTOM_GAP = 18
   ACTION_PILL_WIDTH = 132
   DANGER_PILL_WIDTH = 112
+  _TOPBAR_HEIGHT = 76.0
+  _TOPBAR_GAP = 16.0
   METRICS = SYSTEM_PANEL_METRICS
 
   @property
@@ -242,62 +244,54 @@ class SystemSettingsManagerView(PanelManagerView):
 
     self._toggle_defs = [
       {
-        "id": "StandbyMode",
         "title": tr("Standby Mode"),
         "subtitle": tr("Keep the device ready for faster wake-ups."),
-        "get": lambda: self._controller._params.get_bool("StandbyMode"),
-        "set": lambda v: self._controller._params.put_bool("StandbyMode", v),
+        "get_state": lambda: self._controller._params.get_bool("StandbyMode"),
+        "set_state": lambda v: self._controller._params.put_bool("StandbyMode", v),
       },
       {
-        "id": "UseKonikServer",
         "title": tr("Use Konik Server"),
         "subtitle": tr("Switch remote services to the Konik endpoint."),
-        "get": self._controller._get_konik_state,
-        "set": self._controller._on_konik_toggle,
+        "get_state": self._controller._get_konik_state,
+        "set_state": self._controller._on_konik_toggle,
       },
       {
-        "id": "DebugMode",
         "title": tr("Debug Mode"),
         "subtitle": tr("Expose additional debugging and developer toggles."),
-        "get": lambda: self._controller._params.get_bool("DebugMode"),
-        "set": lambda v: self._controller._params.put_bool("DebugMode", v),
+        "get_state": lambda: self._controller._params.get_bool("DebugMode"),
+        "set_state": lambda v: self._controller._params.put_bool("DebugMode", v),
       },
       {
-        "id": "ShowFPS",
         "title": tr("Show FPS"),
         "subtitle": tr("Display screen refresh rate and system performance metrics onroad."),
-        "get": lambda: self._controller._params.get_bool("ShowFPS"),
-        "set": lambda v: self._controller._params.put_bool("ShowFPS", v),
+        "get_state": lambda: self._controller._params.get_bool("ShowFPS"),
+        "set_state": lambda v: self._controller._params.put_bool("ShowFPS", v),
       },
       {
-        "id": "NoUploads",
         "title": tr("Disable Uploads"),
         "subtitle": tr("Stop all cloud uploads from this device."),
-        "get": lambda: self._controller._params.get_bool("NoUploads"),
-        "set": lambda v: self._controller._params.put_bool("NoUploads", v),
+        "get_state": lambda: self._controller._params.get_bool("NoUploads"),
+        "set_state": lambda v: self._controller._params.put_bool("NoUploads", v),
       },
       {
-        "id": "DisableOnroadUploads",
         "title": tr("Disable Onroad Uploads"),
         "subtitle": tr("Block uploads while the car is onroad."),
-        "get": lambda: self._controller._params.get_bool("DisableOnroadUploads"),
-        "set": lambda v: self._controller._params.put_bool("DisableOnroadUploads", v),
+        "get_state": lambda: self._controller._params.get_bool("DisableOnroadUploads"),
+        "set_state": lambda v: self._controller._params.put_bool("DisableOnroadUploads", v),
         "is_enabled": lambda: not self._controller._params.get_bool("NoUploads"),
         "disabled_label": tr("Turn off Disable Uploads first"),
       },
       {
-        "id": "NoLogging",
         "title": tr("Disable Logging"),
         "subtitle": tr("Stop writing standard log data to storage."),
-        "get": lambda: self._controller._params.get_bool("NoLogging"),
-        "set": lambda v: self._controller._params.put_bool("NoLogging", v),
+        "get_state": lambda: self._controller._params.get_bool("NoLogging"),
+        "set_state": lambda v: self._controller._params.put_bool("NoLogging", v),
       },
       {
-        "id": "HigherBitrate",
         "title": tr("High Bitrate Recording"),
         "subtitle": tr("Capture higher-quality onroad footage."),
-        "get": lambda: self._controller._params.get_bool("HigherBitrate"),
-        "set": self._controller._on_higher_bitrate_toggle,
+        "get_state": lambda: self._controller._params.get_bool("HigherBitrate"),
+        "set_state": self._controller._on_higher_bitrate_toggle,
         "is_enabled": lambda: not self._controller._params.get_bool("DisableOnroadUploads") and not self._controller._params.get_bool("NoUploads"),
         "disabled_label": tr("Uploads must stay enabled"),
       },
@@ -437,11 +431,7 @@ class SystemSettingsManagerView(PanelManagerView):
 
   @property
   def bottombar_height(self) -> float:
-    return 160.0
-
-  def _draw_bottombar(self, bottombar_rect: rl.Rectangle) -> None:
-    draw_list_group_shell(bottombar_rect, style=self.PANEL_STYLE)
-    self._drive_mode_control.render(bottombar_rect)
+    return 0.0
 
   def _draw_static_elements(self, scroll_rect: rl.Rectangle, content_width: float) -> None:
     if not self._uses_two_columns(content_width):
@@ -484,7 +474,13 @@ class SystemSettingsManagerView(PanelManagerView):
     draw_custom_icon("first_aid", icon_x, icon_y, s, icon_color)
 
   def _draw_header(self, rect: rl.Rectangle):
-    pass
+    content_width = self._scroll_rect.width - AETHER_LIST_METRICS.content_right_gutter
+    bar_rect = rl.Rectangle(rect.x, rect.y - 6.0, content_width, self._TOPBAR_HEIGHT)
+    draw_list_group_shell(bar_rect, style=self.PANEL_STYLE)
+    self._drive_mode_control.render(bar_rect)
+    total_offset = self._TOPBAR_HEIGHT + self._TOPBAR_GAP
+    self._scroll_rect.y += total_offset
+    self._scroll_rect.height = max(0.0, self._scroll_rect.height - total_offset)
 
   def _measure_content_height(self, width: float) -> float:
     display_h = self._section_block_height(self._slider_section_height(self._display_slider_keys, width))

@@ -18,7 +18,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
     SettingRow,
     SettingSection,
     AetherSettingsView,
-    AetherCategoryTileView,
+    AetherCategoryDrawer,
     TileGrid,
     HubTile,
     draw_list_group_shell,
@@ -86,48 +86,21 @@ class AppearanceManagerView(AetherSettingsView):
                 "desc": tr("Customize dynamic lane paths, road edges, and colors."),
                 "icon": "steering",
                 "color": "#8B5CF6",
-                "on_click": lambda: gui_app.push_widget(
-                    AetherCategoryTileView(
-                        self._controller,
-                        tr("Model & Path Visualization"),
-                        self._controller._model_rows,
-                        color="#8B5CF6",
-                        subtitle=tr("Customize dynamic lane paths, road edges, and colors."),
-                        panel_style=self._panel_style,
-                    )
-                )
+                "on_click": lambda: self._controller._navigate_to("model")
             },
             {
                 "title": tr("Driving Widgets & HUD"),
                 "desc": tr("Configure compass, dynamic pedals, signals, and screen borders."),
                 "icon": "display",
                 "color": "#8B5CF6",
-                "on_click": lambda: gui_app.push_widget(
-                    AetherCategoryTileView(
-                        self._controller,
-                        tr("Driving Widgets & HUD"),
-                        self._controller._hud_rows,
-                        color="#8B5CF6",
-                        subtitle=tr("Configure compass, dynamic pedals, signals, and screen borders."),
-                        panel_style=self._panel_style,
-                    )
-                )
+                "on_click": lambda: self._controller._navigate_to("hud")
             },
             {
                 "title": tr("Screen Declutter & Visibility"),
                 "desc": tr("Toggle speed limits, alert banners, and driver monitoring icon."),
                 "icon": "system",
                 "color": "#8B5CF6",
-                "on_click": lambda: gui_app.push_widget(
-                    AetherCategoryTileView(
-                        self._controller,
-                        tr("Screen Declutter & Visibility"),
-                        self._controller._declutter_rows,
-                        color="#8B5CF6",
-                        subtitle=tr("Toggle speed limits, alert banners, and driver monitoring icon."),
-                        panel_style=self._panel_style,
-                    )
-                )
+                "on_click": lambda: self._controller._navigate_to("declutter")
             },
         ]
 
@@ -137,48 +110,21 @@ class AppearanceManagerView(AetherSettingsView):
                 "desc": tr("Configure road names, Vienna signs, and offroad routes."),
                 "icon": "navigate",
                 "color": "#8B5CF6",
-                "on_click": lambda: gui_app.push_widget(
-                    AetherCategoryTileView(
-                        self._controller,
-                        tr("Navigation & Mapping"),
-                        self._controller._nav_rows,
-                        color="#8B5CF6",
-                        subtitle=tr("Configure road names, Vienna signs, and offroad routes."),
-                        panel_style=self._panel_style,
-                    )
-                )
+                "on_click": lambda: self._controller._navigate_to("nav")
             },
             {
                 "title": tr("Camera & System Startup"),
                 "desc": tr("Manage driver monitoring cameras, boot logos, and startup sounds."),
                 "icon": "vehicle",
                 "color": "#8B5CF6",
-                "on_click": lambda: gui_app.push_widget(
-                    AetherCategoryTileView(
-                        self._controller,
-                        tr("Camera & System Startup"),
-                        self._controller._system_rows,
-                        color="#8B5CF6",
-                        subtitle=tr("Manage driver monitoring cameras, boot logos, and startup sounds."),
-                        panel_style=self._panel_style,
-                    )
-                )
+                "on_click": lambda: self._controller._navigate_to("system")
             },
             {
                 "title": tr("Advanced Metrics"),
                 "desc": tr("Adjust radar plots, lead vehicle info, and stop sign metrics."),
                 "icon": "sound",
                 "color": "#8B5CF6",
-                "on_click": lambda: gui_app.push_widget(
-                    AetherCategoryTileView(
-                        self._controller,
-                        tr("Advanced Metrics"),
-                        self._controller._dev_rows,
-                        color="#8B5CF6",
-                        subtitle=tr("Adjust radar plots, lead vehicle info, and stop sign metrics."),
-                        panel_style=self._panel_style,
-                    )
-                )
+                "on_click": lambda: self._controller._navigate_to("dev")
             },
         ]
 
@@ -514,6 +460,51 @@ class StarPilotAppearanceLayout(_SettingsPage):
             tab_defs=None,
             panel_style=PANEL_STYLE,
         )
+
+        # Register subpanels for Level 2 slide transitions
+        self._sub_panels["model"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._model_rows)],
+            header_title=tr_noop("Model & Path Visualization"),
+            header_subtitle=tr_noop("Customize dynamic lane paths, road edges, and colors."),
+            panel_style=PANEL_STYLE,
+        )
+        self._sub_panels["hud"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._hud_rows)],
+            header_title=tr_noop("Driving Widgets & HUD"),
+            header_subtitle=tr_noop("Configure compass, dynamic pedals, signals, and screen borders."),
+            panel_style=PANEL_STYLE,
+        )
+        self._sub_panels["declutter"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._declutter_rows)],
+            header_title=tr_noop("Screen Declutter & Visibility"),
+            header_subtitle=tr_noop("Toggle speed limits, alert banners, and driver monitoring icon."),
+            panel_style=PANEL_STYLE,
+        )
+        self._sub_panels["nav"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._nav_rows)],
+            header_title=tr_noop("Navigation & Mapping"),
+            header_subtitle=tr_noop("Configure road names, Vienna signs, and offroad routes."),
+            panel_style=PANEL_STYLE,
+        )
+        self._sub_panels["system"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._system_rows)],
+            header_title=tr_noop("Camera & System Startup"),
+            header_subtitle=tr_noop("Manage driver monitoring cameras, boot logos, and startup sounds."),
+            panel_style=PANEL_STYLE,
+        )
+        self._sub_panels["dev"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._dev_rows)],
+            header_title=tr_noop("Advanced Metrics"),
+            header_subtitle=tr_noop("Adjust radar plots, lead vehicle info, and stop sign metrics."),
+            panel_style=PANEL_STYLE,
+        )
+        self._wire_sub_panels()
 
     # ── Theme helpers ──
 

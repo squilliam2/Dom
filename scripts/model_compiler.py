@@ -82,6 +82,12 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--force", action="store_true", help="Accepted for compatibility; selected outputs are always replaced.")
   parser.add_argument("--split-artifact", type=Path, help="Split an existing oversized PKL without compiling.")
   parser.add_argument("--chunk-size-mib", type=int, default=95, help="Multipart size in MiB; must be below 100.")
+  parser.add_argument(
+    "--image-history-pipeline",
+    choices=("policy", "warp"),
+    default="policy",
+    help="Driving artifact ABI. 'policy' is the newer faster path; 'warp' reproduces legacy v22 artifacts.",
+  )
 
   args, unknown = parser.parse_known_args()
   dynamic_flags = [value[2:] for value in unknown if value.startswith("--")]
@@ -342,7 +348,14 @@ def split_oversized_artifact(
   return [*part_paths, checksum_path]
 
 
-def compile_driving(model_key: str, files: dict[str, Path], input_format: str, version: str, output_dir: Path) -> Path:
+def compile_driving(
+  model_key: str,
+  files: dict[str, Path],
+  input_format: str,
+  version: str,
+  output_dir: Path,
+  image_history_pipeline: str,
+) -> Path:
   model_type, source_args = driving_compile_args(files, input_format)
   output_path = output_dir / f"{model_key}_driving_tinygrad.pkl"
   removed = remove_paths(sorted({
@@ -371,6 +384,8 @@ def compile_driving(model_key: str, files: dict[str, Path], input_format: str, v
     str(output_path),
     "--frame-skip",
     str(frame_skip),
+    "--image-history-pipeline",
+    image_history_pipeline,
     *source_args,
   ]
   if version:
@@ -472,7 +487,7 @@ def main() -> int:
     version = "v15"
   version_label = version or "unspecified behavior"
   print(f"Compiling {model_key} ({input_format}, {version_label}) from {args.input_dir} -> {args.output_dir}")
-  output = compile_driving(model_key, files, input_format, version, args.output_dir)
+  output = compile_driving(model_key, files, input_format, version, args.output_dir, args.image_history_pipeline)
   print(f"  saved {output.name}")
   multipart_outputs = split_oversized_artifact(output)
   if multipart_outputs:

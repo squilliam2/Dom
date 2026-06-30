@@ -69,8 +69,8 @@ DEFAULT_ANGLE_SMOOTHING_ALPHA_V = [0.2, 0.1, 0.0]
 EV9_HIGH_ANGLE_GAIN_BP = [70.0, 120.0, 220.0, 320.0]
 EV9_HIGH_ANGLE_GAIN_CAP_V = [0.85, 0.55, 0.30, 0.16]
 EV9_HIGH_ANGLE_GAIN_MIN = 0.004
-EV9_DRIVER_OVERRIDE_GAIN_BP = [125.0, 250.0, 375.0]
-EV9_DRIVER_OVERRIDE_GAIN_CAP_V = [0.70, 0.12, 0.0]
+EV9_DRIVER_OVERRIDE_GAIN_BP = [175.0, 350.0, 525.0]
+EV9_DRIVER_OVERRIDE_GAIN_CAP_V = [0.70, 0.20, 0.04]
 
 
 def egmp_dynamic_longitudinal_tuning(CP) -> bool:
@@ -264,6 +264,11 @@ def apply_ev9_high_angle_gain_cap(CP, gain: float, steering_angle_deg: float, la
   return gain
 
 
+def ev9_driver_override_active(CP, steering_torque: float, steering_pressed: bool, lat_active: bool) -> bool:
+  return CP.carFingerprint == CAR.KIA_EV9 and CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING and lat_active and \
+         (steering_pressed or abs(steering_torque) >= EV9_DRIVER_OVERRIDE_GAIN_BP[0])
+
+
 def process_hud_alert(enabled, fingerprint, hud_control):
   sys_warning = (hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw))
 
@@ -408,9 +413,16 @@ class CarController(CarControllerBase):
       desired_angle = float(np.clip(actuators.steeringAngleDeg,
                                     -self.params.ANGLE_LIMITS.STEER_ANGLE_MAX,
                                     self.params.ANGLE_LIMITS.STEER_ANGLE_MAX))
+      ev9_driver_override = ev9_driver_override_active(self.CP, CS.out.steeringTorque, CS.out.steeringPressed, CC.latActive)
 
-      self.angle_filter.update_alpha(get_angle_smoothing_alpha(self.CP, CS.out.vEgo))
-      desired_angle = self.angle_filter.update(desired_angle)
+      if ev9_driver_override:
+        desired_angle = float(np.clip(CS.out.steeringAngleDeg,
+                                      -self.params.ANGLE_LIMITS.STEER_ANGLE_MAX,
+                                      self.params.ANGLE_LIMITS.STEER_ANGLE_MAX))
+        self.angle_filter.x = desired_angle
+      else:
+        self.angle_filter.update_alpha(get_angle_smoothing_alpha(self.CP, CS.out.vEgo))
+        desired_angle = self.angle_filter.update(desired_angle)
 
       apply_angle = apply_steer_angle_limits_vm(desired_angle, self.apply_angle_last, v_ego_raw,
                                                 CS.out.steeringAngleDeg, CC.latActive, self.params, self.VM)

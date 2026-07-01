@@ -648,14 +648,22 @@ class AugmentedRoadView(CameraView):
 
   def _draw_border(self):
     border_size = self._get_border_width()
-    # Keep full border visible by drawing outside scissor with an inset rect.
+    # Keep the outer edge pinned to the camera bounds. Wider borders grow inward
+    # so they cannot paint over the fixed right-side widget column.
     border_rect = rl.Rectangle(
       self._content_rect.x + border_size / 2,
       self._content_rect.y + border_size / 2,
       self._content_rect.width - border_size,
       self._content_rect.height - border_size,
     )
+    rl.begin_scissor_mode(
+      int(self._content_rect.x),
+      int(self._content_rect.y),
+      int(self._content_rect.width),
+      int(self._content_rect.height),
+    )
     rl.draw_rectangle_rounded_lines_ex(border_rect, 0.12, 16, border_size, get_border_color(ui_state))
+    rl.end_scissor_mode()
 
   def _get_border_width(self) -> int:
     return get_border_width(8, ui_state.params)

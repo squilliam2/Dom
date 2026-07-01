@@ -2515,8 +2515,15 @@
       },
       {
         "key": "RemoteStartBootsComma",
-        "label": "Remote Start Boots comma",
+        "label": "Remote Start Boots Comma (GM)",
         "description": "Use the remote-start GM panda firmware at boot.\n\nRequired for GM remote-start startup signal behavior.",
+        "data_type": "bool",
+        "ui_type": "toggle"
+      },
+      {
+        "key": "HKGRemoteStartBootsComma",
+        "label": "Remote Start Boots Comma (HKG)",
+        "description": "Use the remote-climate Hyundai/Kia/Genesis CAN-FD panda firmware at boot.\n\nRequired for EV remote-climate startup signal behavior.",
         "data_type": "bool",
         "ui_type": "toggle"
       },

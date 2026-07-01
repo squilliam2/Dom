@@ -29,11 +29,6 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   draw_section_header,
   draw_settings_panel_header,
   AetherSliderDialog,
-  GROUP_HEADER_HEIGHT,
-  GROUP_HEADER_GAP,
-  GROUP_HAIRLINE_COLOR,
-  GROUP_HEADER_COLOR,
-  draw_group_header,
   SECTION_GAP,
   SECTION_HEADER_HEIGHT,
   SECTION_HEADER_GAP,
@@ -105,6 +100,16 @@ class SoundsManagerView(PanelManagerView):
       self._active_adjustor_key = None
 
   def _init_adjustors(self):
+    volume_icon_map = {
+      "WarningImmediateVolume": "alert_critical",
+      "WarningSoftVolume": "alert_critical",
+      "RefuseVolume": "alert_critical",
+      "PromptDistractedVolume": "alert_critical",
+      "EngageVolume": "alert_state",
+      "DisengageVolume": "alert_state",
+      "PromptVolume": "alert_info",
+      "BelowSteerSpeedVolume": "alert_info",
+    }
     for key in self._controller.VOLUME_KEYS:
       info = self._controller.VOLUME_INFO[key]
 
@@ -122,6 +127,7 @@ class SoundsManagerView(PanelManagerView):
         set_active=lambda active, k=key: self._show_volume_slider(k) if active else None,
         style=PANEL_STYLE,
         color=PANEL_STYLE.accent,
+        icon_key=volume_icon_map.get(key),
       )
       self._adjustor_rows[key] = adjustor
 
@@ -158,6 +164,7 @@ class SoundsManagerView(PanelManagerView):
       ) if active else None,
       style=PANEL_STYLE,
       color=PANEL_STYLE.accent,
+      icon_key="alert_info",
     )
     self._adjustor_rows[cd_key] = cd_adjustor
 
@@ -248,9 +255,9 @@ class SoundsManagerView(PanelManagerView):
 
     default_adjustor_h = float(AETHER_LIST_METRICS.adjustor_row_height)
 
-    # 9 adjustors (8 volume keys + 1 cooldown key) and 2 group headers ("SYSTEM STATE" and "INFORMATIONAL")
+    # 9 adjustors (8 volume keys + 1 cooldown key) and 2 divider bands between groups
     left_h = ((len(self._controller.VOLUME_KEYS) + 1) * default_adjustor_h)
-    left_h += (2 * (GROUP_HEADER_HEIGHT + GROUP_HEADER_GAP))
+    left_h += 20  # 2 dividers × (4px band + 6px gap)
     left_natural_container_h = left_h + 16.0
 
     tiles_needed_h = self.measure_page_grid_height(self._toggle_grid, col_width - 24) + 24
@@ -268,8 +275,8 @@ class SoundsManagerView(PanelManagerView):
     max_container_h = available_container_h
 
     # Scale the left column adjustor rows to fit within max_container_h
-    # Formula: max_container_h = 9 * left_row_h + 2 * 22 (headers) + 16 (padding)
-    left_available_for_rows = max_container_h - 44.0 - 16.0
+    # Formula: max_container_h = 9 * left_row_h + 2 * 10 (dividers) + 16 (padding)
+    left_available_for_rows = max_container_h - 20.0 - 16.0
     left_row_h = max(60.0, left_available_for_rows / (len(self._controller.VOLUME_KEYS) + 1))
     for key in self._controller.VOLUME_KEYS:
       self._adjustor_rows[key].custom_row_height = left_row_h
@@ -336,9 +343,15 @@ class SoundsManagerView(PanelManagerView):
     )
 
     current_y = y + 8
-    for label, keys in groups:
+    for i, (label, keys) in enumerate(groups):
       if label is not None:
-        current_y = draw_group_header(x + 24, current_y, width - 48, label)
+        divider_h = 4
+        divider_color = rl.Color(173, 78, 90, 30) if i == 1 else rl.Color(139, 92, 246, 25)
+        rl.draw_rectangle_rec(
+          rl.Rectangle(x + 24, current_y, width - 48, divider_h),
+          divider_color
+        )
+        current_y += divider_h + 6
       for index, key in enumerate(keys):
         adjustor = self._adjustor_rows[key]
         row_h = adjustor.measure_height(width)
@@ -380,11 +393,11 @@ class StarPilotSoundsLayout(_SettingsPage):
   }
   VOLUME_INFO = {
     "WarningImmediateVolume": {"title": tr_noop("Immediate Warning"), "subtitle": tr_noop("Critical safety intervention"), "min": 25},
-    "WarningSoftVolume": {"title": tr_noop("Soft Warning"), "subtitle": tr_noop("Approaching system limits"), "min": 25},
-    "RefuseVolume": {"title": tr_noop("Engagement Refused"), "subtitle": tr_noop("Action refused by system"), "min": 0},
-    "PromptDistractedVolume": {"title": tr_noop("Distracted Driver"), "subtitle": tr_noop("Driver attention required"), "min": 0},
-    "EngageVolume": {"title": tr_noop("Engagement Chime"), "subtitle": tr_noop("System engaged confirmation"), "min": 0},
-    "DisengageVolume": {"title": tr_noop("Disengagement Alert"), "subtitle": tr_noop("Handoff to manual control"), "min": 0},
+    "WarningSoftVolume": {"title": tr_noop("Soft Warning"), "subtitle": "", "min": 25},
+    "RefuseVolume": {"title": tr_noop("Engagement Refused"), "subtitle": "", "min": 0},
+    "PromptDistractedVolume": {"title": tr_noop("Distracted Driver"), "subtitle": "", "min": 0},
+    "EngageVolume": {"title": tr_noop("Engagement Chime"), "subtitle": "", "min": 0},
+    "DisengageVolume": {"title": tr_noop("Disengagement Alert"), "subtitle": "", "min": 0},
     "PromptVolume": {"title": tr_noop("General Prompt"), "subtitle": tr_noop("System guidance prompt"), "min": 0},
     "BelowSteerSpeedVolume": {"title": tr_noop("Low Speed Alert"), "subtitle": tr_noop("Minimum speed for steering"), "min": 0},
   }

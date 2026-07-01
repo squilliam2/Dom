@@ -16,7 +16,6 @@ from setproctitle import setproctitle
 
 from cereal import car, log
 import cereal.messaging as messaging
-import openpilot.system.sentry as sentry
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -429,7 +428,6 @@ def launcher(proc: str, name: str, nice: int | None = None) -> None:
 
     # add daemon name tag to logs
     cloudlog.bind(daemon=name)
-    sentry.set_tag("daemon", name)
 
     # exec the process
     mod.main()
@@ -438,7 +436,13 @@ def launcher(proc: str, name: str, nice: int | None = None) -> None:
   except Exception:
     # can't install the crash handler because sys.excepthook doesn't play nice
     # with threads, so catch it here.
-    sentry.capture_exception()
+    try:
+      import openpilot.system.sentry as sentry
+
+      sentry.set_tag("daemon", name)
+      sentry.capture_exception()
+    except Exception:
+      cloudlog.exception(f"failed to capture exception for child {proc}")
     raise
 
 
@@ -628,7 +632,17 @@ class PythonProcess(ManagerProcess):
   def prepare(self) -> None:
     if self.enabled:
       cloudlog.info(f"preimporting {self.module}")
-      importlib.import_module(self.module)
+      start = time.monotonic()
+      try:
+        importlib.import_module(self.module)
+      finally:
+        line = f"SP_BOOT_TIMING preimport {self.name} module={self.module} +{time.monotonic() - start:.3f}s"
+        try:
+          with open(os.environ.get("SP_BOOT_TIMING_LOG", "/tmp/starpilot_boot_timing.log"), "a") as f:
+            f.write(line + "\n")
+        except OSError:
+          pass
+        cloudlog.warning(line)
 
   def start(self) -> None:
     # In case we only tried a non blocking stop we need to stop it before restarting

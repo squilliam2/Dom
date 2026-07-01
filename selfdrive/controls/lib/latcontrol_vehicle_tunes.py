@@ -8,6 +8,7 @@ from openpilot.common.constants import CV
 from openpilot.starpilot.common.testing_grounds import testing_ground
 
 CIVIC_BOSCH_MODIFIED_B_FIXED_FRICTION_THRESHOLD = 0.30
+STANDARD_FRICTION_THRESHOLD = 0.30
 HKG_CANFD_BASE_FRICTION_THRESHOLD = 0.39
 CIVIC_BOSCH_MODIFIED_B_LAT_ACCEL_FACTOR_MULT = 1.20
 CIVIC_BOSCH_MODIFIED_A_VARIANT_LAT_ACCEL_FACTOR_MULT = 1.00
@@ -655,13 +656,17 @@ def _sigmoid(x: float) -> float:
   return z / (1.0 + z)
 
 
-def get_friction_threshold(v_ego: float) -> float:
-  # Keep the speed-scaled friction threshold behavior.
+def get_gm_base_friction_threshold(v_ego: float) -> float:
+  # GM's speed-scaled base friction threshold behavior.
   return float(np.interp(v_ego, [1 * CV.MPH_TO_MS, 20 * CV.MPH_TO_MS, 75 * CV.MPH_TO_MS], [0.16, 0.19, 0.27]))
 
 
+def get_standard_friction_threshold(v_ego: float) -> float:
+  return max(get_gm_base_friction_threshold(v_ego), STANDARD_FRICTION_THRESHOLD)
+
+
 def get_hkg_canfd_base_friction_threshold(v_ego: float) -> float:
-  return max(get_friction_threshold(v_ego), HKG_CANFD_BASE_FRICTION_THRESHOLD)
+  return max(get_gm_base_friction_threshold(v_ego), HKG_CANFD_BASE_FRICTION_THRESHOLD)
 
 
 def get_trailer_lateral_assist_factor(trailer_load_kg: float, v_ego: float, desired_lateral_accel: float) -> float:
@@ -722,7 +727,7 @@ def get_prius_ff_scale(desired_lateral_accel: float, desired_lateral_jerk: float
 
 
 def get_prius_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   transition_envelope = _prius_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _prius_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1001,7 +1006,7 @@ def get_bolt_2018_2021_dynamic_torque_scale(desired_lateral_accel: float, desire
 
 
 def get_bolt_2018_2021_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   transition_envelope = _bolt_2018_2021_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _bolt_2018_2021_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1078,7 +1083,7 @@ def get_bolt_2022_2023_ff_scale(desired_lateral_accel: float, desired_lateral_je
 
 
 def get_bolt_2022_2023_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   transition_envelope = _bolt_2022_2023_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _bolt_2022_2023_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1150,7 +1155,7 @@ def get_volt_standard_ff_scale(desired_lateral_accel: float, desired_lateral_jer
 
 
 def get_volt_standard_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   transition_envelope = _volt_standard_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _volt_standard_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1387,7 +1392,7 @@ def get_kia_niro_phev_2022_center_taper_scale(desired_lateral_accel: float, v_eg
 
 
 def get_kia_niro_phev_2022_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   speed_weight = _sigmoid((v_ego - KIA_NIRO_PHEV_2022_FRICTION_SPEED) / KIA_NIRO_PHEV_2022_FRICTION_SPEED_WIDTH)
   center_weight = _sigmoid((KIA_NIRO_PHEV_2022_FRICTION_CENTER_LAT - abs(desired_lateral_accel)) / KIA_NIRO_PHEV_2022_FRICTION_CENTER_LAT_WIDTH)
   calm_jerk_weight = _sigmoid((KIA_NIRO_PHEV_2022_FRICTION_CALM_JERK - abs(desired_lateral_jerk)) / KIA_NIRO_PHEV_2022_FRICTION_CALM_JERK_WIDTH)
@@ -1446,7 +1451,7 @@ def get_kia_forte_center_taper_scale(desired_lateral_accel: float, v_ego: float)
 
 
 def get_kia_forte_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   speed_weight = _kia_forte_sigmoid((v_ego - KIA_FORTE_FRICTION_SPEED) / KIA_FORTE_FRICTION_SPEED_WIDTH)
   center_weight = _kia_forte_sigmoid((KIA_FORTE_FRICTION_CENTER_LAT - abs(desired_lateral_accel)) / KIA_FORTE_FRICTION_CENTER_LAT_WIDTH)
   calm_jerk_weight = _kia_forte_sigmoid((KIA_FORTE_FRICTION_CALM_JERK - abs(desired_lateral_jerk)) / KIA_FORTE_FRICTION_CALM_JERK_WIDTH)
@@ -1497,7 +1502,7 @@ def get_palisade_ff_scale(desired_lateral_accel: float, desired_lateral_jerk: fl
 
 
 def get_palisade_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   transition_envelope = _palisade_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _palisade_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)
@@ -1569,7 +1574,7 @@ def get_genesis_g90_ff_scale(desired_lateral_accel: float, desired_lateral_jerk:
 
 
 def get_genesis_g90_friction_threshold(v_ego: float, desired_lateral_accel: float = 0.0, desired_lateral_jerk: float = 0.0) -> float:
-  base_threshold = get_friction_threshold(v_ego)
+  base_threshold = get_gm_base_friction_threshold(v_ego)
   transition_envelope = _genesis_g90_transition_envelope(v_ego, desired_lateral_accel, desired_lateral_jerk)
   phase = _genesis_g90_transition_phase(desired_lateral_accel, desired_lateral_jerk)
   turn_in_weight = max(phase, 0.0)

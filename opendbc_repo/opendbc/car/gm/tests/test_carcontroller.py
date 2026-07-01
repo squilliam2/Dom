@@ -411,7 +411,7 @@ def test_volt_auto_hold_requires_toggle_supported_non_cc_only_volt_and_stock_saf
     ),
     True,
   )
-  assert supports_volt_auto_hold(
+  assert not supports_volt_auto_hold(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT,
       openpilotLongitudinalControl=False,
@@ -420,7 +420,7 @@ def test_volt_auto_hold_requires_toggle_supported_non_cc_only_volt_and_stock_saf
     ),
     True,
   )
-  assert supports_volt_auto_hold(
+  assert not supports_volt_auto_hold(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_2019,
       openpilotLongitudinalControl=False,
@@ -464,6 +464,7 @@ def test_volt_one_pedal_requires_toggle_supported_volt_stock_safety_and_ev_trans
   assert supports_volt_one_pedal(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      openpilotLongitudinalControl=True,
       safetyConfigs=stock_safety,
       transmissionType=structs.CarParams.TransmissionType.direct,
     ),
@@ -472,6 +473,7 @@ def test_volt_one_pedal_requires_toggle_supported_volt_stock_safety_and_ev_trans
   assert not supports_volt_one_pedal(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      openpilotLongitudinalControl=True,
       safetyConfigs=no_safety,
       transmissionType=structs.CarParams.TransmissionType.direct,
     ),
@@ -480,6 +482,7 @@ def test_volt_one_pedal_requires_toggle_supported_volt_stock_safety_and_ev_trans
   assert not supports_volt_one_pedal(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_CC,
+      openpilotLongitudinalControl=True,
       safetyConfigs=stock_safety,
       transmissionType=structs.CarParams.TransmissionType.direct,
     ),
@@ -488,6 +491,7 @@ def test_volt_one_pedal_requires_toggle_supported_volt_stock_safety_and_ev_trans
   assert not supports_volt_one_pedal(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      openpilotLongitudinalControl=True,
       safetyConfigs=stock_safety,
       transmissionType=structs.CarParams.TransmissionType.automatic,
     ),
@@ -496,6 +500,16 @@ def test_volt_one_pedal_requires_toggle_supported_volt_stock_safety_and_ev_trans
   assert not supports_volt_one_pedal(
     SimpleNamespace(
       carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      openpilotLongitudinalControl=False,
+      safetyConfigs=stock_safety,
+      transmissionType=structs.CarParams.TransmissionType.direct,
+    ),
+    True,
+  )
+  assert not supports_volt_one_pedal(
+    SimpleNamespace(
+      carFingerprint=CAR.CHEVROLET_VOLT_CAMERA,
+      openpilotLongitudinalControl=True,
       safetyConfigs=stock_safety,
       transmissionType=structs.CarParams.TransmissionType.direct,
     ),

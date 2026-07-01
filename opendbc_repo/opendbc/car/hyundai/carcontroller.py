@@ -652,6 +652,8 @@ class CarController(CarControllerBase):
 
     # prevent LFA from activating on LKA steering cars by sending "no lane lines detected" to ADAS ECU
     suppress_lfa = bool(lka_steering)
+    if self.CP.carFingerprint == CAR.KIA_EV9 and self.CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
+      suppress_lfa = bool(lka_steering and CC.latActive)
     if self.frame % 5 == 0 and suppress_lfa:
       can_sends.append(hyundaicanfd.create_suppress_lfa(self.packer, self.CAN, CS.lfa_block_msg,
                                                         self.CP.flags & HyundaiFlags.CANFD_LKA_STEERING_ALT))

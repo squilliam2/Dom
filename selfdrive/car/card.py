@@ -11,6 +11,7 @@ from cereal import car, custom, log
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, Priority, Ratekeeper
 from openpilot.common.swaglog import cloudlog, ForwardingHandler
+from openpilot.system.hardware.hw import Paths
 
 from opendbc.car import DT_CTRL, ButtonType, structs
 from opendbc.car.can_definitions import CanData, CanRecvCallable, CanSendCallable
@@ -136,8 +137,9 @@ class Car:
     if self.CP.secOcRequired and not is_release:
       # Copy user key if available
       try:
-        with open("/cache/params/SecOCKey") as f:
-          user_key = f.readline().strip()
+        user_key = Params(Paths.params_cache_root()).get("SecOCKey")
+        if user_key is not None:
+          user_key = user_key.strip()
           if len(user_key) == 32:
             self.params.put("SecOCKey", user_key)
       except Exception:

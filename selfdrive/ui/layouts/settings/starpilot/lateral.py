@@ -13,6 +13,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import _SettingsPag
 from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   DEFAULT_PANEL_STYLE,
   AetherSettingsView,
+  ParentToggle,
   SettingRow,
   SettingSection,
   TileGrid,
@@ -140,6 +141,14 @@ class StarPilotLateralLayout(_SettingsPage):
     super().__init__()
     self._build_panels()
 
+  def _make_parent(self, key: str, label: str, subtitle: str = "") -> ParentToggle:
+    return ParentToggle(
+      label=label,
+      subtitle=subtitle,
+      get_state=lambda k=key: self._params.get_bool(k),
+      set_state=lambda s, k=key: self._params.put_bool(k, s),
+    )
+
   def _build_panels(self):
     p = self._params
     cs = starpilot_state.car_state
@@ -161,12 +170,6 @@ class StarPilotLateralLayout(_SettingsPage):
 
     # ── 1. Steering Behavior ──
     self._behavior_rows = [
-      SettingRow(
-        "AlwaysOnLateral", "toggle", tr_noop("Always On Lateral"),
-        subtitle=tr_noop("Steering stays active when ACC is off."),
-        get_state=lambda: p.get_bool("AlwaysOnLateral"),
-        set_state=lambda s: _confirm_reboot_toggle(p, "AlwaysOnLateral", s) if s else p.put_bool("AlwaysOnLateral", False),
-      ),
       SettingRow(
         "PauseAOLOnBrake", "value", tr_noop("Pause AOL On Brake"),
         subtitle=tr_noop("Pause AOL below this speed while brake is pressed."),
@@ -203,12 +206,6 @@ class StarPilotLateralLayout(_SettingsPage):
 
     # ── 2. Lane Changes ──
     self._lane_change_rows = [
-      SettingRow(
-        "LaneChanges", "toggle", tr_noop("Lane Changes"),
-        subtitle=tr_noop("Allow openpilot to change lanes."),
-        get_state=lambda: p.get_bool("LaneChanges"),
-        set_state=lambda s: p.put_bool("LaneChanges", s),
-      ),
       SettingRow(
         "NudgelessLaneChange", "toggle", tr_noop("Auto Lane Changes"),
         subtitle=tr_noop("Signal triggers automatic lane change."),
@@ -255,12 +252,6 @@ class StarPilotLateralLayout(_SettingsPage):
 
     # ── 3. Advanced Lateral Tuning ──
     self._advanced_rows = [
-      SettingRow(
-        "AdvancedLateralTune", "toggle", tr_noop("Advanced Lateral Tuning"),
-        subtitle=tr_noop("Fine-tune steering response and auto-tuning."),
-        get_state=lambda: p.get_bool("AdvancedLateralTune"),
-        set_state=lambda s: p.put_bool("AdvancedLateralTune", s),
-      ),
       SettingRow(
         "NNFF", "toggle", tr_noop("NNFF"),
         subtitle=tr_noop("Neural net feedforward steering controller."),
@@ -365,12 +356,25 @@ class StarPilotLateralLayout(_SettingsPage):
       header_subtitle=tr_noop("Configure steering behavior and lane changes."),
     )
 
+    p = self._params
+    pt_behavior = ParentToggle(
+      label="Always On Lateral",
+      subtitle="Steering stays active when ACC is off.",
+      get_state=lambda: p.get_bool("AlwaysOnLateral"),
+      set_state=lambda s: _confirm_reboot_toggle(p, "AlwaysOnLateral", s) if s else p.put_bool("AlwaysOnLateral", False),
+    )
+    pt_lane_changes = self._make_parent("LaneChanges", "Lane Changes",
+      "Allow openpilot to change lanes.")
+    pt_advanced = self._make_parent("AdvancedLateralTune", "Advanced Lateral Tuning",
+      "Fine-tune steering response and auto-tuning.")
+
     # Register subpanels for Level 2 slide transitions
     self._sub_panels["behavior"] = AetherSettingsView(
       self,
       [SettingSection(title="", rows=self._behavior_rows)],
       header_title=tr_noop("Steering Behavior"),
       header_subtitle=tr_noop("Configure Always On Lateral (AOL), pause speed thresholds, and turn signal behaviors."),
+      parent_toggle=pt_behavior,
       panel_style=PANEL_STYLE,
     )
     self._sub_panels["lane_changes"] = AetherSettingsView(
@@ -378,6 +382,7 @@ class StarPilotLateralLayout(_SettingsPage):
       [SettingSection(title="", rows=self._lane_change_rows)],
       header_title=tr_noop("Lane Changes"),
       header_subtitle=tr_noop("Configure automatic lane changes, speed/width thresholds, and smoothing parameters."),
+      parent_toggle=pt_lane_changes,
       panel_style=PANEL_STYLE,
     )
     self._sub_panels["advanced"] = AetherSettingsView(
@@ -385,6 +390,7 @@ class StarPilotLateralLayout(_SettingsPage):
       [SettingSection(title="", rows=self._advanced_rows)],
       header_title=tr_noop("Advanced Lateral Tuning"),
       header_subtitle=tr_noop("Adjust actuator delay, steer ratio, Kp, friction, and neural network feedforward controllers."),
+      parent_toggle=pt_advanced,
       panel_style=PANEL_STYLE,
     )
     self._wire_sub_panels()

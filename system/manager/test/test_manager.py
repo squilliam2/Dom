@@ -198,6 +198,58 @@ class TestManager:
     assert not Path(params.get_param_path("HumanFollowing")).exists()
     assert not Path(params_cache.get_param_path("HumanFollowing")).exists()
 
+  def test_migrate_legacy_starpilot_params_cache_copies_marker_sources(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_PARAMS_CACHE_MIGRATION_FLAG", tmp_path / "starpilot_params_cache_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params")
+    legacy_cache = tmp_path / "legacy_cache"
+    new_cache = tmp_path / "new_cache"
+    legacy_store = manager._params_store_path(legacy_cache)
+    legacy_store.mkdir(parents=True)
+    (legacy_store / "RemapCancelToDistance").write_text("0")
+    (legacy_store / "ClusterOffset").write_text("1.02")
+
+    manager.migrate_legacy_starpilot_params_cache(params, legacy_cache, new_cache)
+
+    new_store = manager._params_store_path(new_cache)
+    assert (new_store / "RemapCancelToDistance").read_text() == "0"
+    assert (new_store / "ClusterOffset").read_text() == "1.02"
+    assert manager.STARPILOT_PARAMS_CACHE_MIGRATION_FLAG.exists()
+
+  def test_migrate_legacy_starpilot_params_cache_skips_without_marker(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_PARAMS_CACHE_MIGRATION_FLAG", tmp_path / "starpilot_params_cache_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params")
+    legacy_cache = tmp_path / "legacy_cache"
+    new_cache = tmp_path / "new_cache"
+    legacy_store = manager._params_store_path(legacy_cache)
+    legacy_store.mkdir(parents=True)
+    (legacy_store / "ClusterOffset").write_text("1.02")
+
+    manager.migrate_legacy_starpilot_params_cache(params, legacy_cache, new_cache)
+
+    assert not (manager._params_store_path(new_cache) / "ClusterOffset").exists()
+    assert manager.STARPILOT_PARAMS_CACHE_MIGRATION_FLAG.exists()
+
+  def test_migrate_legacy_starpilot_params_cache_does_not_overwrite_new_cache(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_PARAMS_CACHE_MIGRATION_FLAG", tmp_path / "starpilot_params_cache_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params")
+    legacy_cache = tmp_path / "legacy_cache"
+    new_cache = tmp_path / "new_cache"
+    legacy_store = manager._params_store_path(legacy_cache)
+    new_store = manager._params_store_path(new_cache)
+    legacy_store.mkdir(parents=True)
+    new_store.mkdir(parents=True)
+    (legacy_store / "RemapCancelToDistance").write_text("0")
+    (legacy_store / "ClusterOffset").write_text("1.02")
+    (new_store / "ClusterOffset").write_text("1.0")
+
+    manager.migrate_legacy_starpilot_params_cache(params, legacy_cache, new_cache)
+
+    assert (new_store / "ClusterOffset").read_text() == "1.0"
+    assert (new_store / "RemapCancelToDistance").read_text() == "0"
+
   def test_migrate_cluster_offset_default_resets_legacy_default_only(self, tmp_path, monkeypatch):
     monkeypatch.setattr(manager, "STARPILOT_CLUSTER_OFFSET_MIGRATION_FLAG", tmp_path / "starpilot_cluster_offset_v1")
 

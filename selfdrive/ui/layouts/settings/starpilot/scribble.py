@@ -424,3 +424,5 @@ def draw_custom_icon(key: str, x: float, y: float, s: float, color: rl.Color):
     rl.draw_line_ex(rl.Vector2(x_c, y_c - 4.0 * s), rl.Vector2(x_c, y_c + 9.0 * s), 3.5 * s, color)
     rl.draw_line_ex(rl.Vector2(x_c - 6.5 * s, y_c + 2.5 * s), rl.Vector2(x_c + 6.5 * s, y_c + 2.5 * s), 3.5 * s, color)
 
+
+

@@ -4,7 +4,74 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
 source "$DIR/launch_env.sh"
 
+export SP_BOOT_TIMING_LOG="${SP_BOOT_TIMING_LOG:-/tmp/starpilot_boot_timing.log}"
+: > "$SP_BOOT_TIMING_LOG" 2>/dev/null || true
+PREBUILT_COMPAT_CACHE="${SP_PREBUILT_COMPAT_CACHE:-/cache/starpilot_prebuilt_runtime_compatible_v1}"
+SP_LAUNCH_LAST_SECONDS=$SECONDS
+
+function sp_boot_timing_line {
+  echo "$1"
+  printf '%s\n' "$1" >> "$SP_BOOT_TIMING_LOG" 2>/dev/null || true
+}
+
+function sp_launch_timing {
+  local now=$SECONDS
+  local delta=$((now - SP_LAUNCH_LAST_SECONDS))
+  sp_boot_timing_line "SP_BOOT_TIMING launch $1 +${delta}s total=${now}s"
+  SP_LAUNCH_LAST_SECONDS=$now
+}
+
+function launch_param_migrations_needed {
+  local marker_dir="/data/params/.starpilot_param_migrations/${OPENPILOT_PREFIX:-d}"
+  [ ! -f "$marker_dir/.starpilot_launch_param_migrations_v2" ] && return 0
+  [ ! -f "$marker_dir/.starpilot_branch_defaults_migrations_v1" ] && return 0
+  [ ! -f "$marker_dir/.starpilot_acceleration_profile_default_v1" ] && return 0
+  return 1
+}
+
+function prebuilt_runtime_artifacts {
+  printf '%s\n' \
+    "$DIR/common/params_pyx.so" \
+    "$DIR/msgq/ipc_pyx.so" \
+    "$DIR/msgq/visionipc/visionipc_pyx.so" \
+    "$DIR/common/transformations/transformations.so" \
+    "$DIR/selfdrive/modeld/models/driving_tinygrad.pkl" \
+    "$DIR/selfdrive/modeld/models/dmonitoring_model_metadata.pkl" \
+    "$DIR/selfdrive/modeld/models/dmonitoring_model_tinygrad.pkl" \
+    "$DIR/selfdrive/modeld/models/dm_warp_1928x1208_tinygrad.pkl" \
+    "$DIR/selfdrive/modeld/models/dm_warp_1344x760_tinygrad.pkl" \
+    "$DIR/selfdrive/pandad/pandad_api_impl.so" \
+    "$DIR/selfdrive/controls/lib/lateral_mpc_lib/c_generated_code/acados_ocp_solver_pyx.so" \
+    "$DIR/selfdrive/controls/lib/lateral_mpc_lib/c_generated_code/libacados_ocp_solver_lat.so" \
+    "$DIR/selfdrive/controls/lib/longitudinal_mpc_lib/c_generated_code/acados_ocp_solver_pyx.so" \
+    "$DIR/selfdrive/controls/lib/longitudinal_mpc_lib/c_generated_code/libacados_ocp_solver_long.so" \
+    "$DIR/opendbc_repo/opendbc/dbc/gm_global_a_powertrain_generated.dbc"
+}
+
+function prebuilt_compat_cache_valid {
+  [ -f "$PREBUILT_COMPAT_CACHE" ] || return 1
+  [ -f "$DIR/prebuilt" ] || return 1
+  [ "$DIR/prebuilt" -nt "$PREBUILT_COMPAT_CACHE" ] && return 1
+
+  while IFS= read -r artifact; do
+    [ -e "$artifact" ] || return 1
+    [ "$artifact" -nt "$PREBUILT_COMPAT_CACHE" ] && return 1
+  done < <(prebuilt_runtime_artifacts)
+
+  return 0
+}
+
+function prebuilt_artifacts_present {
+  while IFS= read -r artifact; do
+    [ -e "$artifact" ] || return 1
+  done < <(prebuilt_runtime_artifacts)
+
+  return 0
+}
+
 function agnos_init {
+  sp_launch_timing "agnos_init_start"
+
   # TODO: move this to agnos
   sudo rm -f /data/etc/NetworkManager/system-connections/*.nmmeta
 
@@ -44,9 +111,13 @@ function agnos_init {
     fi
     $DIR/system/hardware/tici/updater $AGNOS_PY $MANIFEST
   fi
+
+  sp_launch_timing "agnos_init_done"
 }
 
 function launch {
+  sp_launch_timing "launch_start"
+
   # Remove orphaned git lock if it exists on boot
   [ -f "$DIR/.git/index.lock" ] && rm -f $DIR/.git/index.lock
 
@@ -83,30 +154,41 @@ function launch {
       fi
     fi
   fi
+  sp_launch_timing "overlay_check_done"
 
   # handle pythonpath
   ln -sfn $(pwd) /data/pythonpath
   export BASEDIR="$DIR"
   export PYTHONPATH="$DIR/starpilot/third_party:$PWD"
+  sp_launch_timing "pythonpath_done"
 
   # hardware specific init
   if [ -f /AGNOS ]; then
     agnos_init
   fi
+  sp_launch_timing "hardware_init_done"
 
   # write tmux scrollback to a file
   tmux capture-pane -pq -S-1000 > /tmp/launch_log
+  sp_launch_timing "capture_launch_log_done"
 
   # start manager
   cd system/manager
 
-  if ! python3 ./launch_param_migrations.py; then
-    echo "Launch param migrations failed; continuing boot."
+  if launch_param_migrations_needed; then
+    sp_launch_timing "launch_param_migrations_start"
+    if ! python3 ./launch_param_migrations.py; then
+      echo "Launch param migrations failed; continuing boot."
+    fi
+    sp_launch_timing "launch_param_migrations_done"
+  else
+    sp_launch_timing "launch_param_migrations_skipped"
   fi
 
   # Bootstrap runtime (e.g. /usr/comma after reset/uninstall) must go straight
   # to manager/setup flow. Do not run StarPilot prebuilt checks/builds here.
   if [ "$DIR" = "/usr/comma" ] || [ ! -d "$DIR/.git" ]; then
+    sp_launch_timing "bootstrap_manager_start"
     ./manager.py
     while true; do sleep 1; done
   fi
@@ -114,8 +196,29 @@ function launch {
   function prebuilt_runtime_compatible {
     python3 - <<'PY'
 import importlib
+import os
 from pathlib import Path
 import sys
+import time
+
+start = time.monotonic()
+last = start
+log_path = os.environ.get("SP_BOOT_TIMING_LOG")
+
+def emit(line):
+  print(line, flush=True)
+  if log_path:
+    try:
+      with open(log_path, "a") as f:
+        f.write(line + "\n")
+    except OSError:
+      pass
+
+def log_step(label):
+  global last
+  now = time.monotonic()
+  emit(f"SP_BOOT_TIMING prebuilt_compat {label} +{now - last:.3f}s total={now - start:.3f}s")
+  last = now
 
 mods = [
   "openpilot.common.params_pyx",
@@ -133,6 +236,7 @@ for mod in mods:
   except Exception as e:
     print(f"Prebuilt compatibility failure in {mod}: {e}", file=sys.stderr)
     raise
+  log_step(f"import:{mod}")
 
 repo_root = Path.cwd().parents[1]
 required_files = [
@@ -152,6 +256,7 @@ required_files = [
 for path in required_files:
   if not path.is_file():
     raise FileNotFoundError(f"Missing prebuilt runtime artifact: {path}")
+log_step("required_files")
 PY
   }
 
@@ -160,14 +265,31 @@ PY
     USE_PREBUILT=$(tr -d '\n' < /data/params/d/UsePrebuilt)
   fi
 
-  if [ "$USE_PREBUILT" = "1" ] && [ -f $DIR/prebuilt ] && ! prebuilt_runtime_compatible; then
-    echo "Prebuilt runtime artifacts are incompatible on this device; rebuilding locally."
-    USE_PREBUILT=0
+  sp_launch_timing "prebuilt_decision_done"
+  if [ "$USE_PREBUILT" = "1" ] && [ -f $DIR/prebuilt ]; then
+    if prebuilt_compat_cache_valid; then
+      sp_launch_timing "prebuilt_compat_cache_hit"
+    elif [ "${SP_STRICT_PREBUILT_CHECK:-0}" != "1" ] && prebuilt_artifacts_present; then
+      sp_launch_timing "prebuilt_compat_fast_path"
+      mkdir -p "$(dirname "$PREBUILT_COMPAT_CACHE")" 2>/dev/null || true
+      touch "$PREBUILT_COMPAT_CACHE" 2>/dev/null || true
+    elif prebuilt_runtime_compatible; then
+      mkdir -p "$(dirname "$PREBUILT_COMPAT_CACHE")" 2>/dev/null || true
+      touch "$PREBUILT_COMPAT_CACHE" 2>/dev/null || true
+    else
+      echo "Prebuilt runtime artifacts are incompatible on this device; rebuilding locally."
+      rm -f "$PREBUILT_COMPAT_CACHE" 2>/dev/null || true
+      USE_PREBUILT=0
+    fi
   fi
+  sp_launch_timing "prebuilt_compat_done"
 
   if [ "$USE_PREBUILT" != "1" ] || [ ! -f $DIR/prebuilt ]; then
+    sp_launch_timing "build_start"
     ./build.py
+    sp_launch_timing "build_done"
   fi
+  sp_launch_timing "manager_start"
   ./manager.py
 
   # if broken, keep on screen error

@@ -228,6 +228,7 @@ def supports_volt_auto_hold(CP, auto_hold_enabled: bool):
   stock_hold_safety_ready = bool(safety_param & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value)
   return (
     auto_hold_enabled and
+    getattr(CP, "openpilotLongitudinalControl", False) and
     stock_hold_safety_ready and
     CP.carFingerprint in AUTO_HOLD_VOLT_CARS
   )
@@ -239,6 +240,7 @@ def supports_volt_one_pedal(CP, one_pedal_enabled: bool):
   stock_hold_safety_ready = bool(safety_param & GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value)
   return (
     one_pedal_enabled and
+    getattr(CP, "openpilotLongitudinalControl", False) and
     stock_hold_safety_ready and
     getattr(CP, "transmissionType", None) == TransmissionType.direct and
     CP.carFingerprint in AUTO_HOLD_VOLT_CARS

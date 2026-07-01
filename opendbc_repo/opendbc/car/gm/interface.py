@@ -691,6 +691,7 @@ class CarInterface(CarInterfaceBase):
       ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_REMOTE_START_BOOTS_COMMA.value
 
     volt_stock_friction_brake_safety = (
+      ret.openpilotLongitudinalControl and
       (gm_auto_hold or volt_one_pedal_mode) and
       candidate in {
         CAR.CHEVROLET_VOLT,
@@ -701,12 +702,14 @@ class CarInterface(CarInterfaceBase):
     )
     if volt_stock_friction_brake_safety:
       # Reuse the paddle-scheduler safety bit as a Volt stock friction-brake
-      # marker on non-pedal paths. Both auto hold and one-pedal can run while
-      # OP longitudinal is configured but not currently active, so the bit must
-      # be present regardless of the current long-control mode.
+      # marker on non-pedal paths. Auto hold and one-pedal can run while OP
+      # longitudinal is configured but not currently active, so the bit must
+      # be present regardless of the current long-control mode. Do not expose
+      # the path at all when OP long is disabled in CarParams.
       ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_PANDA_PADDLE_SCHED.value
 
     volt_stock_one_pedal_safety = (
+      ret.openpilotLongitudinalControl and
       volt_one_pedal_mode and
       candidate in {
         CAR.CHEVROLET_VOLT,
@@ -719,6 +722,7 @@ class CarInterface(CarInterfaceBase):
       # Reuse the 3D1 scheduler bit as a Volt one-pedal marker on non-pedal
       # ACC paths. The bit is ignored by the actual 3D1 scheduler unless the
       # car is on a pedal-long CC-only path, so this stays isolated from Bolt.
+      # Do not expose the path at all when OP long is disabled in CarParams.
       ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.FLAG_GM_PANDA_3D1_SCHED.value
 
     use_panda_3d1_sched = (

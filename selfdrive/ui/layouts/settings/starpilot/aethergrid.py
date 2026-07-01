@@ -449,7 +449,7 @@ def init_list_panel(rect: rl.Rectangle, style: PanelStyle | None = None, metrics
   return frame, scroll_rect, content_width
 
 
-def draw_hud_background(rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0) -> tuple[rl.Rectangle, rl.Color]:
+def draw_hud_background(rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0, *, radius_px: float = 100, bg_color: rl.Color | None = None) -> tuple[rl.Rectangle, rl.Color]:
   snapped = snap_rect(rect)
   rx, ry, rw, rh = int(snapped.x), int(snapped.y), int(snapped.width), int(snapped.height)
   face = rl.Rectangle(rx, ry, rw, rh)
@@ -460,16 +460,16 @@ def draw_hud_background(rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0)
     off = i * 2.5 * glow
     gr = rl.Rectangle(rx - off, ry - off, rw + off * 2, rh + off * 2)
     a = int(25 * (1.0 - i / 5) * glow)
-    draw_rounded_fill(gr, rl.Color(accent.r, accent.g, accent.b, max(0, min(255, a))), radius_px=100)
+    draw_rounded_fill(gr, rl.Color(accent.r, accent.g, accent.b, max(0, min(255, a))), radius_px=radius_px)
 
-  draw_rounded_fill(face, _HUD_BG_ON, radius_px=100)
+  draw_rounded_fill(face, bg_color if bg_color is not None else _HUD_BG_ON, radius_px=radius_px)
 
   bc = rl.Color(
     max(0, min(255, int(off_border.r + (accent.r - off_border.r) * glow))),
     max(0, min(255, int(off_border.g + (accent.g - off_border.g) * glow))),
     max(0, min(255, int(off_border.b + (accent.b - off_border.b) * glow))),
     255)
-  draw_rounded_stroke(face, bc, radius_px=100)
+  draw_rounded_stroke(face, bc, radius_px=radius_px)
 
   return face, accent
 
@@ -1168,7 +1168,7 @@ class BreadcrumbController:
     alpha = self._expand_alpha
 
     ACTIVE_SIZE   = 24
-    PAST_SIZE     = 17
+    PAST_SIZE     = 20
     CHEVRON_SIZE  = 16
     CHEVRON_W     = 14
     GAP           = 16
@@ -1299,7 +1299,7 @@ class BreadcrumbController:
 PANEL_HEADER_TITLE_Y: int = 34
 PANEL_HEADER_SUBTITLE_Y: int = 78
 PANEL_HEADER_TITLE_FONT_SIZE: int = 40
-PANEL_HEADER_SUBTITLE_FONT_SIZE: int = 22
+PANEL_HEADER_SUBTITLE_FONT_SIZE: int = 20
 PANEL_HEADER_TITLE_FONT: FontWeight = FontWeight.SEMI_BOLD
 PANEL_HEADER_SUBTITLE_FONT: FontWeight = FontWeight.NORMAL
 
@@ -1314,7 +1314,18 @@ def draw_settings_panel_header(header_rect: rl.Rectangle, title: str, subtitle: 
                                 subtitle_color: rl.Color = AetherListColors.SUBTEXT,
                                 title_weight: FontWeight = PANEL_HEADER_TITLE_FONT,
                                 subtitle_weight: FontWeight = PANEL_HEADER_SUBTITLE_FONT):
-  pass
+  if not title:
+    return
+  title_font = gui_app.font(title_weight)
+  y = header_rect.y
+  rl.draw_text_ex(title_font, title, rl.Vector2(header_rect.x, y), title_size, 0, title_color)
+  y += title_size + 8
+  if subtitle:
+    desc_font = gui_app.font(subtitle_weight)
+    desc_lines = wrap_text(desc_font, subtitle, header_rect.width * max_subtitle_width, subtitle_size, max_lines=4)
+    for line in desc_lines:
+      rl.draw_text_ex(desc_font, line, rl.Vector2(header_rect.x, y), subtitle_size, 0, subtitle_color)
+      y += subtitle_size + 4
 
 
 
@@ -1331,7 +1342,7 @@ def draw_status_badges(
   style: PanelStyle,
   *,
   height: float = 28.0,
-  font_size: int = 15,
+  font_size: int = 17,
   gap: float = 8.0,
   padding_x: float = 18.0,
   text_color: rl.Color = AetherListColors.HEADER,
@@ -1478,10 +1489,121 @@ def draw_standard_toggle_row(
   )
 
 
+_KNOB_ANIMATION_STATES: dict[str, float] = {}
+_TOGGLE_CONSTELLATION_CACHE: dict[str, tuple[list[dict], list[tuple[int, int]]]] = {}
+
+# Anchor-zone regions for tile (near-square) vs pill (wide/short)
+_CONST_REGIONS_TILE = [
+  (0.18, 0.30, 0.18, 0.30),  # top-left corner
+  (0.70, 0.82, 0.18, 0.30),  # top-right corner
+  (0.18, 0.30, 0.70, 0.82),  # bottom-left corner
+  (0.70, 0.82, 0.70, 0.82),  # bottom-right corner
+  (0.38, 0.62, 0.18, 0.28),  # top-center edge
+  (0.38, 0.62, 0.72, 0.82),  # bottom-center edge
+  (0.18, 0.28, 0.38, 0.62),  # left-center edge
+  (0.72, 0.82, 0.38, 0.62),  # right-center edge
+]
+_CONST_REGIONS_PILL = [
+  (0.15, 0.30, 0.22, 0.42),  # left cluster
+  (0.70, 0.85, 0.22, 0.42),  # right cluster
+  (0.15, 0.30, 0.58, 0.78),  # left cluster low
+  (0.70, 0.85, 0.58, 0.78),  # right cluster low
+  (0.38, 0.62, 0.20, 0.35),  # top-center
+  (0.38, 0.62, 0.65, 0.80),  # bottom-center
+  (0.20, 0.35, 0.38, 0.62),  # left-mid
+  (0.65, 0.80, 0.38, 0.62),  # right-mid
+]
+
+def _build_constellation_nodes(
+  rng: random.Random,
+  num: int,
+  regions: list[tuple[float, float, float, float]],
+  *,
+  r_min: float,
+  r_max: float,
+  min_sep: float,
+  x_margin: float,
+  y_margin: float,
+) -> tuple[list[dict], list[tuple[int, int]]]:
+  """Shared constellation node generator used by both tiles and toggle pills."""
+  ax_min, ax_max, ay_min, ay_max = regions[rng.randint(0, len(regions) - 1)]
+  ax = ax_min + rng.random() * (ax_max - ax_min)
+  ay = ay_min + rng.random() * (ay_max - ay_min)
+  nodes: list[dict] = []
+  for _ in range(num):
+    for _ in range(20):
+      a = rng.random() * 2.0 * math.pi
+      r = r_min + rng.random() * r_max
+      x = max(x_margin, min(1.0 - x_margin, ax + r * math.cos(a)))
+      y = max(y_margin, min(1.0 - y_margin, ay + r * math.sin(a)))
+      if all(math.sqrt((x - n['x'])**2 + (y - n['y'])**2) >= min_sep for n in nodes):
+        nodes.append({'x': x, 'y': y})
+        break
+    else:
+      nodes.append({'x': x, 'y': y})
+  nodes.sort(key=lambda n: -(abs(n['x'] - 0.5) + abs(n['y'] - 0.5)))
+  for i, n in enumerate(nodes):
+    n['w'] = 0 if i == 0 else 1 if i == 1 else 2
+  vecs: list[tuple[int, int]] = [(0, j) for j in range(1, len(nodes))]
+  return nodes, vecs
+
+
+def draw_constellation_nodes(
+  nodes: list[dict],
+  vecs: list[tuple[int, int]],
+  rect: rl.Rectangle,
+  accent: rl.Color,
+  glow: float,
+  *,
+  scale: float = 1.0,
+) -> None:
+  """Shared constellation renderer used by both tiles and toggle pills.
+
+  `scale` shrinks core/glow radii for smaller surfaces (e.g. 0.45 for pills).
+  """
+  rx, ry, rw, rh = int(rect.x), int(rect.y), int(rect.width), int(rect.height)
+  va = int(10 + glow * 25)
+  if va > 2:
+    vc = rl.Color(accent.r, accent.g, accent.b, min(255, va))
+    for i, j in vecs:
+      rl.draw_line_ex(
+        rl.Vector2(int(rx + nodes[i]['x'] * rw), int(ry + nodes[i]['y'] * rh)),
+        rl.Vector2(int(rx + nodes[j]['x'] * rw), int(ry + nodes[j]['y'] * rh)),
+        1.0, vc,
+      )
+  for nd in nodes:
+    nx = int(rx + nd['x'] * rw)
+    ny = int(ry + nd['y'] * rh)
+    w = nd.get('w', 2)
+    if w == 0:
+      core_r, diff_r, col = 3.0 * scale, 12.0 * scale, _CONST_PRIMARY
+    elif w == 1:
+      core_r, diff_r, col = 2.0 * scale, 8.0 * scale, _CONST_SECONDARY
+    else:
+      core_r, diff_r, col = 1.2 * scale, 0.0, _CONST_TERTIARY
+    da = int(5 + glow * 20)
+    if diff_r > 0 and da > 2:
+      rl.draw_circle(nx, ny, max(1.0, diff_r), rl.Color(col.r, col.g, col.b, min(255, da)))
+    ca = int(130 + glow * 125)
+    rl.draw_circle(nx, ny, max(1.0, core_r), rl.Color(col.r, col.g, col.b, min(255, ca)))
+
+
+def _get_or_create_toggle_constellation(seed_id: str) -> tuple[list[dict], list[tuple[int, int]]]:
+  if seed_id in _TOGGLE_CONSTELLATION_CACHE:
+    return _TOGGLE_CONSTELLATION_CACHE[seed_id]
+  rng = random.Random(seed_id)
+  nodes, vecs = _build_constellation_nodes(
+    rng, rng.randint(2, 4), _CONST_REGIONS_PILL,
+    r_min=0.06, r_max=0.22, min_sep=0.12, x_margin=0.10, y_margin=0.18,
+  )
+  _TOGGLE_CONSTELLATION_CACHE[seed_id] = (nodes, vecs)
+  return nodes, vecs
+
 def draw_toggle_switch(
   rect: rl.Rectangle,
   enabled: bool,
   *,
+  knob_progress: float | None = None,
   is_enabled: bool = True,
   track_color: rl.Color = AetherListColors.PRIMARY,
   off_track_color: rl.Color = rl.Color(255, 255, 255, 24),
@@ -1490,15 +1612,53 @@ def draw_toggle_switch(
   height: int = AETHER_LIST_METRICS.toggle_height,
   right_inset: int = AETHER_LIST_METRICS.toggle_right_inset,
   knob_offset: int = 20,
+  seed_id: str = "",
+  radius_px: float = TILE_RADIUS_PX,
+  bg_color: rl.Color | None = None,
 ):
   toggle_rect = rl.Rectangle(rect.x + rect.width - width - right_inset, rect.y + (rect.height - height) / 2, width, height)
-  track = track_color if enabled else off_track_color
+
+  if knob_progress is None:
+    knob_progress = 1.0 if enabled else 0.0
+
   if not is_enabled:
-    track = with_alpha(mix_colors(off_track_color, track, 0.35), 42)
     knob_color = with_alpha(knob_color, 132)
-  knob_x = toggle_rect.x + toggle_rect.width - knob_offset if enabled else toggle_rect.x + knob_offset
-  rl.draw_rectangle_rounded(toggle_rect, 1.0, 16, track)
-  rl.draw_circle(int(knob_x), int(toggle_rect.y + toggle_rect.height / 2), 16, knob_color)
+
+  knob_x = toggle_rect.x + knob_offset + knob_progress * (toggle_rect.width - 2 * knob_offset)
+  knob_y = toggle_rect.y + toggle_rect.height / 2
+
+  # Delegate to draw_hud_background — same layered bloom, fill, and lerped border as tiles
+  draw_hud_background(toggle_rect, track_color if is_enabled else with_alpha(track_color, 80), knob_progress, radius_px=radius_px, bg_color=bg_color)
+
+  if seed_id and enabled:
+    nodes, vecs = _get_or_create_toggle_constellation(seed_id)
+    glow = knob_progress
+    draw_constellation_nodes(nodes, vecs, toggle_rect, track_color, glow, scale=0.45)
+
+    # Gravity tethers during slide — drawn after stars so they appear under knob
+    if 0.0 < knob_progress < 1.0:
+      tether_alpha = int(60 * math.sin(knob_progress * math.pi))
+      tether_col = rl.Color(track_color.r, track_color.g, track_color.b, tether_alpha)
+      for node in nodes:
+        nx = toggle_rect.x + node['x'] * toggle_rect.width
+        ny = toggle_rect.y + node['y'] * toggle_rect.height
+        rl.draw_line_ex(rl.Vector2(nx, ny), rl.Vector2(knob_x, knob_y), 1.2, tether_col)
+
+  # Nearly-square slider thumb — physical button sliding across the starfield
+  knob_w = 30.0
+  knob_h = toggle_rect.height - 8.0  # 4px inset top + bottom = 34px
+  knob_roundness = 0.65              # ≈10px corner radius on 30px width — rect, not pill
+  knob_segments = 8
+  knob_rect = snap_rect(rl.Rectangle(
+    knob_x - knob_w / 2, knob_y - knob_h / 2, knob_w, knob_h
+  ))
+  # Base fill
+  rl.draw_rectangle_rounded(knob_rect, knob_roundness, knob_segments, knob_color)
+  # Glass highlight — top ~40% of knob at low opacity, simulates light catching the face
+  highlight_rect = rl.Rectangle(knob_rect.x + 2, knob_rect.y + 2, knob_rect.width - 4, knob_rect.height * 0.40)
+  rl.draw_rectangle_rounded(highlight_rect, knob_roundness, knob_segments, with_alpha(rl.WHITE, 38))
+  # Thin border for depth
+  rl.draw_rectangle_rounded_lines_ex(knob_rect, knob_roundness, knob_segments, 1.0, with_alpha(rl.WHITE, 50))
 
 
 def draw_action_pill(
@@ -1658,8 +1818,8 @@ def draw_metric_strip(
   *,
   gap: int = 18,
   min_col_width: float = 72.0,
-  label_size: int = 14,
-  value_size: int = 18,
+  label_size: int = 16,
+  value_size: int = 19,
   style: PanelStyle = DEFAULT_PANEL_STYLE,
   label_top_offset: int = 0,
   value_top_offset: int = 14,
@@ -1709,7 +1869,7 @@ GROUP_HAIRLINE_COLOR = rl.Color(255, 255, 255, 10)
 GROUP_HEADER_COLOR = rl.Color(255, 255, 255, 90)
 
 def draw_group_header(x: float, y: float, width: float, label: str) -> float:
-  gui_label(rl.Rectangle(x, y, width, GROUP_HEADER_HEIGHT), label, 14, GROUP_HEADER_COLOR, FontWeight.MEDIUM)
+  gui_label(rl.Rectangle(x, y, width, GROUP_HEADER_HEIGHT), label, 16, GROUP_HEADER_COLOR, FontWeight.MEDIUM)
   y += GROUP_HEADER_HEIGHT
   rl.draw_line(int(x), int(y), int(x + width), int(y), GROUP_HAIRLINE_COLOR)
   return y + GROUP_HEADER_GAP
@@ -1866,7 +2026,22 @@ def draw_settings_list_row(
     )
 
   if toggle_value is not None:
-    draw_toggle_switch(draw_rect, bool(toggle_value), is_enabled=enabled, track_color=style.accent)
+    target = 1.0 if toggle_value else 0.0
+    current_progress = _KNOB_ANIMATION_STATES.get(title, target)
+    dt = rl.get_frame_time()
+    current_progress += (target - current_progress) * 12.0 * dt
+    if abs(current_progress - target) < 0.001:
+      current_progress = target
+    _KNOB_ANIMATION_STATES[title] = current_progress
+
+    draw_toggle_switch(
+      draw_rect, 
+      bool(toggle_value), 
+      knob_progress=current_progress,
+      is_enabled=enabled, 
+      track_color=style.accent,
+      seed_id=title,
+    )
     return
 
   if value:
@@ -2183,6 +2358,14 @@ class AetherInlineRangeControl(Widget):
       )
 
 
+_ICON_CHARS: dict[str, str] = {
+  # Swap to "\u26A0"/"\u24D8" after fonts regenerated with process.py
+  "alert_critical": "!",
+  "alert_state": "\u25CF",
+  "alert_info": "\u25CB",
+}
+
+
 class AetherAdjustorRow(Widget):
   def __init__(
     self,
@@ -2202,6 +2385,7 @@ class AetherAdjustorRow(Widget):
     set_active: Callable[[bool], None] | None = None,
     style: PanelStyle = DEFAULT_PANEL_STYLE,
     color: rl.Color | None = None,
+    icon_key: str | None = None,
   ):
     super().__init__()
     self._title = title
@@ -2211,6 +2395,8 @@ class AetherAdjustorRow(Widget):
     self._set_active = set_active
     self._style = style
     self._color = color or style.accent
+    valid_icons = {"sound", "steering", "navigate", "system", "display", "vehicle", "road", "aicar", "first_aid", "alert_critical", "alert_state", "alert_info"}
+    self._icon_key = icon_key if icon_key in valid_icons else None
     self._presets = presets or []
     self._preset_applied = False
     self._font_title = gui_app.font(FontWeight.MEDIUM)
@@ -2345,7 +2531,7 @@ class AetherAdjustorRow(Widget):
       text,
       rl.Vector2(rect.x + 10, rect.y + 7),
       max(1.0, rect.width - 20),
-      15,
+      16,
       align_center=True,
       color=text_color,
     )
@@ -2378,9 +2564,9 @@ class AetherAdjustorRow(Widget):
     )
 
     scale_y = rect.height / 94.0
-    title_fs = max(14, int(24 * scale_y)) if rect.height < 94 else 24
-    sub_fs = max(11, int(18 * scale_y)) if rect.height < 94 else 18
-    val_fs = max(11, int(18 * scale_y)) if rect.height < 94 else 18
+    title_fs = max(16, int(24 * scale_y)) if rect.height < 94 else 24
+    sub_fs = max(14, int(20 * scale_y)) if rect.height < 94 else 20
+    val_fs = max(14, int(20 * scale_y)) if rect.height < 94 else 20
 
     value_pill_w = min(float(AETHER_LIST_METRICS.adjustor_value_pill_width), max(118.0, rect.width * 0.22))
     value_pill_h = max(24.0, 36.0 * scale_y) if rect.height < 94 else AETHER_LIST_METRICS.adjustor_value_pill_height
@@ -2389,16 +2575,37 @@ class AetherAdjustorRow(Widget):
     self._header_rect = rl.Rectangle(rect.x, rect.y, rect.width, min(rect.height, 78))
     self._value_rect = snap_rect(rl.Rectangle(rect.x + rect.width - value_pill_w - 18, value_y, value_pill_w, value_pill_h))
     content_right = self._value_rect.x - 18
-    content_left = rect.x + 24
+
+    if self._icon_key:
+      icon_char = _ICON_CHARS.get(self._icon_key)
+      if icon_char:
+        icon_fs = max(18, int(28 * max(0.65, rect.height / 94.0)))
+        font = gui_app.font(FontWeight.BOLD)
+        ts = measure_text_cached(font, icon_char, icon_fs)
+        icon_x = rect.x + 12 + (40.0 - ts.x) / 2
+        icon_y = rect.y + (rect.height - ts.y) / 2
+        rl.draw_text_ex(font, icon_char, rl.Vector2(icon_x, icon_y), icon_fs, 0, mix_colors(rl.WHITE, self._color, 0.08))
+        content_left = rect.x + 12 + 40.0 + 12
+      else:
+        s = (51.0 / 60.0) * max(0.65, rect.height / 94.0) * 1.25
+        icon_w = 60.0 * s
+        icon_x = rect.x + 12
+        icon_y = rect.y + (rect.height - icon_w) / 2
+        draw_custom_icon(self._icon_key, icon_x, icon_y, s, mix_colors(rl.WHITE, self._color, 0.08))
+        content_left = rect.x + 12 + icon_w + 12
+    else:
+      content_left = rect.x + 24
+
     content_width = max(120.0, content_right - content_left)
 
     title_y = rect.y + 14.0 * scale_y if rect.height < 94 else rect.y + 14
     title_h = max(18.0, 28.0 * scale_y) if rect.height < 94 else 28
     gui_label(rl.Rectangle(content_left, title_y, content_width, title_h), self._title, title_fs, self._style.title_color, FontWeight.MEDIUM)
 
-    sub_y = rect.y + 44.0 * scale_y if rect.height < 94 else rect.y + 44
-    sub_h = max(14.0, 22.0 * scale_y) if rect.height < 94 else 22
-    gui_label(rl.Rectangle(content_left, sub_y, content_width, sub_h), self._subtitle, sub_fs, self._style.subtitle_color, FontWeight.NORMAL)
+    if self._subtitle:
+      sub_y = rect.y + 44.0 * scale_y if rect.height < 94 else rect.y + 44
+      sub_h = max(14.0, 22.0 * scale_y) if rect.height < 94 else 22
+      gui_label(rl.Rectangle(content_left, sub_y, content_width, sub_h), self._subtitle, sub_fs, self._style.subtitle_color, FontWeight.NORMAL)
 
     pill_fill = rl.Color(255, 255, 255, 5)
     pill_border = rl.Color(255, 255, 255, 14)
@@ -2420,7 +2627,7 @@ class AetherAdjustorRow(Widget):
 
     hint_y = rect.y + rect.height - 18.0 * scale_y if rect.height < 94 else rect.y + 76
     hint_h = max(6.0, 8.0 * scale_y) if rect.height < 94 else 8
-    self._hint_rect = snap_rect(rl.Rectangle(content_left, hint_y, rect.width - 48, hint_h + 4))
+    self._hint_rect = snap_rect(rl.Rectangle(content_left, hint_y, rect.x + rect.width - 24 - content_left, hint_h + 4))
     hint_track = snap_rect(rl.Rectangle(self._hint_rect.x, self._hint_rect.y + 2, self._hint_rect.width, hint_h))
     rl.draw_rectangle_rounded(hint_track, 1.0, 10, rl.Color(255, 255, 255, 10))
     fill_w = hint_track.width * self._scrubber._value_fraction(self._current_value())
@@ -2779,6 +2986,14 @@ class SettingSection:
   row_height: int = ROW_HEIGHT
 
 
+@dataclass
+class ParentToggle:
+  label: str
+  get_state: Callable[[], bool]
+  set_state: Callable[[bool], None]
+  subtitle: str = ""
+
+
 # ── AetherSettingsView — reusable list-panel ManagerView ──
 
 class AetherSettingsView(PanelManagerView):
@@ -2792,6 +3007,7 @@ class AetherSettingsView(PanelManagerView):
 
   def __init__(self, controller, sections: list[SettingSection],
                *, header_title: str = "", header_subtitle: str = "",
+               parent_toggle: ParentToggle | None = None,
                tab_defs: list[dict] | None = None,
                panel_style=None, fade_height: float = AETHER_LIST_METRICS.fade_height,
                metrics = COMPACT_PANEL_METRICS):
@@ -2803,7 +3019,8 @@ class AetherSettingsView(PanelManagerView):
     self._sections = sections
     self._header_title = header_title
     self._header_subtitle = header_subtitle
-    self._has_header = bool(header_title)
+    self._parent_toggle = parent_toggle
+    self._has_header = bool(header_title) or parent_toggle is not None
     self._tab_defs = tab_defs
     self._active_tab_key = tab_defs[0]["id"] if tab_defs else ""
     self._scroll_panel = GuiScrollPanel2(horizontal=False)
@@ -2819,8 +3036,19 @@ class AetherSettingsView(PanelManagerView):
           return row
     return None
 
+  def _target_at(self, mouse_pos: MousePos) -> str | None:
+    if self._parent_toggle:
+      mid = f"parent_toggle:{self._parent_toggle.label}"
+      rect = self._interactive_rects.get(mid)
+      if rect and point_hits(mouse_pos, rect, None, pad_x=6, pad_y=6):
+        return mid
+    return super()._target_at(mouse_pos)
+
   def _activate_target(self, target_id: str | None):
     if not target_id:
+      return
+    if target_id.startswith("parent_toggle:") and self._parent_toggle:
+      self._parent_toggle.set_state(not self._parent_toggle.get_state())
       return
     if target_id.startswith("tab:") and self._tab_defs:
       self._active_tab_key = target_id[4:]
@@ -2837,11 +3065,43 @@ class AetherSettingsView(PanelManagerView):
     elif row.type == "toggle" and row.set_state and row.get_state:
       row.set_state(not row.get_state())
 
+  def _compute_header_height(self, content_width: float) -> float:
+    if not self._has_header:
+      return 0.0
+    if self._parent_toggle:
+      h = max(42.0, 40.0)  # toggle (42px at header top) vs title area (32px + 8px gap)
+      subtitle_text = tr(self._parent_toggle.subtitle) if self._parent_toggle.subtitle else ""
+      if self._header_subtitle:
+        subtitle_text = tr(self._header_subtitle)
+      if subtitle_text:
+        toggle_take = AETHER_LIST_METRICS.toggle_width + AETHER_LIST_METRICS.toggle_right_inset + 16
+        col_w = max(100.0, content_width + AETHER_LIST_METRICS.content_right_gutter - toggle_take)
+        desc_font = gui_app.font(FontWeight.NORMAL)
+        desc_lines = wrap_text(desc_font, subtitle_text, col_w, 20, max_lines=4)
+        h += len(desc_lines) * 24.0 + 12.0
+      h += SECTION_GAP
+      return h
+    h = 40.0  # title (32px) + inner gap (8px)
+    if self._header_subtitle:
+      subtitle_text = tr(self._header_subtitle)
+      if subtitle_text:
+        desc_font = gui_app.font(FontWeight.NORMAL)
+        col_w = (content_width - self.COLUMN_GAP) / 2 if self._uses_two_columns(content_width) else content_width
+        desc_lines = wrap_text(desc_font, subtitle_text, col_w, 20, max_lines=4)
+        h += len(desc_lines) * 24.0 + 12.0
+    h += SECTION_GAP
+    return h
+
   def _render(self, rect: rl.Rectangle):
     self.set_rect(rect)
     self._interactive_rects.clear()
 
-    frame, scroll_rect, content_width = init_list_panel(rect, self._panel_style, metrics=self._metrics)
+    shell_w = min(rect.width - self._metrics.outer_margin_x * 2, self._metrics.max_content_width)
+    content_width = shell_w - self._metrics.panel_padding_x * 2 - AETHER_LIST_METRICS.content_right_gutter
+
+    header_h = self._compute_header_height(content_width)
+    metrics = replace(self._metrics, header_height=header_h) if header_h > 0 else self._metrics
+    frame, scroll_rect, content_width = init_list_panel(rect, self._panel_style, metrics=metrics)
     self._scroll_rect = scroll_rect
 
     if self._has_header:
@@ -2874,7 +3134,37 @@ class AetherSettingsView(PanelManagerView):
   def _draw_header(self, rect: rl.Rectangle):
     title = tr(self._header_title) if self._header_title else ""
     subtitle = tr(self._header_subtitle) if self._header_subtitle else ""
-    draw_settings_panel_header(rect, title, subtitle)
+
+    if self._parent_toggle:
+      toggle = self._parent_toggle
+
+      display_title = title if title else tr(toggle.label)
+      subtitle_text = subtitle if subtitle else (tr(toggle.subtitle) if toggle.subtitle else "")
+
+      toggle_take = AETHER_LIST_METRICS.toggle_width + AETHER_LIST_METRICS.toggle_right_inset + 16
+      text_rect = rl.Rectangle(rect.x, rect.y, max(100.0, rect.width - toggle_take), rect.height)
+      draw_settings_panel_header(text_rect, display_title, subtitle_text, title_size=32, subtitle_size=20)
+
+      toggle_id = f"parent_toggle:{toggle.label}"
+      tw = AETHER_LIST_METRICS.toggle_width
+      th = AETHER_LIST_METRICS.toggle_height
+      ri = AETHER_LIST_METRICS.toggle_right_inset
+      toggle_rect = rl.Rectangle(rect.x + rect.width - tw - ri, rect.y, tw, th)
+      self._interactive_rects[toggle_id] = toggle_rect
+
+      toggle_value = toggle.get_state()
+
+      draw_toggle_switch(
+        rl.Rectangle(rect.x, rect.y, rect.width, th),
+        toggle_value,
+        knob_progress=1.0 if toggle_value else 0.0,
+        track_color=self._panel_style.accent,
+        seed_id=toggle_id,
+        radius_px=100,
+        bg_color=rl.Color(12, 10, 18, 255),
+      )
+    else:
+      draw_settings_panel_header(rect, title, subtitle, title_size=32, subtitle_size=20)
 
   def _active_sections(self) -> list[SettingSection]:
     if self._tab_defs and self._active_tab_key:
@@ -2932,37 +3222,25 @@ class AetherSettingsView(PanelManagerView):
   def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
     y = rect.y + self._scroll_offset
     
-    if self._has_header:
-      title = tr(self._header_title) if self._header_title else ""
-      subtitle = tr(self._header_subtitle) if self._header_subtitle else ""
-      
-      col_w = (width - self.COLUMN_GAP) / 2 if self._uses_two_columns(width) else width
-      
-      title_font = gui_app.font(FontWeight.SEMI_BOLD)
-      title_size = 32
-      rl.draw_text_ex(title_font, title, rl.Vector2(rect.x + 8, y), title_size, 0, AetherListColors.HEADER)
-      y += title_size + 8
-      
-      if subtitle:
-        desc_font = gui_app.font(FontWeight.NORMAL)
-        desc_size = 18
-        desc_lines = wrap_text(desc_font, subtitle, col_w - 16, desc_size, max_lines=4)
-        for line in desc_lines:
-          rl.draw_text_ex(desc_font, line, rl.Vector2(rect.x + 8, y), desc_size, 0, AetherListColors.SUBTEXT)
-          y += desc_size + 4
-        y += 12
-
     if self._tab_defs:
       y = self._draw_tabs(y, rect.x, width)
     active = self._active_sections()
     has_visible = any(self._visible_rows(s) for s in active)
     if not has_visible:
-      draw_empty_state_card(
-        rl.Rectangle(rect.x, y, width, rect.height - (y - rect.y)),
-        tr("No settings to display"),
-        tr("All options in this panel are hidden or unavailable."),
-        style=self._panel_style,
-      )
+      if self._parent_toggle and not self._parent_toggle.get_state():
+        draw_empty_state_card(
+          rl.Rectangle(rect.x, y, width, rect.height - (y - rect.y)),
+          tr("Enable {} to configure settings.").format(tr(self._parent_toggle.label)),
+          "",
+          style=self._panel_style,
+        )
+      elif not self._parent_toggle:
+        draw_empty_state_card(
+          rl.Rectangle(rect.x, y, width, rect.height - (y - rect.y)),
+          tr("No settings to display"),
+          tr("All options in this panel are hidden or unavailable."),
+          style=self._panel_style,
+        )
       return
     i = 0
     while i < len(active):
@@ -2996,14 +3274,10 @@ class AetherSettingsView(PanelManagerView):
 
         for j, row in enumerate(visible_rows):
           row_rect = rl.Rectangle(rect.x, y + j * section.row_height, col_w, section.row_height)
-          row.set_is_last(j == len(visible_rows) - 1)
-          row.set_parent_rect(self._scroll_rect)
-          row.render(row_rect)
+          self._draw_row(row_rect, row, is_last=(j == len(visible_rows) - 1))
         for j, row in enumerate(right_rows):
           row_rect = rl.Rectangle(rect.x + col_w + self.COLUMN_GAP, y + j * right_section.row_height, col_w, right_section.row_height)
-          row.set_is_last(j == len(right_rows) - 1)
-          row.set_parent_rect(self._scroll_rect)
-          row.render(row_rect)
+          self._draw_row(row_rect, row, is_last=(j == len(right_rows) - 1))
         y += max(section_h, right_h) + SECTION_GAP
         i += 1
       else:
@@ -3619,7 +3893,7 @@ class AetherTile(Widget):
     scale = max(0.82, min(1.12, min(face.width / 360.0, face.height / 205.0)))
     title_size = max(22, int(round(title_size * scale)))
     primary_size = max(18, int(round(primary_size * scale)))
-    desc_size = max(14, int(round(desc_size * scale)))
+    desc_size = max(16, int(round(desc_size * scale)))
     title_lines = self._wrap_text(title_font, title, max_w, title_size, max_lines=2)
     has_icon = (icon is not None) or (custom_icon_key is not None)
     icon_scale = min(0.80, max(0.56, scale * 0.72)) if has_icon else 0.0
@@ -3705,66 +3979,15 @@ class AetherTile(Widget):
       return
     rng = random.Random(self._constellation_seed())
     num = _NODE_NUM_MIN + rng.randint(0, _NODE_NUM_MAX - _NODE_NUM_MIN)
-    regions = [
-      (0.18, 0.30, 0.18, 0.30),  # top-left corner
-      (0.70, 0.82, 0.18, 0.30),  # top-right corner
-      (0.18, 0.30, 0.70, 0.82),  # bottom-left corner
-      (0.70, 0.82, 0.70, 0.82),  # bottom-right corner
-      (0.38, 0.62, 0.18, 0.28),  # top-center edge
-      (0.38, 0.62, 0.72, 0.82),  # bottom-center edge
-      (0.18, 0.28, 0.38, 0.62),  # left-center edge
-      (0.72, 0.82, 0.38, 0.62),  # right-center edge
-    ]
-    ax_min, ax_max, ay_min, ay_max = regions[rng.randint(0, 7)]
-    ax = ax_min + rng.random() * (ax_max - ax_min)
-    ay = ay_min + rng.random() * (ay_max - ay_min)
-    nodes = []
-    for _ in range(num):
-      for _ in range(20):
-        a = rng.random() * 2.0 * math.pi
-        r = 0.05 + rng.random() * 0.11
-        x = max(0.04, min(0.96, ax + r * math.cos(a)))
-        y = max(0.04, min(0.96, ay + r * math.sin(a)))
-        if all(math.sqrt((x - n['x'])**2 + (y - n['y'])**2) >= 0.07 for n in nodes):
-          nodes.append({'x': x, 'y': y})
-          break
-      else:
-        nodes.append({'x': x, 'y': y})
-    nodes.sort(key=lambda n: -(abs(n['x'] - 0.5) + abs(n['y'] - 0.5)))
-    for i, n in enumerate(nodes):
-      n['w'] = 0 if i == 0 else 1 if i == 1 else 2
-    vecs = [(0, j) for j in range(1, num)]
-    self._constellation_data = (nodes, vecs)
+    self._constellation_data = _build_constellation_nodes(
+      rng, num, _CONST_REGIONS_TILE,
+      r_min=0.05, r_max=0.11, min_sep=0.07, x_margin=0.04, y_margin=0.04,
+    )
 
   def _draw_constellation(self, face: rl.Rectangle, accent: rl.Color, glow: float):
     self._generate_and_cache_constellation()
     nodes, vecs = self._constellation_data
-    rx, ry, rw, rh = int(face.x), int(face.y), int(face.width), int(face.height)
-
-    va = int(10 + glow * 25)
-    if va > 2:
-      vc = rl.Color(accent.r, accent.g, accent.b, min(255, va))
-      for i, j in vecs:
-        x1 = int(rx + nodes[i]['x'] * rw)
-        y1 = int(ry + nodes[i]['y'] * rh)
-        x2 = int(rx + nodes[j]['x'] * rw)
-        y2 = int(ry + nodes[j]['y'] * rh)
-        rl.draw_line_ex(rl.Vector2(x1, y1), rl.Vector2(x2, y2), 1.0, vc)
-
-    for nd in nodes:
-      nx = int(rx + nd['x'] * rw)
-      ny = int(ry + nd['y'] * rh)
-      if nd['w'] == 0:
-        core_r, diff_r, col = 3.0, 12.0, _CONST_PRIMARY
-      elif nd['w'] == 1:
-        core_r, diff_r, col = 2.0, 8.0, _CONST_SECONDARY
-      else:
-        core_r, diff_r, col = 1.2, 0.0, _CONST_TERTIARY
-      da = int(5 + glow * 20)
-      if diff_r > 0 and da > 2:
-        rl.draw_circle(nx, ny, int(diff_r), rl.Color(col.r, col.g, col.b, min(255, da)))
-      ca = int(130 + glow * 125)
-      rl.draw_circle(nx, ny, int(core_r), rl.Color(col.r, col.g, col.b, min(255, ca)))
+    draw_constellation_nodes(nodes, vecs, face, accent, glow, scale=1.0)
 
   def _render_hud_background(self, rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0) -> tuple[rl.Rectangle, rl.Color]:
     sq = self._squish
@@ -3935,12 +4158,12 @@ class ToggleTile(AetherTile):
 
     content_pad = SPACING.tile_content
     max_w = rw - content_pad * 2
-    text_scale = max(0.82, min(1.12, min(rw / 360.0, rh / 205.0)))
-    title_size = max(20, int(round(24 * text_scale)))
+    text_scale = max(0.82, min(1.12, rh / 205.0))
+    title_size = max(22, int(round(28 * text_scale)))
 
     if not enabled:
       title_lines = self._wrap_text(self._font, self.title, max_w, title_size, max_lines=2)
-      desc_size = max(14, int(round(16 * text_scale)))
+      desc_size = max(17, int(round(18 * text_scale)))
       disabled_text = tr(self._disabled_label) if self._disabled_label else tr("LOCKED")
       desc_lines = self._wrap_text(self._font_desc, disabled_text, max_w, desc_size, max_lines=2)
 
@@ -3959,7 +4182,7 @@ class ToggleTile(AetherTile):
       title_color = rl.WHITE if active else _HUD_TEXT_DIM
       if self.desc:
         title_lines = self._wrap_text(self._font, self.title, max_w, title_size, max_lines=2)
-        desc_size = max(14, int(round(16 * text_scale)))
+        desc_size = max(17, int(round(18 * text_scale)))
         desc_lines = self._wrap_text(self._font_desc, self.desc, max_w, desc_size, max_lines=2)
 
         if len(title_lines) == 1:

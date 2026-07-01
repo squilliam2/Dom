@@ -25,8 +25,9 @@ from openpilot.selfdrive.controls.lib.latcontrol_torque import (
   LatControlTorque,
   get_civic_bosch_modified_b_ff_scale,
   get_civic_bosch_modified_b_friction_scale,
+  get_gm_base_friction_threshold,
   get_bolt_2017_center_taper_scale,
-  get_friction_threshold,
+  get_standard_friction_threshold,
   get_bolt_2017_base_torque_scale,
   get_bolt_2017_steer_ratio_scale,
   get_bolt_2017_torque_scale,
@@ -157,7 +158,7 @@ class TestLatControl:
     assert get_bolt_2018_2021_dynamic_torque_scale(-0.6, 0.6, 8.0) < get_bolt_2018_2021_dynamic_torque_scale(-0.6, -0.6, 8.0)
 
   def test_bolt_2018_2021_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_gm_base_friction_threshold(6.0)
     left_turn_in = get_bolt_2018_2021_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in = get_bolt_2018_2021_friction_threshold(6.0, -0.7, -0.8)
     left_unwind = get_bolt_2018_2021_friction_threshold(6.0, 0.7, -0.8)
@@ -186,7 +187,7 @@ class TestLatControl:
     assert get_bolt_2022_2023_ff_scale(0.14, 0.0, 30.0) < get_bolt_2022_2023_ff_scale(0.14, 0.0, 20.0)
 
   def test_bolt_2022_2023_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_gm_base_friction_threshold(6.0)
     left_turn_in = get_bolt_2022_2023_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in = get_bolt_2022_2023_friction_threshold(6.0, -0.7, -0.8)
     left_unwind = get_bolt_2022_2023_friction_threshold(6.0, 0.7, -0.8)
@@ -217,7 +218,7 @@ class TestLatControl:
     assert get_volt_standard_ff_scale(2.0, 0.0, 20.0) < get_volt_standard_ff_scale(0.8, 0.0, 20.0)
 
   def test_volt_standard_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_gm_base_friction_threshold(6.0)
     left_turn_in = get_volt_standard_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in = get_volt_standard_friction_threshold(6.0, -0.7, -0.8)
     left_unwind = get_volt_standard_friction_threshold(6.0, 0.7, -0.8)
@@ -329,7 +330,7 @@ class TestLatControl:
     assert get_genesis_g90_ff_scale(2.0, 0.0, 20.0) < get_genesis_g90_ff_scale(0.8, 0.0, 20.0)
 
   def test_genesis_g90_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_gm_base_friction_threshold(6.0)
     left_turn_in = get_genesis_g90_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in = get_genesis_g90_friction_threshold(6.0, -0.7, -0.8)
     left_unwind = get_genesis_g90_friction_threshold(6.0, 0.7, -0.8)
@@ -366,7 +367,7 @@ class TestLatControl:
     assert unwind_right < unwind_left
 
   def test_palisade_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_gm_base_friction_threshold(6.0)
     left_turn_in = get_palisade_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in = get_palisade_friction_threshold(6.0, -0.7, -0.8)
     left_unwind = get_palisade_friction_threshold(6.0, 0.7, -0.8)
@@ -399,7 +400,7 @@ class TestLatControl:
     assert unwind_right < unwind_left
 
   def test_prius_friction_curves(self):
-    base_threshold = get_friction_threshold(12.0)
+    base_threshold = get_gm_base_friction_threshold(12.0)
     left_turn_in_threshold = get_prius_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in_threshold = get_prius_friction_threshold(6.0, -0.7, -0.8)
     left_unwind_threshold = get_prius_friction_threshold(6.0, 0.7, -0.8)
@@ -416,6 +417,11 @@ class TestLatControl:
     right_unwind_scale = get_prius_friction_scale(6.0, -0.7, 0.8)
     assert right_turn_in_scale > left_turn_in_scale > base_scale
     assert base_scale > left_unwind_scale > right_unwind_scale
+
+  def test_generic_friction_threshold_floor(self):
+    assert get_standard_friction_threshold(0.0) == 0.30
+    assert get_standard_friction_threshold(6.0) == 0.30
+    assert get_standard_friction_threshold(40.0) == 0.30
 
   def test_ioniq_5_ff_scale_curve(self):
     assert get_ioniq_5_ff_scale(0.0, 0.0, 20.0) == 1.0
@@ -575,7 +581,7 @@ class TestLatControl:
     assert base > left_unwind >= right_unwind
 
   def test_volt_plexy_friction_threshold_curve(self):
-    base = get_friction_threshold(6.0)
+    base = get_gm_base_friction_threshold(6.0)
     left_turn_in = get_volt_plexy_friction_threshold(6.0, 0.7, 0.8)
     right_turn_in = get_volt_plexy_friction_threshold(6.0, -0.7, -0.8)
     left_unwind = get_volt_plexy_friction_threshold(6.0, 0.7, -0.8)

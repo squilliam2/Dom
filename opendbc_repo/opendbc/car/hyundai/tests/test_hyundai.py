@@ -1460,7 +1460,28 @@ class TestHyundaiFingerprint:
     assert parser.vl["LKAS_ALT"]["STEER_MODE"] == 2
     assert parser.vl["LKAS_ALT"]["NEW_SIGNAL_2"] == 3
 
-  def test_ev9_inactive_angle_steering_still_suppresses_stock_lfa(self):
+  def test_ev9_inactive_angle_steering_does_not_suppress_stock_lfa(self):
+    CP = CarParams.new_message()
+    CP.carFingerprint = CAR.KIA_EV9
+    CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING |
+                   HyundaiFlags.CANFD_LKA_STEERING | HyundaiFlags.CANFD_LKA_STEERING_ALT)
+    CP.openpilotLongitudinalControl = False
+
+    controller = CarController(DBC[CP.carFingerprint], CP)
+    controller.frame = 5
+    cc = SimpleNamespace(enabled=False, latActive=False, actuators=SimpleNamespace(longControlState=LongCtrlState.off),
+                         leftBlinker=False, rightBlinker=False, hudControl=SimpleNamespace())
+    lfa_block_msg = {f"BYTE{i}": 0 for i in range(3, 32) if i != 7}
+    lfa_block_msg["COUNTER"] = 0
+    cs = SimpleNamespace(stock_lfa_msg=None, stock_lkas_msg={}, lfa_block_msg=lfa_block_msg,
+                         out=SimpleNamespace(steeringAngleDeg=0.0))
+
+    msgs = controller.create_canfd_msgs(0, False, 0.0, 0.0, 0.0, 0.0, False, cc.hudControl, cs, cc,
+                                        get_test_toggles(), lka_icon=1, lfa_icon=1)
+    suppress_msgs = [msg for msg in msgs if msg[0] == 0x362]
+    assert not suppress_msgs
+
+  def test_ev9_active_angle_steering_still_suppresses_stock_lfa(self):
     CP = CarParams.new_message()
     CP.carFingerprint = CAR.KIA_EV9
     CP.flags = int(HyundaiFlags.CANFD | HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING |
@@ -1471,7 +1492,7 @@ class TestHyundaiFingerprint:
     controller.frame = 5
     can_bus = CanBus(CP)
     parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [("CAM_0x362", 0)], can_bus.ECAN)
-    cc = SimpleNamespace(enabled=False, latActive=False, actuators=SimpleNamespace(longControlState=LongCtrlState.off),
+    cc = SimpleNamespace(enabled=False, latActive=True, actuators=SimpleNamespace(longControlState=LongCtrlState.off),
                          leftBlinker=False, rightBlinker=False, hudControl=SimpleNamespace())
     lfa_block_msg = {f"BYTE{i}": 0 for i in range(3, 32) if i != 7}
     lfa_block_msg["COUNTER"] = 0
@@ -1479,7 +1500,7 @@ class TestHyundaiFingerprint:
                          out=SimpleNamespace(steeringAngleDeg=0.0))
 
     msgs = controller.create_canfd_msgs(0, False, 0.0, 0.0, 0.0, 0.0, False, cc.hudControl, cs, cc,
-                                        get_test_toggles(), lka_icon=1, lfa_icon=1)
+                                        get_test_toggles(), lka_icon=2, lfa_icon=2)
     suppress_msgs = [msg for msg in msgs if msg[0] == 0x362]
     assert len(suppress_msgs) == 1
 

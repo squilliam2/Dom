@@ -589,8 +589,9 @@ class SelfdriveD:
         self.CP.openpilotLongitudinalControl and not self.CP.pcmCruise
       )
       effective_pcm_cruise = self.CP.pcmCruise or preap_software_cruise
+      jeep_brake_hold = self.CP.brand == "chrysler" and getattr(CS, "brakeHoldActive", False)
       cruise_mismatch = should_flag_cruise_mismatch(self.CP, CS.cruiseState.enabled, self.enabled,
-                                                    effective_pcm_cruise) and not pacifica_hybrid_aol
+                                                    effective_pcm_cruise) and not pacifica_hybrid_aol and not jeep_brake_hold
       self.cruise_mismatch_counter = self.cruise_mismatch_counter + 1 if cruise_mismatch else 0
       if self.cruise_mismatch_counter > int(6. / DT_CTRL):
         self.events.add(EventName.cruiseMismatch)

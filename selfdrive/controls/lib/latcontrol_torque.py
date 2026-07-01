@@ -87,6 +87,7 @@ class LatControlTorque(LatControl):
     self.is_kia_ev6 = CP.carFingerprint in KIA_EV6_CARS
     self.is_civic_bosch_modified = CP.carFingerprint == HONDA_CAR.HONDA_CIVIC_BOSCH and bool(CP.flags & HondaFlags.EPS_MODIFIED)
     self.is_silverado = CP.carFingerprint in SILVERADO_CARS
+    self.is_gm = CP.brand == "gm"
     self.is_hkg_canfd_torque = CP.brand == "hyundai" and bool(CP.flags & HyundaiFlags.CANFD)
     if self.is_ioniq_6:
       self.low_speed_reset_threshold = min(self.low_speed_reset_threshold, IONIQ_6_LOW_SPEED_PID_RESET_SPEED)
@@ -241,7 +242,12 @@ class LatControlTorque(LatControl):
       civic_bosch_modified_a_center_taper = get_civic_bosch_modified_a_center_taper_scale(setpoint, CS.vEgo) if (
         self.is_civic_bosch_modified and civic_bosch_modified_a_lateral_testing_ground_active()
       ) else 1.0
-      friction_threshold = get_hkg_canfd_base_friction_threshold(CS.vEgo) if self.is_hkg_canfd_torque else get_friction_threshold(CS.vEgo)
+      if self.is_hkg_canfd_torque:
+        friction_threshold = get_hkg_canfd_base_friction_threshold(CS.vEgo)
+      elif self.is_gm:
+        friction_threshold = get_gm_base_friction_threshold(CS.vEgo)
+      else:
+        friction_threshold = get_standard_friction_threshold(CS.vEgo)
       friction_scale = 1.0
       if bolt_2022_2023_tuned_path_active:
         ff *= get_bolt_2022_2023_ff_scale(setpoint, desired_lateral_jerk, CS.vEgo)

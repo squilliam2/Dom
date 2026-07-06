@@ -17,6 +17,8 @@ MALIBU_BUTTON_MAP = {
   CruiseButtons.CANCEL: 5,
 }
 
+ACC_CRUISE_STATE_ADAPTIVE = 2
+
 
 def malibu_phase_map_for_button(button):
   key = MALIBU_BUTTON_MAP.get(button)
@@ -215,16 +217,24 @@ def create_friction_brake_command(packer, bus, apply_brake, idx, enabled, near_s
   return packer.make_can_msg("EBCMFrictionBrakeCmd", bus, values)
 
 
-def create_acc_dashboard_command(packer, bus, enabled, target_speed_kph, hud_control, fcw_alert):
+def create_acc_2cd_command(bus, idx):
+  dat = bytearray([0x00, 0x2c, 0x03, 0xd3, 0x00])
+  dat[0] = (idx & 0x3) << 6
+  dat[4] = (0xfd - (idx & 0x3)) & 0xff
+  return CanData(0x2CD, bytes(dat), bus)
+
+
+def create_acc_dashboard_command(packer, bus, enabled, target_speed_kph, hud_control, fcw_alert, acc_always_one=1):
   target_speed = min(target_speed_kph, 255)
 
   values = {
-    "ACCAlwaysOne": 1,
+    "ACCAlwaysOne": acc_always_one,
+    "ACCCruiseState": ACC_CRUISE_STATE_ADAPTIVE,
     "ACCResumeButton": 0,
     "ACCSpeedSetpoint": target_speed,
     "ACCGapLevel": hud_control.leadDistanceBars * enabled,  # 3 "far", 0 "inactive"
     "ACCCmdActive": enabled,
-    "ACCAlwaysOne2": 1,
+    "ACCAlwaysOne2": acc_always_one,
     "ACCLeadCar": hud_control.leadVisible,
     "FCWAlert": int(fcw_alert) & 0x3,
   }

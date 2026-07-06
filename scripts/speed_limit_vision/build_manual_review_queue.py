@@ -120,6 +120,7 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--transition-step", type=float, default=0.75, help="Seconds between transition-window samples.")
   parser.add_argument("--max-frames-per-route", type=int, default=1200, help="Maximum frames to score per route.")
   parser.add_argument("--max-candidates-per-route", type=int, default=500, help="Maximum review candidates to keep per route.")
+  parser.add_argument("--max-candidates-per-frame", type=int, default=1, help="Maximum detector candidates to keep from a single video frame. 0 keeps all.")
   parser.add_argument("--max-negatives-per-route", type=int, default=60, help="Maximum empty/no-candidate frames to keep per route.")
   parser.add_argument("--min-proposal-confidence", type=float, default=0.025, help="Loose detector confidence floor for review candidates.")
   parser.add_argument("--no-read-min-proposal-confidence", type=float, default=0.12, help="Keep no-value detector boxes above this confidence.")
@@ -375,8 +376,7 @@ def cluster_key(route_id: str, segment: int, time_s: float, frame_shape: tuple[i
   time_bucket = int(math.floor(time_s / max(dedupe_seconds, 0.1)))
   grid_x = int(center_x * 12)
   grid_y = int(center_y * 8)
-  value = candidate["candidate_speed_limit_mph"] or "none"
-  return f"{route_id}|{segment}|{time_bucket}|{candidate['class_id']}|{value}|{grid_x}|{grid_y}"
+  return f"{route_id}|{segment}|{time_bucket}|{candidate['class_id']}|{grid_x}|{grid_y}"
 
 
 def candidate_record_key(route_key: str, segment: int, time_s: float, index: int) -> str:
@@ -423,17 +423,25 @@ def mine_route(route_id: str, daemon: slv.SpeedLimitVisionDaemon, args: argparse
       full_detection = daemon._detect_sign(frame_bgr) if args.include_full_detection else None
       proposals = daemon._collect_detector_classifier_proposals(frame_bgr)
       candidate_index = 0
-      kept_any = False
+      frame_candidates: list[tuple[int, dict[str, object], object]] = []
       for proposal in proposals:
         candidate = analyze_proposal(daemon, frame_bgr, proposal, full_detection, context, args)
         if candidate is None:
           continue
         candidate_index += 1
+        x1, y1, x2, y2 = candidate["crop_bbox"]
+        crop = frame_bgr[y1:y2, x1:x2]
+        frame_candidates.append((candidate_index, candidate, crop))
+
+      frame_candidates.sort(key=lambda item: float(item[1]["review_priority"]), reverse=True)
+      if args.max_candidates_per_frame > 0:
+        frame_candidates = frame_candidates[:args.max_candidates_per_frame]
+      kept_any = bool(frame_candidates)
+
+      for candidate_index, candidate, crop in frame_candidates:
         record_key = candidate_record_key(route_key, segment.segment, time_s, candidate_index)
         frame_path = frame_dir / f"{record_key}.jpg"
         crop_path = crop_dir / f"{record_key}_crop.jpg"
-        x1, y1, x2, y2 = candidate["crop_bbox"]
-        crop = frame_bgr[y1:y2, x1:x2]
         row = {
           "record_key": record_key,
           "route": route_id,

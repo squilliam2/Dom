@@ -16,6 +16,7 @@ from setproctitle import setproctitle
 
 from cereal import car, log
 import cereal.messaging as messaging
+import openpilot.system.sentry as sentry
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -428,6 +429,7 @@ def launcher(proc: str, name: str, nice: int | None = None) -> None:
 
     # add daemon name tag to logs
     cloudlog.bind(daemon=name)
+    sentry.set_tag("daemon", name)
 
     # exec the process
     mod.main()
@@ -436,13 +438,7 @@ def launcher(proc: str, name: str, nice: int | None = None) -> None:
   except Exception:
     # can't install the crash handler because sys.excepthook doesn't play nice
     # with threads, so catch it here.
-    try:
-      import openpilot.system.sentry as sentry
-
-      sentry.set_tag("daemon", name)
-      sentry.capture_exception()
-    except Exception:
-      cloudlog.exception(f"failed to capture exception for child {proc}")
+    sentry.capture_exception()
     raise
 
 

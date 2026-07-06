@@ -2,35 +2,30 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 
 import pyray as rl
 
 from openpilot.system.hardware import HARDWARE
-from openpilot.system.ui.lib.application import FontWeight, gui_app
+from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
-from openpilot.system.ui.widgets import DialogResult, Widget
+from openpilot.system.ui.widgets import DialogResult
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
-from openpilot.system.ui.widgets.label import gui_label
-from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import _SettingsPage
 from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
-  AetherListMetrics,
-  AetherListColors,
   AetherSliderDialog,
+  COMPACT_PANEL_METRICS,
   DEFAULT_PANEL_STYLE,
   PanelManagerView,
+  SettingRow,
+  TileGrid,
+  GROUP_HEADER_HEIGHT,
+  GROUP_HEADER_GAP,
+  draw_group_header,
   draw_list_group_shell,
   draw_section_header,
-  draw_selection_list_row,
   draw_settings_list_row,
-  draw_settings_panel_header,
-  draw_soft_card,
-  TileGrid,
-  ToggleTile,
-  with_alpha,
-  draw_status_badges,
-  wrap_text,
 )
 from openpilot.selfdrive.ui.lib.starpilot_state import starpilot_state
 from openpilot.selfdrive.ui.lib.fingerprint_catalog import (
@@ -70,61 +65,244 @@ def _lock_doors_timer_labels():
   return labels
 
 
-CUSTOM_METRICS = AetherListMetrics(
-  max_content_width=1560,
-  outer_margin_x=18,
-  outer_margin_y=10,
-  panel_padding_x=16,
-  panel_padding_top=16,
-  panel_padding_bottom=12,
-  header_height=0,
-  section_gap=12,
-  section_header_height=28,
-  section_header_gap=8,
-  row_height=104,
-  utility_row_height=88,
-)
-
-SECTION_GAP = CUSTOM_METRICS.section_gap
-SECTION_HEADER_HEIGHT = CUSTOM_METRICS.section_header_height
-SECTION_HEADER_GAP = CUSTOM_METRICS.section_header_gap
-ROW_HEIGHT = CUSTOM_METRICS.row_height
-FADE_HEIGHT = CUSTOM_METRICS.fade_height
+SECTION_GAP = 16
+SECTION_HEADER_HEIGHT = 30
+SECTION_HEADER_GAP = 8
+GROUP_OVERHEAD = GROUP_HEADER_HEIGHT + GROUP_HEADER_GAP
+ROW_HEIGHT = 86.0
 PANEL_STYLE = DEFAULT_PANEL_STYLE
 
 
 class VehicleSettingsManagerView(PanelManagerView):
-  HEADER_SUBTITLE_HEIGHT = 22
-  HEADER_SUMMARY_GAP = 10
-  HEADER_CARD_HEIGHT = 100
-  METRICS = CUSTOM_METRICS
+  METRICS = replace(COMPACT_PANEL_METRICS,
+    header_height=0,
+    outer_margin_y=14,
+    panel_padding_top=16,
+    panel_padding_bottom=14,
+    section_header_height=30,
+    section_header_gap=8,
+  )
 
   def __init__(self, controller: "StarPilotVehicleSettingsLayout"):
     super().__init__()
     self._controller = controller
     self._shell_rect = rl.Rectangle(0, 0, 0, 0)
-
-    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_width=100, min_tile_height=130.0, max_tile_height=280.0)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True,
+                                 min_tile_height=130.0)
     self.register_page_grid(self._toggle_grid)
-
     self._last_make = ""
     self._last_model = ""
+    self._left_row_height = ROW_HEIGHT
+
+  @property
+  def vertical_scrolling_disabled(self) -> bool:
+    return True
 
   def show_event(self):
     super().show_event()
     starpilot_state.update(force=True)
     self._rebuild_toggle_grid()
 
+  def _build_header_chips(self) -> list[str]:
+    cs = starpilot_state.car_state
+    chips = []
+    if cs.canUsePedal: chips.append(tr("Pedal"))
+    if cs.hasSASCM: chips.append(tr("SASCM"))
+    if cs.canUseSDSU: chips.append(tr("SDSU"))
+    if cs.hasZSS: chips.append(tr("ZSS"))
+    if cs.hasRadar: chips.append(tr("Radar"))
+    if cs.hasOpenpilotLongitudinal: chips.append(tr("Long"))
+    if cs.hasBSM: chips.append(tr("BSM"))
+    if cs.hasSNG: chips.append(tr("SNG"))
+    return chips
+
+  def _build_identity_rows(self) -> list[SettingRow]:
+    cs = starpilot_state.car_state
+    fp = lambda: self._controller._params.get_bool("ForceFingerprint")
+    dl = "Enable Disable Fingerprinting to change."
+    rows = [
+      SettingRow("ForceFingerprint", "toggle", tr_noop("Disable Fingerprinting"),
+                 subtitle=tr_noop("Manually select vehicle instead of auto-detecting."),
+                 get_state=fp,
+                 set_state=lambda s: self._controller._on_toggle("ForceFingerprint")),
+      SettingRow("CarMake", "value", tr_noop("Car Make"),
+                 get_value=self._controller._get_display_make,
+                 on_click=lambda: self._controller._on_select("CarMake"),
+                 enabled=fp, disabled_label=dl),
+      SettingRow("CarModel", "value", tr_noop("Car Model"),
+                 get_value=self._controller._get_display_model,
+                 on_click=lambda: self._controller._on_select("CarModel"),
+                 enabled=fp, disabled_label=dl),
+    ]
+    if cs.isToyota:
+      rows.append(SettingRow("LockDoorsTimer", "value", tr_noop("Lock Doors Timer"),
+                 get_value=lambda: _lock_doors_timer_labels().get(
+                   float(self._controller._params.get_int("LockDoorsTimer")),
+                   f"{self._controller._params.get_int('LockDoorsTimer')}s"),
+                 on_click=lambda: self._controller._on_select("LockDoorsTimer")))
+      rows.append(SettingRow("ClusterOffset", "value", tr_noop("Dashboard Speed Offset"),
+                 get_value=lambda: f"{self._controller._params.get_float('ClusterOffset'):.3f}x",
+                 on_click=lambda: self._controller._on_select("ClusterOffset")))
+    return rows
+
+  def _build_steering_rows(self) -> list[SettingRow]:
+    cs = starpilot_state.car_state
+    rows = []
+    for key in ("DistanceButtonControl", "LongDistanceButtonControl", "VeryLongDistanceButtonControl"):
+      rows.append(SettingRow(key, "value", tr_noop(self._controller._action_title(key)),
+                 get_value=lambda k=key: self._controller._get_action_name(k),
+                 on_click=lambda k=key: self._controller._on_select(k)))
+    if cs.isBolt and cs.hasPedal and self._controller._params.get_bool("RemapCancelToDistance"):
+      for key in ("CancelButtonControl", "LongCancelButtonControl", "VeryLongCancelButtonControl"):
+        rows.append(SettingRow(key, "value", tr_noop(self._controller._action_title(key)),
+                   get_value=lambda k=key: self._controller._get_action_name(k),
+                   on_click=lambda k=key: self._controller._on_select(k)))
+    if not cs.isSubaru:
+      rows.append(SettingRow("LKASButtonControl", "value", tr_noop("LKAS Button"),
+                 get_value=lambda: self._controller._get_action_name("LKASButtonControl"),
+                 on_click=lambda: self._controller._on_select("LKASButtonControl")))
+    rows.append(SettingRow("MainCruiseButtonControl", "value", tr_noop("CC Main Button"),
+                 get_value=lambda: self._controller._get_action_name("MainCruiseButtonControl"),
+                 on_click=lambda: self._controller._on_select("MainCruiseButtonControl")))
+    if cs.hasModeStarButtons:
+      for key in ("ModeButtonControl", "LongModeButtonControl", "VeryLongModeButtonControl",
+                  "StarButtonControl", "LongStarButtonControl", "VeryLongStarButtonControl"):
+        rows.append(SettingRow(key, "value", tr_noop(self._controller._action_title(key)),
+                   get_value=lambda k=key: self._controller._get_action_name(k),
+                   on_click=lambda k=key: self._controller._on_select(k)))
+    return rows
+
+  def _draw_row(self, rect: rl.Rectangle, row: SettingRow, is_last: bool):
+    target_id = f"{row.type}:{row.id}"
+    hovered, pressed = self._interactive_state(target_id, rect)
+    enabled = row.enabled() if row.enabled is not None else True
+    subtitle = row.disabled_label if not enabled and row.disabled_label else (tr(row.subtitle) if row.subtitle else "")
+
+    if row.type == "value":
+      value_text = row.get_value() if row.get_value else ""
+      draw_settings_list_row(rect, title=tr(row.title), subtitle=subtitle,
+                             value=value_text, enabled=enabled,
+                             hovered=hovered, pressed=pressed,
+                             is_last=is_last, show_chevron=row.on_click is not None,
+                             title_size=34, subtitle_size=22, value_size=28,
+                             style=PANEL_STYLE)
+    elif row.type == "toggle":
+      toggle_value = row.get_state() if row.get_state else False
+      draw_settings_list_row(rect, title=tr(row.title), subtitle=subtitle,
+                             toggle_value=toggle_value, enabled=enabled,
+                             hovered=hovered, pressed=pressed,
+                             is_last=is_last, show_chevron=False,
+                             title_size=34, subtitle_size=22,
+                             style=PANEL_STYLE)
+
+  def _draw_section(self, y: float, x: float, width: float, title: str, rows: list[SettingRow], row_height: float = ROW_HEIGHT) -> float:
+    if title:
+      draw_section_header(rl.Rectangle(x, y, width, SECTION_HEADER_HEIGHT), tr(title), style=PANEL_STYLE)
+      y += SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
+    group_h = len(rows) * row_height
+    draw_list_group_shell(rl.Rectangle(x, y, width, group_h), style=PANEL_STYLE)
+    for i, row in enumerate(rows):
+      self._draw_row(rl.Rectangle(x, y + i * row_height, width, row_height), row, i == len(rows) - 1)
+    return y + group_h
+
+  def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
+    y = rect.y + self._scroll_offset
+    identity_rows = self._build_identity_rows()
+    steering_rows = self._build_steering_rows()
+
+    if self._uses_two_columns(width):
+      col_w = self._column_width(width)
+      rx = rect.x + col_w + self.COLUMN_GAP
+
+      draw_section_header(rl.Rectangle(rect.x, y, col_w, SECTION_HEADER_HEIGHT),
+                          tr("Vehicle Identity"), style=PANEL_STYLE)
+
+      caps = self._build_header_chips()
+      trailing = "  " + tr("Vehicle Capabilities") + "  " + "  ".join(caps) if caps else ""
+      draw_section_header(rl.Rectangle(rx, y, col_w, SECTION_HEADER_HEIGHT),
+                          tr("Features"), trailing_text=trailing, style=PANEL_STYLE)
+
+      content_y = y + SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
+
+      draw_list_group_shell(rl.Rectangle(rect.x, content_y, col_w, self._container_h), style=PANEL_STYLE)
+      row_y = content_y
+      for i, row in enumerate(identity_rows):
+        self._draw_row(rl.Rectangle(rect.x, row_y, col_w, self._left_row_height),
+                       row, i == len(identity_rows) - 1 and not steering_rows)
+        row_y += self._left_row_height
+
+      if steering_rows:
+        row_y = draw_group_header(rect.x + 24, row_y, col_w - 48, tr("STEERING CONTROLS"))
+        for i, row in enumerate(steering_rows):
+          self._draw_row(rl.Rectangle(rect.x, row_y, col_w, self._left_row_height),
+                         row, i == len(steering_rows) - 1)
+          row_y += self._left_row_height
+
+      if self._toggle_grid.tiles:
+        self._draw_two_column_tile_grid(self._toggle_grid, rx, content_y, col_w,
+                                        self._container_h, title=None, style=PANEL_STYLE)
+    else:
+      y = self._draw_section(y, rect.x, width, tr("Vehicle Identity"), identity_rows, self._left_row_height)
+      y += SECTION_GAP
+      y = self._draw_section(y, rect.x, width, tr("Steering Controls"), steering_rows, self._left_row_height)
+      y += SECTION_GAP
+
+      if self._toggle_grid.tiles:
+        draw_section_header(rl.Rectangle(rect.x, y, width, SECTION_HEADER_HEIGHT),
+                           tr("Features"), style=PANEL_STYLE)
+        y += SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
+        self._toggle_grid._columns = 3
+        avail = width - 24
+        th = self.measure_page_grid_height(self._toggle_grid, avail)
+        draw_list_group_shell(rl.Rectangle(rect.x, y, width, th + 24), style=PANEL_STYLE)
+        self._render_page_grid(self._toggle_grid, rl.Rectangle(rect.x + 12, y + 12, avail, th))
+
+  def _measure_content_height(self, width: float) -> float:
+    self._check_rebuild_grid()
+    identity_rows = self._build_identity_rows()
+    steering_rows = self._build_steering_rows()
+    total_rows = len(identity_rows) + len(steering_rows)
+
+    tiles_h = 0.0
+    if self._toggle_grid.tiles:
+      if self._uses_two_columns(width):
+        self._toggle_grid._columns = 2
+        col_w = self._column_width(width)
+        tiles_h = self.measure_page_grid_height(self._toggle_grid, col_w - 24)
+      else:
+        self._toggle_grid._columns = 3
+        tiles_h = self.measure_page_grid_height(self._toggle_grid, width - 24)
+
+    if self._uses_two_columns(width):
+      left_content_natural = total_rows * ROW_HEIGHT + GROUP_OVERHEAD
+      header_h = SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP
+
+      if self._scroll_rect:
+        available_content_h = self._scroll_rect.height - header_h
+      else:
+        available_content_h = max(left_content_natural, tiles_h)
+
+      if left_content_natural > available_content_h and total_rows > 0:
+        self._left_row_height = max(48.0, available_content_h / total_rows)
+      else:
+        self._left_row_height = ROW_HEIGHT
+
+      left_content_h = total_rows * self._left_row_height + GROUP_OVERHEAD
+      self._container_h = max(left_content_h, tiles_h)
+
+      total_h = self._compute_two_column_height(header_h + self._container_h)
+      self._container_h = total_h - header_h
+      return total_h
+
+    self._left_row_height = ROW_HEIGHT
+    identity_natural_h = self._section_block_height(self._section_height(len(identity_rows), ROW_HEIGHT))
+    steering_natural_h = self._section_block_height(self._section_height(len(steering_rows), ROW_HEIGHT))
+    left_natural_h = identity_natural_h + SECTION_GAP + steering_natural_h
+    return left_natural_h + tiles_h + (SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP if tiles_h else 0)
+
   def _build_driving_toggles(self) -> list[dict]:
     cs = starpilot_state.car_state
     toggles = []
-
-    toggles.append({
-      "title": tr("Disable Fingerprinting"),
-      "subtitle": tr("Manually select vehicle instead of auto-detecting."),
-      "get_state": lambda: self._controller._params.get_bool("ForceFingerprint"),
-      "set_state": lambda s: self._controller._on_toggle("ForceFingerprint"),
-    })
 
     toggles.append({
       "title": tr("Disable openpilot Long"),
@@ -242,7 +420,7 @@ class VehicleSettingsManagerView(PanelManagerView):
       self._last_model = current_model
       self._rebuild_toggle_grid()
 
-  def _on_frame_created(self, frame) -> None:
+  def _on_frame_created(self, frame):
     self._shell_rect = frame.shell
 
   def _activate_target(self, target_id: str | None):
@@ -251,7 +429,7 @@ class VehicleSettingsManagerView(PanelManagerView):
     prefix, _, value = target_id.partition(":")
     if prefix == "toggle":
       self._controller._on_toggle(value)
-    elif prefix == "select":
+    elif prefix in ("select", "value"):
       self._controller._on_select(value)
 
   def _draw_header(self, rect: rl.Rectangle):
@@ -521,7 +699,6 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
     self._make_options, self._models_by_make, self._models_by_value, self._make_by_model = get_fingerprint_catalog()
     self._manager_view = VehicleSettingsManagerView(self)
 
-
   def _action_title(self, key: str) -> str:
     titles = {
       "CancelButtonControl": "Cancel Button",
@@ -689,7 +866,8 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
         self._params.put_int("LockDoorsTimer", int(val))
 
     gui_app.push_widget(AetherSliderDialog(tr("Lock Doors Timer"), 0, 300, 5,
-                                            self._params.get_int("LockDoorsTimer"), on_close, labels=_lock_doors_timer_labels(), color=PANEL_STYLE.accent))
+                                            self._params.get_int("LockDoorsTimer"), on_close,
+                                            labels=_lock_doors_timer_labels(), color=PANEL_STYLE.accent))
 
   def _show_offset_selector(self):
     def on_close(res, val):
@@ -697,7 +875,8 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
         self._params.put_float("ClusterOffset", float(val))
 
     gui_app.push_widget(AetherSliderDialog(tr("Dashboard Speed Offset"), 1.000, 1.050, 0.001,
-                                            self._params.get_float("ClusterOffset"), on_close, unit="x", color=PANEL_STYLE.accent))
+                                            self._params.get_float("ClusterOffset"), on_close,
+                                            unit="x", color=PANEL_STYLE.accent))
 
   def _get_display_make(self) -> str:
     make = self._params.get("CarMake") or ""
@@ -706,7 +885,7 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
     model = self._params.get("CarModel") or ""
     if model:
       return self._make_by_model.get(model, format_fingerprint_value(model.split("_", 1)[0]))
-    return tr("None")
+    return tr("Auto") if not self._params.get_bool("ForceFingerprint") else tr("None")
 
   def _get_display_model(self) -> str:
     selected = self._get_selected_model_option()
@@ -721,7 +900,7 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
       return self._models_by_value[model].button_label
     if model:
       return format_fingerprint_value(model)
-    return tr("None")
+    return tr("Auto") if not self._params.get_bool("ForceFingerprint") else tr("None")
 
   def _get_selected_model_option(self) -> FingerprintModelOption | None:
     model = self._params.get("CarModel") or ""

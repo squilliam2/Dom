@@ -2988,6 +2988,20 @@ def test_stable_follow_cruise_hysteresis_applies_for_radar_lead():
   assert hysteresis > 0.0
 
 
+def test_stable_follow_cruise_hysteresis_holds_pullaway_lead_longer_near_target_gap():
+  v_ego = 15.0
+  t_follow = 1.45
+  CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
+  planner = LongitudinalPlanner(CP, init_v=v_ego)
+  lead_matched = make_lead(status=True, d_rel=22.0, v_lead=15.0, a_lead=0.02, radar=True, model_prob=1.0)
+  lead_pullaway = make_lead(status=True, d_rel=22.0, v_lead=16.4, a_lead=0.02, radar=True, model_prob=1.0)
+
+  matched_hysteresis = planner.mpc.get_stable_follow_cruise_hysteresis(lead_matched, v_ego, t_follow)
+  pullaway_hysteresis = planner.mpc.get_stable_follow_cruise_hysteresis(lead_pullaway, v_ego, t_follow)
+
+  assert pullaway_hysteresis > matched_hysteresis
+
+
 def test_stable_follow_cruise_hysteresis_skips_fast_closing_radar_lead():
   v_ego = 27.0
   CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)

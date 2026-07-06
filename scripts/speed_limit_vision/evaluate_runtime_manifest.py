@@ -25,9 +25,51 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--max-rows", type=int, default=0, help="Optional cap after filtering.")
   parser.add_argument("--seed", type=int, default=0, help="Sampling seed used with --max-rows.")
   parser.add_argument("--output-csv", type=Path, help="Optional per-row prediction output.")
+  parser.add_argument("--detector-min-confidence", type=float, help="Override runtime US detector confidence threshold.")
+  parser.add_argument("--classifier-min-confidence", type=float, help="Override runtime US classifier confidence threshold.")
+  parser.add_argument("--classifier-reject-min-confidence", type=float, help="Override runtime reject-class confidence threshold.")
+  parser.add_argument(
+    "--detector-region-mode",
+    choices=("full", "right_roi", "full_and_right_roi"),
+    help="Override the detector/classifier region mode used by speed_limit_vision.py.",
+  )
+  parser.add_argument("--right-roi-bounds", help="Override the right ROI as left,top,right,bottom ratios, for example 0.45,0,1,0.82.")
+  parser.add_argument("--right-roi-min-confidence", type=float, help="Override the right ROI detector minimum confidence.")
+  parser.add_argument("--full-frame-ocr", action="store_true", help="Enable the expensive full-frame OCR fallback during eval.")
+  parser.add_argument("--include-uncertain", action="store_true", help="Include uncertain_positive review rows in positive metrics.")
   parser.add_argument("--strict-positive-recall", type=float, help="Exit non-zero if positive exact recall is below this value.")
   parser.add_argument("--strict-negative-fpr", type=float, help="Exit non-zero if negative false-positive rate is above this value.")
   return parser.parse_args()
+
+
+def configure_runtime_options(args: argparse.Namespace) -> None:
+  if args.detector_region_mode:
+    slv.DETECTOR_CLASSIFIER_REGION_MODE = args.detector_region_mode
+
+  if args.full_frame_ocr:
+    slv.FULL_FRAME_OCR_FALLBACK_ENABLED = True
+
+  if args.right_roi_bounds:
+    parts = [float(part.strip()) for part in args.right_roi_bounds.split(",")]
+    if len(parts) != 4:
+      raise ValueError("--right-roi-bounds must contain four comma-separated ratios")
+    left, top, right, bottom = parts
+    if not (0.0 <= left < right <= 1.0 and 0.0 <= top < bottom <= 1.0):
+      raise ValueError("--right-roi-bounds must be normalized as 0 <= left < right <= 1 and 0 <= top < bottom <= 1")
+
+    min_confidence = args.right_roi_min_confidence
+    if min_confidence is None:
+      min_confidence = float(slv.ROI_WINDOWS[-1]["min_confidence"]) if slv.ROI_WINDOWS else slv.US_DETECTOR_MIN_CONFIDENCE
+    right_roi = {"bounds": (left, top, right, bottom), "min_confidence": float(min_confidence)}
+    slv.ROI_WINDOWS = (*slv.ROI_WINDOWS[:-1], right_roi) if slv.ROI_WINDOWS else (right_roi,)
+  elif args.right_roi_min_confidence is not None:
+    if not slv.ROI_WINDOWS:
+      right_roi = {"bounds": (0.72, 0.05, 1.00, 0.82), "min_confidence": float(args.right_roi_min_confidence)}
+      slv.ROI_WINDOWS = (right_roi,)
+    else:
+      right_roi = dict(slv.ROI_WINDOWS[-1])
+      right_roi["min_confidence"] = float(args.right_roi_min_confidence)
+      slv.ROI_WINDOWS = (*slv.ROI_WINDOWS[:-1], right_roi)
 
 
 def first_present(row: dict[str, str], keys: tuple[str, ...]) -> str:
@@ -79,18 +121,37 @@ def main() -> int:
   models_dir = args.models_dir.expanduser().resolve()
   detector_path = models_dir / "speed_limit_us_detector.onnx"
   classifier_path = models_dir / "speed_limit_us_value_classifier.onnx"
+  reject_classifier_path = models_dir / "speed_limit_us_reject_classifier.onnx"
   if not detector_path.is_file():
     raise FileNotFoundError(detector_path)
   if not classifier_path.is_file():
     raise FileNotFoundError(classifier_path)
 
   rows = load_rows(args.manifest.expanduser().resolve(), set(args.split) if args.split else None)
+  uncertain_count = sum(
+    row.get("sample_type", "") == "uncertain_positive" or row.get("review_status", "") == "uncertain"
+    for row in rows
+  )
+  if not args.include_uncertain:
+    rows = [
+      row for row in rows
+      if row.get("sample_type", "") != "uncertain_positive" and row.get("review_status", "") != "uncertain"
+    ]
   if args.max_rows > 0 and len(rows) > args.max_rows:
     rng = random.Random(args.seed)
     rows = rng.sample(rows, args.max_rows)
 
   slv.US_DETECTOR_MODEL_PATH = detector_path
   slv.US_CLASSIFIER_MODEL_PATH = classifier_path
+  slv.US_REJECT_CLASSIFIER_MODEL_PATH = reject_classifier_path
+  if args.detector_min_confidence is not None:
+    slv.US_DETECTOR_MIN_CONFIDENCE = args.detector_min_confidence
+  if args.classifier_min_confidence is not None:
+    slv.US_CLASSIFIER_MIN_CONFIDENCE = args.classifier_min_confidence
+  if args.classifier_reject_min_confidence is not None:
+    slv.US_CLASSIFIER_REJECT_MIN_CONFIDENCE = args.classifier_reject_min_confidence
+    slv.US_REJECT_CLASSIFIER_MIN_CONFIDENCE = args.classifier_reject_min_confidence
+  configure_runtime_options(args)
   daemon = slv.SpeedLimitVisionDaemon(use_runtime=False)
 
   output_rows: list[dict[str, str]] = []
@@ -147,6 +208,8 @@ def main() -> int:
   negative_fpr = negative_false_positive / negative_count if negative_count else 0.0
 
   print(f"Rows evaluated: {positive_count + negative_count}")
+  if uncertain_count and not args.include_uncertain:
+    print(f"Skipped uncertain rows: {uncertain_count}")
   print(f"Unreadable rows: {unreadable_count}")
   print(
     f"Positive exact: {positive_exact}/{positive_count} "

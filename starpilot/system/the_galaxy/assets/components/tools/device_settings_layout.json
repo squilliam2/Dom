@@ -1779,12 +1779,11 @@
         "parent_key": "AdvancedCustomUI"
       },
       {
-        "key": "HideLeadMarker",
-        "label": "Hide Lead Marker",
-        "description": "Hide the lead-vehicle marker from the driving screen.",
+        "key": "LeadIndicator",
+        "label": "Lead Indicator",
+        "description": "Show the lead-vehicle marker on the driving screen.",
         "data_type": "bool",
-        "ui_type": "toggle",
-        "parent_key": "AdvancedCustomUI"
+        "ui_type": "toggle"
       },
       {
         "key": "HideMaxSpeed",
@@ -1903,7 +1902,24 @@
         "description": "On-screen gas and brake indicators.\n\nDynamic: Opacity changes according to how much openpilot is accelerating or braking\nStatic: Full when active, dim when not",
         "data_type": "bool",
         "ui_type": "toggle",
+        "is_parent_toggle": true,
         "parent_key": "CustomUI"
+      },
+      {
+        "key": "DynamicPedalsOnUI",
+        "label": "Dynamic",
+        "description": "Fade the gas and brake indicators based on how much openpilot is accelerating or braking.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "PedalsOnUI"
+      },
+      {
+        "key": "StaticPedalsOnUI",
+        "label": "Static",
+        "description": "Show full-strength gas and brake indicators when active, and dim them when inactive.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "PedalsOnUI"
       },
       {
         "key": "RotatingWheel",
@@ -3616,6 +3632,13 @@
     "name": "Developer",
     "icon": "bi-exclamation-triangle",
     "params": [
+      {
+        "key": "TryRaylibUI",
+        "label": "Try raylib UI",
+        "description": "Use the beta raylib UI instead of the default Qt UI on tici/tizi devices. This setting has no effect on C4/mici devices.",
+        "data_type": "bool",
+        "ui_type": "toggle"
+      },
       {
         "key": "DisableWideRoad",
         "label": "Disable Wide Road Camera",

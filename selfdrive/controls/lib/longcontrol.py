@@ -45,6 +45,21 @@ def get_bolt_acc_pedal_friction_bias(output_accel, a_target, v_ego):
   return float(min(authority_gap * 0.30, max_bias) * speed_factor)
 
 
+def get_bolt_acc_pedal_friction_floor(a_target, v_ego, pedal_regen_limit):
+  if v_ego <= 5.0 or a_target >= (pedal_regen_limit - 0.05):
+    return None
+
+  friction_request = max(0.0, pedal_regen_limit - a_target)
+  if friction_request <= 0.10:
+    return None
+
+  speed_factor = interp(v_ego, [5.0, 8.0, 12.0, 18.0, 25.0], [0.0, 0.45, 0.75, 0.90, 1.0])
+  demand_factor = interp(friction_request, [0.10, 0.25, 0.50, 0.90, 1.30], [0.0, 0.22, 0.50, 0.78, 1.0])
+  floor_fraction = float(clip(speed_factor * demand_factor, 0.0, 1.0))
+
+  return float(pedal_regen_limit - (friction_request * floor_fraction))
+
+
 def get_bolt_acc_pedal_feedforward_gain(feedforward_gain, a_target, v_ego, pedal_regen_limit, last_output_accel):
   effective_gain = feedforward_gain
   if a_target >= 0.0:
@@ -336,8 +351,12 @@ class LongControl:
 
     authority_gap = max(0.0, abs(a_target) - abs(output_accel))
     if self.is_bolt_acc_pedal_friction_car:
+      pedal_regen_limit = float(interp(CS.vEgo, BOLT_ACC_PEDAL_REGEN_LIMIT_BP, BOLT_ACC_PEDAL_REGEN_LIMIT_V))
       bias = get_bolt_acc_pedal_friction_bias(output_accel, a_target, CS.vEgo)
-      return output_accel - float(bias)
+      floor = get_bolt_acc_pedal_friction_floor(a_target, CS.vEgo, pedal_regen_limit)
+      if floor is not None:
+        bias = max(bias, output_accel - floor)
+      return output_accel - float(max(bias, 0.0))
 
     if authority_gap <= 0.40:
       return output_accel

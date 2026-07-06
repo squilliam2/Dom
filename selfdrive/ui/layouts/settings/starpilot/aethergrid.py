@@ -26,6 +26,7 @@ TILE_SIGNAL_WIDTH = 1
 MIN_TILE_WIDTH = 300
 
 _HUD_BG_ON = rl.Color(12, 10, 18, 230)
+_HUD_BG_DISABLED = rl.Color(6, 5, 10, 235)
 _HUD_BORDER_OFF = rl.Color(28, 27, 34, 255)
 _HUD_TEXT_DIM = rl.Color(220, 220, 230, 220)
 # Constellation accent node colors (replaces top dash LED)
@@ -1112,7 +1113,7 @@ class BreadcrumbController:
     from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import StarPilotPanelType
     layout = getattr(main_panel.StarPilotLayout, "active_instance", None)
 
-    path = [("Home", "action:home")]
+    path = [(tr("StarPilot"), "action:home")]
     if not layout:
         return path
 
@@ -1167,10 +1168,10 @@ class BreadcrumbController:
     self._expand_alpha += (target - self._expand_alpha) * ANIM_LERP
     alpha = self._expand_alpha
 
-    ACTIVE_SIZE   = 24
-    PAST_SIZE     = 20
-    CHEVRON_SIZE  = 16
-    CHEVRON_W     = 14
+    ACTIVE_SIZE   = 44
+    PAST_SIZE     = 36
+    CHEVRON_SIZE  = 26
+    CHEVRON_W     = 22
     GAP           = 16
 
     center_y = rect.y + rect.height / 2
@@ -1188,7 +1189,7 @@ class BreadcrumbController:
 
     mouse_pos = gui_app.last_mouse_event.pos
 
-    has_overflow = alpha > FADE_THRESH and len(path) > 3
+    has_overflow = alpha > FADE_THRESH and len(path) > 6
 
     if has_overflow and alpha >= EXPAND_THRESH:
       display_path = list(path)
@@ -1199,7 +1200,7 @@ class BreadcrumbController:
       overflow_alpha = 1.0 - (alpha / EXPAND_THRESH)
       middle_alpha = 0.0
     else:
-      display_path = list(path) if len(path) <= 3 else [path[0], ("...", "action:breadcrumb_history"), path[-1]]
+      display_path = list(path) if len(path) <= 6 else [path[0], ("...", "action:breadcrumb_history"), path[-1]]
       overflow_alpha = 1.0
       middle_alpha = 0.0
 
@@ -1216,7 +1217,7 @@ class BreadcrumbController:
           current_x += GAP
           continue
 
-        capsule_w, capsule_h = 50, 26
+        capsule_w, capsule_h = 70, 40
         cap_rect = rl.Rectangle(current_x, center_y - capsule_h / 2, capsule_w, capsule_h)
         hovered = point_hits(mouse_pos, cap_rect, None, pad_x=4, pad_y=6)
         self._rects[action] = cap_rect
@@ -1246,10 +1247,10 @@ class BreadcrumbController:
           rl.draw_rectangle_rounded_lines_ex(cap_rect, 1.0, 16, 1.0, outline)
 
           font_dots = gui_app.font(FontWeight.BOLD)
-          dots_ts = measure_text_cached(font_dots, "...", 18)
+          dots_ts = measure_text_cached(font_dots, "...", 28)
           rl.draw_text_ex(font_dots, "...",
             rl.Vector2(cap_rect.x + (cap_rect.width - dots_ts.x) / 2, center_y - dots_ts.y / 2),
-            18, 0, dots_c)
+            28, 0, dots_c)
         current_x += capsule_w + GAP
 
       else:
@@ -1277,7 +1278,7 @@ class BreadcrumbController:
           c_pressed = rl.Color(past_pressed.r, past_pressed.g, past_pressed.b, item_alpha)
 
         ts = measure_text_cached(font, text, font_size)
-        hit_rect = rl.Rectangle(current_x - 6, center_y - 20, ts.x + 12, 40)
+        hit_rect = rl.Rectangle(current_x - 6, center_y - 30, ts.x + 12, 60)
         hovered  = point_hits(mouse_pos, hit_rect, None, pad_x=0, pad_y=0)
         self._rects[action] = hit_rect
 
@@ -3279,7 +3280,7 @@ class AetherSettingsView(PanelManagerView):
           row_rect = rl.Rectangle(rect.x + col_w + self.COLUMN_GAP, y + j * right_section.row_height, col_w, right_section.row_height)
           self._draw_row(row_rect, row, is_last=(j == len(right_rows) - 1))
         y += max(section_h, right_h) + SECTION_GAP
-        i += 1
+        i += 2
       else:
         y = self._draw_section(y, rect.x, width, section, visible_rows)
         y += SECTION_GAP
@@ -3528,12 +3529,12 @@ class AetherTransitionManager:
     self._incoming_render_fn = None
 
   def start(self, outgoing_render_fn, incoming_render_fn, direction: int):
-    self._outgoing_render_fn = outgoing_render_fn
-    self._incoming_render_fn = incoming_render_fn
+    self._outgoing_render_fn = None
+    self._incoming_render_fn = None
     self._direction = direction
     self._time = 0.0
-    self._progress = 0.0
-    self._active = True
+    self._progress = 1.0
+    self._active = False
 
   def is_animating(self) -> bool:
     return self._active
@@ -3736,7 +3737,10 @@ class AetherTile(Widget):
 
     color = getattr(self, "_active_color", getattr(self, "surface_color", rl.WHITE)) if enabled else getattr(self, "_disabled_color", rl.Color(120, 120, 120, 255))
     glow = getattr(self, "_glow", 1.0) if enabled else 0.0
-    face, accent = self._render_hud_background(rect, color, glow)
+    if not enabled:
+      face, accent = self._render_hud_background(rect, color, glow, bg_color=_HUD_BG_DISABLED, const_connected=False)
+    else:
+      face, accent = self._render_hud_background(rect, color, glow)
     
     rx, ry, rw, rh = face.x, face.y, face.width, face.height
     content_pad = max(24, int(rh * 0.15))
@@ -3989,15 +3993,23 @@ class AetherTile(Widget):
     nodes, vecs = self._constellation_data
     draw_constellation_nodes(nodes, vecs, face, accent, glow, scale=1.0)
 
-  def _render_hud_background(self, rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0) -> tuple[rl.Rectangle, rl.Color]:
+  def _draw_constellation_disconnected(self, face: rl.Rectangle, accent: rl.Color, glow: float):
+    self._generate_and_cache_constellation()
+    nodes, _ = self._constellation_data
+    draw_constellation_nodes(nodes, [], face, accent, glow, scale=1.0)
+
+  def _render_hud_background(self, rect: rl.Rectangle, accent: rl.Color, glow: float = 1.0, *, bg_color: rl.Color | None = None, const_connected: bool = True) -> tuple[rl.Rectangle, rl.Color]:
     sq = self._squish
     snapped = snap_rect(rect)
     sw = snapped.width * sq
     sh = snapped.height * sq
     ox = snapped.x + (snapped.width - sw) / 2
     oy = snapped.y + (snapped.height - sh) / 2
-    face, accent = draw_hud_background(rl.Rectangle(ox, oy, sw, sh), accent, glow)
-    self._draw_constellation(face, accent, glow)
+    face, accent = draw_hud_background(rl.Rectangle(ox, oy, sw, sh), accent, glow, bg_color=bg_color)
+    if const_connected:
+      self._draw_constellation(face, accent, glow)
+    else:
+      self._draw_constellation_disconnected(face, accent, glow)
     return face, accent
 
   def _render(self, rect: rl.Rectangle):
@@ -4151,9 +4163,10 @@ class ToggleTile(AetherTile):
       return
 
     # --- HUD toggle path (show_led) ---
-    color = self._active_color if enabled else self._disabled_color
-    glow = self._glow if enabled else 0.0
-    face, accent = self._render_hud_background(rect, color, glow)
+    if not enabled:
+      face, accent = self._render_hud_background(rect, self._disabled_color, 0.0, bg_color=_HUD_BG_DISABLED, const_connected=False)
+    else:
+      face, accent = self._render_hud_background(rect, self._active_color, self._glow)
     rx, ry, rw, rh = face.x, face.y, face.width, face.height
 
     content_pad = SPACING.tile_content

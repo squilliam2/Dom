@@ -71,7 +71,7 @@ class SoundsManagerView(PanelManagerView):
     )
 
   def _init_toggles(self):
-    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_height=130.0, max_tile_height=280.0)
+    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_height=130.0)
     self._child(self._toggle_grid)
     self._page_grid = self._toggle_grid
 
@@ -100,16 +100,6 @@ class SoundsManagerView(PanelManagerView):
       self._active_adjustor_key = None
 
   def _init_adjustors(self):
-    volume_icon_map = {
-      "WarningImmediateVolume": "alert_critical",
-      "WarningSoftVolume": "alert_critical",
-      "RefuseVolume": "alert_critical",
-      "PromptDistractedVolume": "alert_critical",
-      "EngageVolume": "alert_state",
-      "DisengageVolume": "alert_state",
-      "PromptVolume": "alert_info",
-      "BelowSteerSpeedVolume": "alert_info",
-    }
     for key in self._controller.VOLUME_KEYS:
       info = self._controller.VOLUME_INFO[key]
 
@@ -127,7 +117,6 @@ class SoundsManagerView(PanelManagerView):
         set_active=lambda active, k=key: self._show_volume_slider(k) if active else None,
         style=PANEL_STYLE,
         color=PANEL_STYLE.accent,
-        icon_key=volume_icon_map.get(key),
       )
       self._adjustor_rows[key] = adjustor
 
@@ -164,7 +153,6 @@ class SoundsManagerView(PanelManagerView):
       ) if active else None,
       style=PANEL_STYLE,
       color=PANEL_STYLE.accent,
-      icon_key="alert_info",
     )
     self._adjustor_rows[cd_key] = cd_adjustor
 

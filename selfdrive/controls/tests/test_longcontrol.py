@@ -520,6 +520,46 @@ def test_bolt_acc_pedal_friction_feedforward_blends_back_in_for_small_friction_r
   assert lc._get_longitudinal_feedforward(a_target, 20.0) == pytest.approx(expected)
 
 
+def test_bolt_acc_pedal_friction_floor_holds_friction_only_authority():
+  pedal_regen_limit = float(longcontrol.interp(9.85, longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_BP,
+                                               longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_V))
+  floor = longcontrol.get_bolt_acc_pedal_friction_floor(-3.47, 9.85, pedal_regen_limit)
+
+  assert floor is not None
+  assert floor < pedal_regen_limit
+  assert floor > -3.47
+
+
+def test_bolt_acc_pedal_friction_bias_applies_floor_only_on_experimental_fingerprint():
+  pedal_cp = make_longcontrol_cp(
+    brand="gm",
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+    carFingerprint=CAR.CHEVROLET_BOLT_ACC_2022_2023_PEDAL,
+  )
+  bolt_cc_cp = make_longcontrol_cp(
+    brand="gm",
+    enableGasInterceptorDEPRECATED=True,
+    flags=GMFlags.PEDAL_LONG.value,
+    carFingerprint=CAR.CHEVROLET_BOLT_CC_2022_2023,
+  )
+
+  pedal_lc = LongControl(pedal_cp)
+  bolt_cc_lc = LongControl(bolt_cc_cp)
+  CS = car.CarState.new_message(vEgo=9.85, aEgo=-2.0, brakePressed=False)
+
+  pedal_regen_limit = float(longcontrol.interp(CS.vEgo, longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_BP,
+                                               longcontrol.BOLT_ACC_PEDAL_REGEN_LIMIT_V))
+  floor = longcontrol.get_bolt_acc_pedal_friction_floor(-3.47, CS.vEgo, pedal_regen_limit)
+  assert floor is not None
+
+  pedal_biased = pedal_lc._apply_pedal_long_brake_bias(-1.85, -3.47, CS)
+  bolt_cc_biased = bolt_cc_lc._apply_pedal_long_brake_bias(-1.85, -3.47, CS)
+
+  assert pedal_biased == pytest.approx(floor)
+  assert bolt_cc_biased > pedal_biased + 0.5
+
+
 def test_bolt_acc_pedal_feedforward_gain_stays_base_for_mild_regen():
   gain = longcontrol.get_bolt_acc_pedal_feedforward_gain(0.2, -1.0, 10.0, -2.75, -0.4)
 

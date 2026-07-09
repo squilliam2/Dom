@@ -164,7 +164,7 @@ class LongitudinalManagerView(AetherSettingsView):
         "on_click": lambda: self._controller._navigate_to("personality")
       },
       {
-        "title": tr("Daily QOL & Weather"),
+        "title": tr("Quality of Life"),
         "desc": tr("Configure cruise intervals, standstill behaviors, gear mapping, and weather presets."),
         "icon": "sound",
         "color": "#8B5CF6",
@@ -250,8 +250,8 @@ class ConditionalDriveModeView(PanelManagerView):
     panel_padding_bottom=14,
     header_height=0,
   )
-  TAB_HEIGHT = 68
-  TAB_BOTTOM_GAP = 18
+  TAB_HEIGHT = 98
+  TAB_BOTTOM_GAP = 26
 
   @property
   def vertical_scrolling_disabled(self) -> bool:
@@ -305,7 +305,7 @@ class ConditionalDriveModeView(PanelManagerView):
     self._update_pagination()
 
   def _init_toggles(self):
-    self._toggle_grid = TileGrid(columns=2, padding=12, force_square=True, min_tile_height=130.0)
+    self._toggle_grid = TileGrid(columns=2, padding=12, min_tile_height=130.0)
     self._child(self._toggle_grid)
     self.register_page_grid(self._toggle_grid)
 
@@ -481,7 +481,6 @@ class ConditionalDriveModeView(PanelManagerView):
         available_h = max_natural_h
 
       max_container_h = available_h
-
       left_row_h = max(60.0, (max_container_h - 16.0) / max(1, len(keys)))
       for key in keys:
         self._adjustor_rows[key].custom_row_height = left_row_h
@@ -532,7 +531,7 @@ class ConditionalDriveModeView(PanelManagerView):
 
   def _draw_adjustors(self, y: float, x: float, width: float, keys: list[str]):
     draw_list_group_shell(rl.Rectangle(x, y, width, self._left_container_h), style=PANEL_STYLE)
-    current_y = y + 8
+    current_y = y + 4
     for index, key in enumerate(keys):
       adjustor = self._adjustor_rows[key]
       row_h = adjustor.measure_height(width)
@@ -790,11 +789,6 @@ class StarPilotLongitudinalLayout(_SettingsPage):
 
     # ── 4. Adaptive Speed Controls Rows (CES + CSC + CCM) ──
     self._curve_speed_controller_rows = [
-      SettingRow("ShowCSCStatus", "toggle", tr_noop("Status Widget"),
-                 subtitle=tr_noop("Show the Curve Speed Controller ambient effect on the driving screen."),
-                 get_state=lambda: self._params.get_bool("ShowCSCStatus"),
-                 set_state=lambda s: self._params.put_bool("ShowCSCStatus", s),
-                 visible=csc_on),
       SettingRow("CalibratedLatAccel", "value", tr_noop("Calibrated Lateral Accel"),
                  subtitle=tr_noop("The learned lateral acceleration from collected driving data. Higher values allow faster cornering."),
                  get_value=lambda: f"{self._params_memory.get_float('CalibratedLateralAcceleration'):.2f} m/s",
@@ -949,13 +943,9 @@ class StarPilotLongitudinalLayout(_SettingsPage):
     self._sub_panels["ce"] = ConditionalDriveModeView(self)
 
 
-    csc_rows = self._curve_speed_controller_rows
     self._sub_panels["csc"] = AetherSettingsView(
       self,
-      [
-        SettingSection(tr("Curve Speed Controller"), [x for x in csc_rows if x.type != "toggle"], column_pair="1"),
-        SettingSection(tr("Curve Speed Controller"), [x for x in csc_rows if x.type == "toggle"], column_pair="1"),
-      ],
+      [SettingSection(tr("Curve Speed Controller"), self._curve_speed_controller_rows)],
       header_title=tr("Curve Speed Controller"),
       header_subtitle=tr("Configure speed control on curves and reset collected calibration data."),
       parent_toggle=pt_csc,

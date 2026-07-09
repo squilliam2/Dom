@@ -204,6 +204,11 @@ class StarPilotAppearanceLayout(_SettingsPage):
             )
         )
 
+    def _set_developer_sidebar(self, enabled):
+        self._params.put_bool("DeveloperSidebar", enabled)
+        if enabled:
+            self._params.put_bool("DeveloperUI", True)
+
     def _build_view(self):
         po = lambda: self._params.get_bool("PedalsOnUI")
         ol = lambda: starpilot_state.car_state.hasOpenpilotLongitudinal
@@ -304,6 +309,11 @@ class StarPilotAppearanceLayout(_SettingsPage):
                        get_state=lambda: self._params.get_bool("ShowSteering"),
                        set_state=lambda s: self._params.put_bool("ShowSteering", s),
                        visible=hud_on),
+            SettingRow("EnableTorqueBarWidget", "toggle", tr_noop("Torque Bar"),
+                       subtitle=tr_noop("Show a curved torque-utilization indicator at the bottom of the driving screen."),
+                       get_state=lambda: self._params.get_bool("EnableTorqueBarWidget"),
+                       set_state=lambda s: self._params.put_bool("EnableTorqueBarWidget", s),
+                       visible=hud_on),
             SettingRow("SignalMetrics", "toggle", tr_noop("Turn Signal Borders"),
                        subtitle="",
                        get_state=lambda: self._params.get_bool("SignalMetrics"),
@@ -347,6 +357,11 @@ class StarPilotAppearanceLayout(_SettingsPage):
                        subtitle="",
                        get_state=lambda: self._params.get_bool("StoppedTimer"),
                        set_state=lambda s: self._params.put_bool("StoppedTimer", s),
+                       visible=hud_on),
+            SettingRow("ShowCSCStatus", "toggle", tr_noop("CSC Status Widget"),
+                       subtitle=tr_noop("Show the Curve Speed Controller target speed and ambient border glow."),
+                       get_state=lambda: self._params.get_bool("ShowCSCStatus"),
+                       set_state=lambda s: self._params.put_bool("ShowCSCStatus", s),
                        visible=hud_on),
         ]
 
@@ -458,8 +473,8 @@ class StarPilotAppearanceLayout(_SettingsPage):
         self._dev_rows = [
             SettingRow("DeveloperSidebar", "toggle", tr_noop("Developer Sidebar"),
                        subtitle=tr_noop("Driving metrics panel on the right"),
-                       get_state=lambda: self._params.get_bool("DeveloperSidebar"),
-                       set_state=lambda s: self._params.put_bool("DeveloperSidebar", s)),
+                       get_state=lambda: bool(self._params.get("DeveloperSidebar") or False),
+                       set_state=lambda s: self._set_developer_sidebar(s)),
             SettingRow("LeadDetectionThreshold", "value", tr_noop("Lead Detection Threshold"),
                        subtitle="",
                        get_value=lambda: f"{self._params.get_int('LeadDetectionThreshold', return_default=True, default=35)}%",

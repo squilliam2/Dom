@@ -12,6 +12,7 @@ from openpilot.selfdrive.ui.onroad.starpilot.slc_speed_limit import (
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.onroad.starpilot.aethergauge import AetherGauge
+from openpilot.selfdrive.ui.onroad.starpilot.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.lib.starpilot_status import (
     get_screen_edge_color, ENGAGED_COLOR,
     EXPERIMENTAL_COLOR, TRAFFIC_COLOR,
@@ -30,6 +31,7 @@ class StarPilotOnroadView(AugmentedRoadView):
     self._font_medium = gui_app.font(FontWeight.MEDIUM)
     self._standstill_started_at = 0.0
     self._aethergauge = AetherGauge()
+    self._torque_bar = TorqueBar()
 
   def _render(self, rect: rl.Rectangle):
     self._position_personality_button()
@@ -60,17 +62,34 @@ class StarPilotOnroadView(AugmentedRoadView):
     self._render_standstill_timer()
     self._render_developer_metrics()
     dm = self.driver_state_renderer
-    if dm and dm.is_visible and dm.position_x != 0.0:
-      dm_top = dm.position_y - 96  # top of DM icon
+    if dm and dm.position_x != 0.0:
+      cx = dm.position_x
+      btn = self._personality_button
+      if btn.is_visible and btn.center_x < cx:
+        cx = btn.center_x
       self._aethergauge.render(
         self._content_rect, self._font_bold, self._font_medium,
         current_speed=self._hud_renderer.speed,
-        cx=dm.position_x, bottom=dm_top - 105
+        cx=cx,         bottom=dm.position_y - 96 - 145
       )
     else:
       self._aethergauge.render(self._content_rect, self._font_bold, self._font_medium, current_speed=self._hud_renderer.speed)
+    self._render_torque_bar()
     self._render_bottom_row_widgets()
     self._render_pedals()
+
+  def _render_torque_bar(self) -> None:
+    """Draw the curved torque-utilization indicator at the bottom of the screen."""
+    if not self._params.get_bool("EnableTorqueBarWidget", default=True):
+      return
+    if ui_state.sm['controlsState'].lateralControlState.which() == 'angleState':
+      return
+    rl.begin_scissor_mode(
+      int(self._content_rect.x), int(self._content_rect.y),
+      int(self._content_rect.width), int(self._content_rect.height),
+    )
+    self._torque_bar.render(self._content_rect)
+    rl.end_scissor_mode()
 
   def _render_path_features(self, rect: rl.Rectangle):
     """Render path-related features (adjacent paths, blind spot, path edges)."""

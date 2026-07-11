@@ -13,10 +13,9 @@ from openpilot.selfdrive.ui.mici.onroad.nv12 import split_nv12_planes
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 
 CONNECTION_RETRY_INTERVAL = 0.2  # seconds between connection attempts
-# This module is only used by the mici UI. The EGL external-texture path relies on
-# the AGNOS graphics driver for NV12 conversion, which is the source of the pink
-# preview on affected comma 4s. Keep an escape hatch for diagnostics.
-MICI_FORCE_TEXTURE_CAMERA = os.getenv("MICI_FORCE_TEXTURE_CAMERA", "1") == "1"
+# The stock comma 4 path imports NV12 buffers through EGL. The explicit-plane
+# texture renderer remains available as a diagnostic fallback.
+MICI_FORCE_TEXTURE_CAMERA = os.getenv("MICI_FORCE_TEXTURE_CAMERA", "0") == "1"
 
 VERSION = """
 #version 300 es
@@ -55,6 +54,14 @@ FRAME_FRAGMENT_SHADER_EXTERNAL = """
 
   void main() {
     vec4 color = texture(texture0, fragTexCoord);
+    if (engaged == 1) {
+      float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      color.rgb = mix(vec3(gray), color.rgb, 0.2);
+      color.rgb = clamp((color.rgb - 0.5) * 1.2 + 0.5, 0.0, 1.0);
+      color.rgb = pow(color.rgb, vec3(1.0/1.28));
+    } else {
+      color.rgb *= 0.85;
+    }
     if (enhance_driver == 1) {
       float brightness = 1.1;
       color.rgb = color.rgb + 0.15;
@@ -80,6 +87,13 @@ FRAME_FRAGMENT_SHADER_YUV = VERSION + """
     float u = texture(textureU, fragTexCoord).r - 0.5;
     float v = texture(textureV, fragTexCoord).r - 0.5;
     vec3 rgb = vec3(y + 1.402*v, y - 0.344*u - 0.714*v, y + 1.772*u);
+    if (engaged == 1) {
+      float gray = dot(rgb, vec3(0.299, 0.587, 0.114));
+      rgb = mix(vec3(gray), rgb, 0.2);
+      rgb = clamp((rgb - 0.5) * 1.2 + 0.5, 0.0, 1.0);
+    } else {
+      rgb *= 0.85;
+    }
     if (enhance_driver == 1) {
       float brightness = 1.1;
       rgb = rgb + 0.15;

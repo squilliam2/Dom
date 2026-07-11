@@ -9,12 +9,9 @@ from openpilot.system.hardware import TICI
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.egl import init_egl, create_egl_image, destroy_egl_image, bind_egl_image_to_texture, EGLImage
 from openpilot.system.ui.widgets import Widget
-from openpilot.selfdrive.ui.mici.onroad.nv12 import split_nv12_planes
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 
 CONNECTION_RETRY_INTERVAL = 0.2  # seconds between connection attempts
-# The stock comma 4 path imports NV12 buffers through EGL. The explicit-plane
-# texture renderer remains available as a diagnostic fallback.
 MICI_FORCE_TEXTURE_CAMERA = os.getenv("MICI_FORCE_TEXTURE_CAMERA", "0") == "1"
 
 VERSION = """
@@ -76,17 +73,15 @@ FRAME_FRAGMENT_SHADER_EXTERNAL = """
 FRAME_FRAGMENT_SHADER_YUV = VERSION + """
   in vec2 fragTexCoord;
   uniform sampler2D texture0;
-  uniform sampler2D textureU;
-  uniform sampler2D textureV;
+  uniform sampler2D texture1;
   out vec4 fragColor;
   uniform int engaged;
   uniform int enhance_driver;
 
   void main() {
     float y = texture(texture0, fragTexCoord).r;
-    float u = texture(textureU, fragTexCoord).r - 0.5;
-    float v = texture(textureV, fragTexCoord).r - 0.5;
-    vec3 rgb = vec3(y + 1.402*v, y - 0.344*u - 0.714*v, y + 1.772*u);
+    vec2 uv = texture(texture1, fragTexCoord).ra - 0.5;
+    vec3 rgb = vec3(y + 1.402*uv.y, y - 0.344*uv.x - 0.714*uv.y, y + 1.772*uv.x);
     if (engaged == 1) {
       float gray = dot(rgb, vec3(0.299, 0.587, 0.114));
       rgb = mix(vec3(gray), rgb, 0.2);
@@ -130,8 +125,7 @@ class CameraView(Widget):
 
     frame_shader = FRAME_FRAGMENT_SHADER_EXTERNAL if self._use_egl else FRAME_FRAGMENT_SHADER_YUV
     self.shader = rl.load_shader_from_memory(VERTEX_SHADER, frame_shader)
-    self._texture_u_loc: int = rl.get_shader_location(self.shader, "textureU") if not self._use_egl else -1
-    self._texture_v_loc: int = rl.get_shader_location(self.shader, "textureV") if not self._use_egl else -1
+    self._texture1_loc: int = rl.get_shader_location(self.shader, "texture1") if not self._use_egl else -1
     self._engaged_loc = rl.get_shader_location(self.shader, "engaged")
     self._engaged_val = rl.ffi.new("int[1]", [1])
     self._enhance_driver_loc = rl.get_shader_location(self.shader, "enhance_driver")
@@ -139,8 +133,7 @@ class CameraView(Widget):
 
     self.frame: VisionBuf | None = None
     self.texture_y: rl.Texture | None = None
-    self.texture_u: rl.Texture | None = None
-    self.texture_v: rl.Texture | None = None
+    self.texture_uv: rl.Texture | None = None
 
     # EGL resources
     self.egl_images: dict[int, EGLImage] = {}
@@ -312,31 +305,22 @@ class CameraView(Widget):
 
   def _render_textures(self, src_rect: rl.Rectangle, dst_rect: rl.Rectangle) -> None:
     """Render using texture copies"""
-    if not self.texture_y or not self.texture_u or not self.texture_v or self.frame is None:
+    if not self.texture_y or not self.texture_uv or self.frame is None:
       return
 
     # Update textures with new frame data
     if self._texture_needs_update:
-      stride = int(self.frame.stride)
-      height = int(self.frame.height)
-      try:
-        # NV12 stores interleaved U/V samples. Separate single-channel textures
-        # avoid relying on GL_LUMINANCE_ALPHA versus GL_RG swizzle behavior.
-        y_data, u_data, v_data = split_nv12_planes(self.frame.data, self.frame.uv_offset, stride, height)
-      except ValueError as e:
-        cloudlog.error(f"CameraView rejected malformed NV12 frame: {e}")
-        return
+      y_data = self.frame.data[: self.frame.uv_offset]
+      uv_data = self.frame.data[self.frame.uv_offset:]
 
-      rl.update_texture(self.texture_y, rl.ffi.cast("void *", rl.ffi.from_buffer(y_data)))
-      rl.update_texture(self.texture_u, rl.ffi.cast("void *", rl.ffi.from_buffer(u_data)))
-      rl.update_texture(self.texture_v, rl.ffi.cast("void *", rl.ffi.from_buffer(v_data)))
+      rl.update_texture(self.texture_y, rl.ffi.cast("void *", y_data.ctypes.data))
+      rl.update_texture(self.texture_uv, rl.ffi.cast("void *", uv_data.ctypes.data))
       self._texture_needs_update = False
 
     # Render with shader
     rl.begin_shader_mode(self.shader)
     self._update_texture_color_filtering()
-    rl.set_shader_value_texture(self.shader, self._texture_u_loc, self.texture_u)
-    rl.set_shader_value_texture(self.shader, self._texture_v_loc, self.texture_v)
+    rl.set_shader_value_texture(self.shader, self._texture1_loc, self.texture_uv)
     rl.draw_texture_pro(self.texture_y, src_rect, dst_rect, rl.Vector2(0, 0), 0.0, rl.WHITE)
     rl.end_shader_mode()
 
@@ -411,23 +395,17 @@ class CameraView(Widget):
     if not self._use_egl:
       self.texture_y = rl.load_texture_from_image(rl.Image(None, int(self.client.stride),
         int(self.client.height), 1, rl.PixelFormat.PIXELFORMAT_UNCOMPRESSED_GRAYSCALE))
-      self.texture_u = rl.load_texture_from_image(rl.Image(None, int(self.client.stride // 2),
-        int(self.client.height // 2), 1, rl.PixelFormat.PIXELFORMAT_UNCOMPRESSED_GRAYSCALE))
-      self.texture_v = rl.load_texture_from_image(rl.Image(None, int(self.client.stride // 2),
-        int(self.client.height // 2), 1, rl.PixelFormat.PIXELFORMAT_UNCOMPRESSED_GRAYSCALE))
+      self.texture_uv = rl.load_texture_from_image(rl.Image(None, int(self.client.stride // 2),
+        int(self.client.height // 2), 1, rl.PixelFormat.PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA))
 
   def _clear_textures(self):
     if self.texture_y and self.texture_y.id:
       rl.unload_texture(self.texture_y)
       self.texture_y = None
 
-    if self.texture_u and self.texture_u.id:
-      rl.unload_texture(self.texture_u)
-      self.texture_u = None
-
-    if self.texture_v and self.texture_v.id:
-      rl.unload_texture(self.texture_v)
-      self.texture_v = None
+    if self.texture_uv and self.texture_uv.id:
+      rl.unload_texture(self.texture_uv)
+      self.texture_uv = None
 
     # Clean up EGL resources
     if self._use_egl:

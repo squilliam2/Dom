@@ -774,6 +774,28 @@ class TestLatControl:
     assert lac_log.active
     assert controller.torque_params.latAccelFactor == pytest.approx(CP.lateralTuning.torque.latAccelFactor)
 
+  def test_sonata_hybrid_uses_torque_angle_feedback(self):
+    controller, VM, CS, params, starpilot_toggles = self._build_torque_controller(HYUNDAI.HYUNDAI_SONATA_HYBRID)
+
+    assert controller.hyundai_torque_angle_feedback is not None
+    _, _, first_log = controller.update(True, CS, VM, params, False, 0.0025, False, 0.2, None, None,
+                                        starpilot_toggles, applied_torque=0.0)
+    CS.steeringAngleDeg += 0.2
+    _, _, second_log = controller.update(True, CS, VM, params, False, 0.0025, False, 0.2, None, None,
+                                         starpilot_toggles, applied_torque=0.0)
+
+    assert first_log.version == 3
+    assert first_log.errorRate == pytest.approx(first_log.desiredLateralJerk)
+    assert second_log.version == 3
+    assert second_log.errorRate != 0.0
+
+  def test_torque_angle_feedback_is_sonata_hybrid_specific(self):
+    sonata_controller, *_ = self._build_torque_controller(HYUNDAI.HYUNDAI_SONATA)
+    ioniq_controller, *_ = self._build_torque_controller(HYUNDAI.HYUNDAI_IONIQ_6)
+
+    assert sonata_controller.hyundai_torque_angle_feedback is None
+    assert ioniq_controller.hyundai_torque_angle_feedback is None
+
   def test_ioniq_5_default_update_path(self):
     controller, VM, CS, params, starpilot_toggles = self._build_torque_controller(HYUNDAI.HYUNDAI_IONIQ_5)
     CarInterface = interfaces[HYUNDAI.HYUNDAI_IONIQ_5]

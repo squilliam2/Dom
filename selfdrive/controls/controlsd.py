@@ -258,12 +258,18 @@ class Controls:
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
     actuators.curvature = self.desired_curvature
+    latcontrol_kwargs = {}
+    if isinstance(self.LaC, LatControlTorque):
+      latcontrol_kwargs["applied_torque"] = (
+        self.sm["carOutput"].actuatorsOutput.torque if self.sm.all_checks(["carOutput"]) else math.nan
+      )
     steer, steeringAngleDeg, lac_log = self.LaC.update(CC.latActive, CS, self.VM, lp,
                                                        self.steer_limited_by_safety, self.desired_curvature,
                                                        curvature_limited, lat_delay,
                                                        self.calibrated_pose,
                                                        self.sm['modelV2'],
-                                                       self.starpilot_toggles)
+                                                       self.starpilot_toggles,
+                                                       **latcontrol_kwargs)
     actuators.torque = float(steer)
     actuators.steeringAngleDeg = float(steeringAngleDeg)
 

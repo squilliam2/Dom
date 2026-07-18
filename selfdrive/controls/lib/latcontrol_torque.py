@@ -10,6 +10,7 @@ from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.pid import PIDController
 from openpilot.selfdrive.controls.lib.drive_helpers import MIN_SPEED
+from openpilot.selfdrive.controls.lib.hyundai_torque_angle_feedback import HyundaiTorqueAngleFeedback
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import *  # noqa: F403
 
@@ -38,7 +39,7 @@ LP_FILTER_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.22
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
-VERSION = 2
+VERSION = 3
 DEBUG_TORQUE_TUNE = False
 FF_SCALE_BLEND_LAT_ACCEL = 0.05
 DEADZONE_BOOST_LAT_ACCEL = 0.15
@@ -67,6 +68,7 @@ class LatControlTorque(LatControl):
     self.prev_steering_pressed = False
     self.debug_counter = 0
     self.prev_desired_lateral_accel = 0.0
+    self.prev_active = False
 
     self.is_bolt = CP.carFingerprint in BOLT_CARS
     self.is_bolt_2022_2023 = CP.carFingerprint in BOLT_2022_2023_CARS
@@ -91,6 +93,7 @@ class LatControlTorque(LatControl):
     self.is_silverado = CP.carFingerprint in SILVERADO_CARS
     self.is_gm = CP.brand == "gm"
     self.is_hkg_canfd_torque = CP.brand == "hyundai" and bool(CP.flags & HyundaiFlags.CANFD)
+    self.hyundai_torque_angle_feedback = HyundaiTorqueAngleFeedback(dt) if self.is_sonata_hybrid else None
     self.flm_surface_profile_key = get_flm_surface_profile_key(CP.carFingerprint, torque_control=True)
     if self.is_ioniq_6:
       self.low_speed_reset_threshold = min(self.low_speed_reset_threshold, IONIQ_6_LOW_SPEED_PID_RESET_SPEED)
@@ -156,7 +159,8 @@ class LatControlTorque(LatControl):
     self.pid.set_limits(self.lateral_accel_from_torque(self.steer_max, self.torque_params),
                         self.lateral_accel_from_torque(-self.steer_max, self.torque_params))
 
-  def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, curvature_limited, lat_delay, calibrated_pose, model_data, starpilot_toggles):
+  def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, curvature_limited, lat_delay, calibrated_pose,
+             model_data, starpilot_toggles, applied_torque=math.nan):
     pid_log = log.ControlsState.LateralTorqueState.new_message()
     pid_log.version = VERSION
     flm_profile_active = bool(getattr(starpilot_toggles, "flm_trial_applied", False) and
@@ -172,6 +176,8 @@ class LatControlTorque(LatControl):
       self.lat_accel_request_buffer = deque([0.] * self.lat_accel_request_buffer_len, maxlen=self.lat_accel_request_buffer_len)
       self.prev_desired_lateral_accel = 0.0
       self.ioniq_6_directional_taper_filter.x = 1.0
+      if self.hyundai_torque_angle_feedback is not None:
+        self.hyundai_torque_angle_feedback.reset()
     else:
       if self.prev_steering_pressed and not CS.steeringPressed:
         self.pid.i *= self.steer_release_i_decay
@@ -196,14 +202,20 @@ class LatControlTorque(LatControl):
       self.prev_desired_lateral_accel = setpoint
 
       measurement = measured_curvature * CS.vEgo ** 2
+      if self.hyundai_torque_angle_feedback is not None and not self.prev_active:
+        # Avoid treating the current steering angle as motion on engagement.
+        self.previous_measurement = measurement
+        self.measurement_rate_filter.x = 0.0
       measurement_rate = self.measurement_rate_filter.update((measurement - self.previous_measurement) / self.dt)
       measurement_rate = np.clip(measurement_rate, -MAX_LAT_JERK_UP, MAX_LAT_JERK_UP)
       self.previous_measurement = measurement
 
       low_speed_factor = (np.interp(CS.vEgo, LOW_SPEED_X, LOW_SPEED_Y) / max(CS.vEgo, MIN_SPEED)) ** 2
       current_kp = np.interp(CS.vEgo, self.pid._k_p[0], self.pid._k_p[1])
+      current_ki = np.interp(CS.vEgo, self.pid._k_i[0], self.pid._k_i[1])
       error = setpoint - measurement
       error_with_lsf = error * (1 + low_speed_factor / max(current_kp, 1e-3))
+      relative_lateral_accel_rate = desired_lateral_jerk - measurement_rate
 
       # do error correction in lateral acceleration space, convert at end to handle non-linear torque responses correctly
       pid_log.error = float(error_with_lsf)
@@ -348,7 +360,11 @@ class LatControlTorque(LatControl):
         ff *= get_trailer_lateral_ff_scale(trailer_load_kg, CS.vEgo, setpoint)
         friction_scale *= get_trailer_lateral_friction_scale(trailer_load_kg, CS.vEgo, setpoint)
       friction_jerk = desired_lateral_jerk
-      if ioniq_6_active:
+      if self.hyundai_torque_angle_feedback is not None:
+        # This car's angle feedback supplies continuous phase information; do
+        # not let planner jerk switch its discontinuous friction compensation.
+        friction_jerk = 0.0
+      elif ioniq_6_active:
         # planner jerk noise on straights (< ~0.3 m/s^3) chatters the friction compensation
         friction_jerk = math.copysign(max(abs(desired_lateral_jerk) - IONIQ_6_FRICTION_JERK_DEADZONE, 0.0), desired_lateral_jerk)
       ff += friction_scale * get_friction(error_with_lsf + JERK_GAIN * friction_jerk, lateral_accel_deadzone, friction_threshold, self.torque_params)
@@ -357,6 +373,17 @@ class LatControlTorque(LatControl):
         boost_scale = np.interp(abs(gravity_adjusted_future_lateral_accel), [0.0, DEADZONE_BOOST_LAT_ACCEL], [1.0, 0.0])
         ff += np.sign(gravity_adjusted_future_lateral_accel) * self.torque_deadzone_boost * boost_scale
         deadzone_boost_active = True
+
+      if self.hyundai_torque_angle_feedback is not None:
+        ff += self.hyundai_torque_angle_feedback.rate_correction(
+          error, desired_lateral_jerk, measurement_rate, current_kp, CS.vEgo, CS.steeringPressed,
+        )
+        if not self.prev_steering_pressed and CS.vEgo >= self.low_speed_reset_threshold:
+          integrator_correction = self.hyundai_torque_angle_feedback.integrator_backcalculation(
+            applied_torque, self.lateral_accel_from_torque, self.torque_params,
+            current_kp, current_ki, CS.steeringPressed,
+          )
+          self.pid.i = float(np.clip(self.pid.i + integrator_correction, self.pid.neg_limit, self.pid.pos_limit))
 
       if CS.vEgo < self.low_speed_reset_threshold:
         self.pid.reset()
@@ -397,7 +424,10 @@ class LatControlTorque(LatControl):
         output_torque *= kia_niro_phev_2022_center_taper
       elif self.is_civic_bosch_modified and civic_bosch_modified_a_lateral_testing_ground_active():
         output_torque *= civic_bosch_modified_a_center_taper
+      if self.hyundai_torque_angle_feedback is not None:
+        self.hyundai_torque_angle_feedback.remember_requested_torque(output_torque)
       pid_log.active = True
+      pid_log.errorRate = float(relative_lateral_accel_rate)
       pid_log.p = float(self.pid.p)
       pid_log.i = float(self.pid.i)
       pid_log.d = float(self.pid.d)
@@ -414,6 +444,7 @@ class LatControlTorque(LatControl):
           print(f"bolt_torque ff_scale={ff_scale:.3f} pos={self.torque_ff_scale_pos:.3f} "
                 f"neg={self.torque_ff_scale_neg:.3f} deadzone_boost_active={deadzone_boost_active}")
 
+    self.prev_active = active
     self.prev_steering_pressed = CS.steeringPressed
 
     # TODO left is positive in this convention

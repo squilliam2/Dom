@@ -13,7 +13,7 @@ from opendbc.car.interfaces import ACCEL_MAX, ACCEL_MIN
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import Ratekeeper, DT_MDL
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
-from openpilot.selfdrive.controls.lib.lead_behavior import should_track_lead
+from openpilot.selfdrive.controls.lib.lead_behavior import should_hold_tracked_vision_lead, should_track_lead
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlanner
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import STOP_DISTANCE
@@ -56,8 +56,7 @@ class Plant:
 
   def __init__(self, lead_relevancy=False, speed=0.0, distance_lead=2.0,
                enabled=True, only_lead2=False, only_radar=False, track_lead_with_gate=False,
-               e2e=False, personality=0, force_decel=False,
-               prioritize_smooth_following=False):
+               e2e=False, personality=0, force_decel=False):
     self.rate = 1. / DT_MDL
 
     current_prefix = os.environ.get("OPENPILOT_PREFIX")
@@ -92,7 +91,6 @@ class Plant:
     self.e2e = e2e
     self.personality = personality
     self.force_decel = force_decel
-    self.prioritize_smooth_following = prioritize_smooth_following
     self.tracking_lead_filter = FirstOrderFilter(0.0, 0.5, DT_MDL)
 
     self.rk = Ratekeeper(self.rate, print_delay_threshold=100.0)
@@ -110,10 +108,8 @@ class Plant:
       classic_model=False,
       tinygrad_model=True,
       model_version="v11",
-      stop_distance=6.0,
       longitudinalActuatorDelay=0.2,
       vEgoStopping=0.5,
-      prioritize_smooth_following=self.prioritize_smooth_following,
     )
 
   @property
@@ -200,6 +196,18 @@ class Plant:
         v_lead=float(v_lead),
         radar=bool(self.only_radar),
       )
+      continuity_candidate = self.tracking_lead_filter.x >= THRESHOLD * 0.6
+      if not tracking_candidate and continuity_candidate:
+        tracking_candidate = should_hold_tracked_vision_lead(
+          status,
+          float(d_rel),
+          float(position.x[-1]) if len(position.x) else 0.0,
+          STOP_DISTANCE,
+          float(self.speed),
+          model_prob=float(prob_lead),
+          y_rel=float(lead.yRel),
+          radar=bool(self.only_radar),
+        )
       self.tracking_lead_filter.update(tracking_candidate)
       tracking_lead = self.tracking_lead_filter.x >= THRESHOLD
     else:

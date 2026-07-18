@@ -86,10 +86,12 @@ class LatControlTorque(LatControl):
     self.is_kia_niro_phev_2022 = CP.carFingerprint in KIA_NIRO_PHEV_2022_CARS
     self.is_kia_forte = CP.carFingerprint in KIA_FORTE_CARS
     self.is_kia_ev6 = CP.carFingerprint in KIA_EV6_CARS
+    self.is_kia_carnival = CP.carFingerprint in KIA_CARNIVAL_CARS
     self.is_civic_bosch_modified = CP.carFingerprint == HONDA_CAR.HONDA_CIVIC_BOSCH and bool(CP.flags & HondaFlags.EPS_MODIFIED)
     self.is_silverado = CP.carFingerprint in SILVERADO_CARS
     self.is_gm = CP.brand == "gm"
     self.is_hkg_canfd_torque = CP.brand == "hyundai" and bool(CP.flags & HyundaiFlags.CANFD)
+    self.flm_surface_profile_key = get_flm_surface_profile_key(CP.carFingerprint, torque_control=True)
     if self.is_ioniq_6:
       self.low_speed_reset_threshold = min(self.low_speed_reset_threshold, IONIQ_6_LOW_SPEED_PID_RESET_SPEED)
     self.use_bolt_ff_scaling = self.is_bolt_2022_2023 or self.is_bolt_2018_2021 or self.is_bolt_2017
@@ -157,6 +159,10 @@ class LatControlTorque(LatControl):
   def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, curvature_limited, lat_delay, calibrated_pose, model_data, starpilot_toggles):
     pid_log = log.ControlsState.LateralTorqueState.new_message()
     pid_log.version = VERSION
+    flm_profile_active = bool(getattr(starpilot_toggles, "flm_trial_applied", False) and
+                              getattr(starpilot_toggles, "flm_active_profile_id", ""))
+    set_flm_runtime_overrides(getattr(starpilot_toggles, "flm_active_overrides", None) if flm_profile_active else None)
+    flm_surface_active = flm_profile_active and flm_runtime_overrides_active()
     if not active:
       output_torque = 0.0
       pid_log.active = False
@@ -226,6 +232,7 @@ class LatControlTorque(LatControl):
       kia_niro_phev_2022_active = self.is_kia_niro_phev_2022
       kia_forte_active = self.is_kia_forte
       kia_ev6_test_active = self.is_kia_ev6 and kia_ev6_lateral_testing_ground_active()
+      kia_carnival_active = self.is_kia_carnival
       volt_plexy_test_active = self.is_volt_standard and volt_plexy_lateral_testing_ground_active()
       ioniq_5_center_taper = get_ioniq_5_center_taper_scale(setpoint, CS.vEgo) if ioniq_5_active else 1.0
       prius_center_taper = get_prius_center_taper_scale(setpoint, CS.vEgo) if prius_active else 1.0
@@ -240,6 +247,7 @@ class LatControlTorque(LatControl):
       kia_forte_center_taper = get_kia_forte_center_taper_scale(setpoint, CS.vEgo) if kia_forte_active else 1.0
       kia_ev6_center_taper = get_kia_ev6_center_taper_scale(setpoint, CS.vEgo) if kia_ev6_test_active else 1.0
       kia_ev6_low_speed_center_taper = get_kia_ev6_low_speed_center_taper_scale(setpoint, CS.vEgo) if kia_ev6_test_active else 1.0
+      kia_carnival_center_taper = get_kia_carnival_center_taper_scale(setpoint, CS.vEgo) if kia_carnival_active else 1.0
       silverado_center_taper = get_silverado_center_taper_scale(setpoint, CS.vEgo) if self.is_silverado else 1.0
       civic_bosch_modified_a_center_taper = get_civic_bosch_modified_a_center_taper_scale(setpoint, CS.vEgo) if (
         self.is_civic_bosch_modified and civic_bosch_modified_a_lateral_testing_ground_active()
@@ -312,6 +320,9 @@ class LatControlTorque(LatControl):
         friction_threshold = get_kia_ev6_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
         friction_scale = get_kia_ev6_friction_scale(CS.vEgo, setpoint, desired_lateral_jerk)
         friction_scale = 1.0 + ((friction_scale - 1.0) * kia_ev6_center_taper)
+      elif kia_carnival_active:
+        friction_threshold = get_kia_carnival_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
+        friction_scale *= get_kia_carnival_friction_center_fade_scale(setpoint, CS.vEgo)
       elif self.is_silverado:
         ff *= silverado_center_taper
       elif volt_plexy_test_active:
@@ -324,6 +335,15 @@ class LatControlTorque(LatControl):
         friction_threshold = CIVIC_BOSCH_MODIFIED_B_FIXED_FRICTION_THRESHOLD
         friction_scale = get_civic_bosch_modified_b_friction_scale(CS.vEgo, setpoint, desired_lateral_jerk)
         friction_scale = 1.0 + ((friction_scale - 1.0) * civic_bosch_modified_a_center_taper)
+      if flm_surface_active and self.flm_surface_profile_key and not ioniq_6_active:
+        universal_flm_profile = self.flm_surface_profile_key == FLM_UNIVERSAL_PROFILE_KEY
+        flm_full_surface_center_taper = get_flm_full_surface_center_taper_scale(self.flm_surface_profile_key, setpoint, CS.vEgo,
+                                                                                include_base_center=universal_flm_profile)
+        ff *= get_flm_full_surface_ff_scale(self.flm_surface_profile_key, setpoint, desired_lateral_jerk, CS.vEgo,
+                                            include_base_ff=universal_flm_profile) * flm_full_surface_center_taper
+        friction_threshold = get_flm_full_surface_friction_threshold(self.flm_surface_profile_key, friction_threshold, CS.vEgo,
+                                                                     setpoint, desired_lateral_jerk,
+                                                                     include_base_threshold=universal_flm_profile)
       if trailer_load_kg > 0.0:
         ff *= get_trailer_lateral_ff_scale(trailer_load_kg, CS.vEgo, setpoint)
         friction_scale *= get_trailer_lateral_friction_scale(trailer_load_kg, CS.vEgo, setpoint)
@@ -353,6 +373,11 @@ class LatControlTorque(LatControl):
         actual_angle_no_offset = CS.steeringAngleDeg - params.angleOffsetDeg
         output_torque = get_ioniq_6_low_speed_angle_assist_torque(desired_angle_no_offset, actual_angle_no_offset,
                                                                   output_torque, CS.vEgo)
+      elif flm_surface_active and self.flm_surface_profile_key and not CS.steeringPressed:
+        desired_angle_no_offset = math.degrees(VM.get_steer_from_curvature(-desired_curvature, CS.vEgo, params.roll))
+        actual_angle_no_offset = CS.steeringAngleDeg - params.angleOffsetDeg
+        output_torque = get_flm_full_surface_low_speed_angle_assist_torque(self.flm_surface_profile_key, desired_angle_no_offset,
+                                                                           actual_angle_no_offset, output_torque, CS.vEgo)
       if ioniq_6_active:
         output_torque *= get_ioniq_6_highway_output_taper_scale(setpoint, CS.vEgo)
         output_torque *= get_ioniq_6_highway_transition_output_taper_scale(setpoint, desired_lateral_jerk, CS.vEgo)
@@ -364,6 +389,8 @@ class LatControlTorque(LatControl):
         output_torque *= volt_plexy_center_taper
       elif kia_ev6_test_active:
         output_torque *= kia_ev6_low_speed_center_taper
+      elif kia_carnival_active:
+        output_torque *= kia_carnival_center_taper
       elif self.is_silverado:
         output_torque *= silverado_center_taper
       elif kia_niro_phev_2022_active:

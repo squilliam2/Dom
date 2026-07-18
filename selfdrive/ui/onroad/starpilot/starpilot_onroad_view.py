@@ -17,9 +17,11 @@ from openpilot.selfdrive.ui.lib.starpilot_status import (
     get_screen_edge_color, ENGAGED_COLOR,
     EXPERIMENTAL_COLOR, TRAFFIC_COLOR,
 )
+from cereal import log
 from openpilot.system.ui.lib.application import MousePos, gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 
+AlertSize = log.SelfdriveState.AlertSize
 
 class StarPilotOnroadView(AugmentedRoadView):
   def __init__(self, stream_type: VisionStreamType = VisionStreamType.VISION_STREAM_ROAD):
@@ -44,13 +46,16 @@ class StarPilotOnroadView(AugmentedRoadView):
     if not ui_state.started:
       return
 
-    self._render_slc()
-    self._render_overlays()
-    self._render_path_features(rect)
+    if self._draw_hud_controls:
+      self._render_slc()
+      self._render_overlays()
+      self._render_road_name()
+    if self._draw_road_overlays:
+      self._render_path_features(rect)
 
   def _render_slc(self):
     alert_showing, _ = self.alert_renderer.will_render()
-    if alert_showing is not None:
+    if alert_showing is not None and alert_showing.size == AlertSize.full:
       return
 
     rl.begin_scissor_mode(
@@ -247,7 +252,29 @@ class StarPilotOnroadView(AugmentedRoadView):
     super()._handle_mouse_press(mouse_pos)
 
   def _render_developer_metrics(self):
-    if not self._params.get_bool("ShowFPS"):
+    toggles = ui_state.starpilot_toggles
+    debug_mode = bool(toggles.get("debug_mode", self._params.get_bool("DebugMode")))
+    developer_metrics = (
+      bool(toggles.get("developer_ui", self._params.get_bool("DeveloperUI"))) and
+      self._params.get_bool("DeveloperMetrics")
+    ) or debug_mode
+
+    def metric_enabled(toggle_key: str, param_key: str, debug_override: bool = False) -> bool:
+      if debug_mode and debug_override:
+        return True
+      if developer_metrics and toggle_key in toggles:
+        return bool(toggles.get(toggle_key))
+      if developer_metrics:
+        return self._params.get_bool(param_key)
+      return False
+
+    show_fps = metric_enabled("show_fps", "FPSCounter", debug_override=True)
+    show_cpu = metric_enabled("cpu_metrics", "ShowCPU", debug_override=True)
+    show_gpu = metric_enabled("gpu_metrics", "ShowGPU")
+    show_temp = metric_enabled("numerical_temp", "NumericalTemp", debug_override=True)
+    show_memory = metric_enabled("memory_metrics", "ShowMemoryUsage", debug_override=True)
+
+    if not any((show_fps, show_cpu, show_gpu, show_temp, show_memory)):
       return
 
     # Track FPS
@@ -269,28 +296,20 @@ class StarPilotOnroadView(AugmentedRoadView):
     # Gather device stats
     device_state = ui_state.sm["deviceState"] if ui_state.sm.valid.get("deviceState", False) else None
     cpu_val = 0
+    gpu_val = 0
     temp_val = 0
     mem_val = 0
     mem_gb = 0.0
     if device_state:
       cpu_list = list(device_state.cpuUsagePercent)
       cpu_val = int(sum(cpu_list) / len(cpu_list)) if cpu_list else 0
+      gpu_val = int(device_state.gpuUsagePercent)
       temp_val = int(device_state.maxTempC)
       mem_val = int(device_state.memoryUsagePercent)
       mem_gb = 8.0 * mem_val / 100.0
 
-    # Format text lines for top-right developer metrics overlay
-    text_lines = [
-      f"FPS: {round(fps)}",
-      f"CPU: {cpu_val}%",
-      f"TEMP: {temp_val}°C",
-      f"RAM: {mem_gb:.1f} GB ({mem_val}%)"
-    ]
-
-    # Helper function for outlined text drawing
     font = self._font_medium
     font_size = 24
-    line_height = font_size + 4
 
     def draw_text_with_outline(text, pos_x, pos_y, color):
       pos = rl.Vector2(pos_x, pos_y)
@@ -300,19 +319,25 @@ class StarPilotOnroadView(AugmentedRoadView):
       rl.draw_text_ex(font, text, rl.Vector2(pos.x + 1, pos.y + 1), font_size, 0, rl.BLACK)
       rl.draw_text_ex(font, text, pos, font_size, 0, color)
 
-    # 1. Render top-right developer metrics block
-    x = self._content_rect.x + self._content_rect.width - 30
-    y = self._content_rect.y + 40
-    for i, line in enumerate(text_lines):
-      sz = measure_text_cached(font, line, font_size)
-      draw_text_with_outline(line, x - sz.x, y + i * line_height, rl.WHITE)
+    parts = []
+    if show_cpu:
+      parts.append(f"CPU: {cpu_val}%")
+    if show_gpu:
+      parts.append(f"GPU: {gpu_val}%")
+    if show_temp:
+      parts.append(f"TEMP: {temp_val}°C")
+    if show_memory:
+      parts.append(f"RAM: {mem_gb:.1f} GB ({mem_val}%)")
+    if show_fps:
+      parts += [f"FPS: {round(fps)}", f"Min: {round(self._min_fps)}",
+                f"Max: {round(self._max_fps)}", f"Avg: {round(self._avg_fps)}"]
 
-    # 2. Render bottom-center detailed FPS tracker string (min/max/avg)
-    fps_str = f"FPS: {round(fps)} | Min: {round(self._min_fps)} | Max: {round(self._max_fps)} | Avg: {round(self._avg_fps)}"
-    sz = measure_text_cached(font, fps_str, font_size)
+    line = " | ".join(parts)
+    sz = measure_text_cached(font, line, font_size)
     bx = self._content_rect.x + (self._content_rect.width - sz.x) / 2
-    by = self._content_rect.y + self._content_rect.height - sz.y - 10
-    draw_text_with_outline(fps_str, bx, by, rl.WHITE)
+    border_width = self._get_border_width()
+    by = self._content_rect.y + self._content_rect.height + (border_width - sz.y) // 2
+    draw_text_with_outline(line, bx, by, rl.WHITE)
 
 
   def _render_bottom_row_widgets(self):
@@ -418,3 +443,32 @@ class StarPilotOnroadView(AugmentedRoadView):
     from openpilot.selfdrive.ui.onroad.starpilot.pedal_icons import render_pedal_icons
     render_pedal_icons(start_x, start_y, self._font_bold)
 
+  def _render_road_name(self):
+    toggles = ui_state.starpilot_toggles
+    road_name_on = bool(toggles.get("road_name_ui", self._params.get_bool("RoadNameUI")))
+    if not road_name_on:
+      return
+
+    mapd = ui_state.sm["mapdOut"] if ui_state.sm.valid.get("mapdOut", False) else None
+    if mapd is None:
+      return
+    road_name = str(mapd.roadName or "")
+    if not road_name:
+      return
+
+    font = self._font_bold
+    font_size = 32
+    sz = measure_text_cached(font, road_name, font_size)
+
+    pad_x = 24
+    pad_y = 5
+    pill_w = sz.x + pad_x * 2
+    pill_h = font_size + pad_y * 2
+
+    cx = self._content_rect.x + self._content_rect.width / 2
+    by = self._content_rect.y + self._content_rect.height - pill_h - 16
+
+    pill = rl.Rectangle(cx - pill_w / 2, by, pill_w, pill_h)
+    rl.draw_rectangle_rounded(pill, 0.4, 8, rl.Color(0, 0, 0, 166))
+    rl.draw_rectangle_rounded_lines_ex(pill, 0.4, 8, 1, rl.Color(255, 255, 255, 60))
+    rl.draw_text_ex(font, road_name, rl.Vector2(cx - sz.x / 2, by + pad_y), font_size, 0, rl.WHITE)

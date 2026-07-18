@@ -1,17 +1,13 @@
 from __future__ import annotations
 import re
-import math
 
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
-from openpilot.system.ui.lib.scroll_panel2 import GuiScrollPanel2
-from openpilot.system.ui.lib.text_measure import measure_text_cached
-from openpilot.system.ui.widgets import DialogResult, Widget
+from openpilot.system.ui.widgets import DialogResult
 from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 
 from openpilot.selfdrive.ui.lib.starpilot_state import starpilot_state
 from openpilot.selfdrive.ui.layouts.settings.starpilot.panel import _SettingsPage
-import pyray as rl
 from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
     AetherSliderDialog,
     DEFAULT_PANEL_STYLE,
@@ -19,13 +15,7 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
     SettingRow,
     SettingSection,
     AetherSettingsView,
-    AetherCategoryDrawer,
-    TileGrid,
-    HubTile,
-    draw_list_group_shell,
-    hex_to_color,
-    PLATE_TAU,
-    AetherListColors,
+    CardHubManagerView,
 )
 from openpilot.selfdrive.ui.layouts.settings.starpilot.simple_download_manager import SimpleDownloadManager
 from openpilot.starpilot.common.starpilot_variables import THEME_SAVE_PATH
@@ -41,6 +31,30 @@ THEME_KEY_CONFIG = {
 
 COLOR_PRESETS = ["Stock", "#FFFFFF", "#178644", "#3B82F6", "#E63956", "#8B5CF6", "#F59E0B"]
 CAMERA_VIEWS = ["Auto", "Driver", "Standard", "Wide"]
+
+# Mirrors starpilot/ui/qt/offroad/developer_panel.cc:200-218.
+# Keys are the int values stored in DeveloperSidebarMetric{1..7}; values are the
+# human-readable labels shown in both the row value and the picker dialog.
+DEVELOPER_SIDEBAR_METRIC_OPTIONS: dict[int, str] = {
+  0:  "None",
+  1:  "Acceleration: Current",
+  2:  "Acceleration: Max",
+  3:  "Auto Tune: Actuator Delay",
+  4:  "Auto Tune: Friction",
+  5:  "Auto Tune: Lateral Acceleration",
+  6:  "Auto Tune: Steer Ratio",
+  7:  "Auto Tune: Stiffness Factor",
+  8:  "Engagement %: Lateral",
+  9:  "Engagement %: Longitudinal",
+  10: "Lateral Control: Steering Angle",
+  11: "Lateral Control: Torque % Used",
+  12: "Longitudinal Control: Actuator Acceleration Output",
+  13: "Longitudinal MPC: Danger Factor",
+  14: "Longitudinal MPC Jerk: Acceleration",
+  15: "Longitudinal MPC Jerk: Danger Zone",
+  16: "Longitudinal MPC Jerk: Speed Control",
+  17: "Model Name",
+}
 
 def _theme_display_name(value: str) -> str:
     if not value:
@@ -66,113 +80,52 @@ def _theme_display_name(value: str) -> str:
     return display
 
 # ═══════════════════════════════════════════════════════════════
-# Unified Appearance panel
+# AppearanceManagerView — 6-card category hub
 # ═══════════════════════════════════════════════════════════════
 
-class AppearanceManagerView(AetherSettingsView):
-    @property
-    def vertical_scrolling_disabled(self) -> bool:
-        return True
-
+class AppearanceManagerView(CardHubManagerView):
     def __init__(self, controller, sections, **kwargs):
         super().__init__(controller, sections, **kwargs)
-        self._main_grid = TileGrid(columns=3, padding=12)
-        self._main_grid.set_touch_valid_callback(lambda: self._scroll_panel.is_touch_valid())
-        self._child(self._main_grid)
 
-        self._init_toggles()
-
-    def _init_toggles(self):
-        hero_data = [
+    def _build_cards(self):
+        return [
             {
                 "title": tr("Model & Path Visualization"),
                 "desc": tr("Customize dynamic lane paths, road edges, and colors."),
                 "icon": "steering",
-                "color": "#8B5CF6",
-                "on_click": lambda: self._controller._navigate_to("model")
+                "on_click": lambda: self._controller._navigate_to("model"),
             },
             {
                 "title": tr("Driving Widgets & HUD"),
                 "desc": tr("Configure compass, dynamic pedals, signals, and screen borders."),
                 "icon": "display",
-                "color": "#8B5CF6",
-                "on_click": lambda: self._controller._navigate_to("hud")
+                "on_click": lambda: self._controller._navigate_to("hud"),
             },
             {
                 "title": tr("Screen Declutter & Visibility"),
                 "desc": tr("Toggle speed limits, alert banners, and driver monitoring icon."),
                 "icon": "system",
-                "color": "#8B5CF6",
-                "on_click": lambda: self._controller._navigate_to("declutter")
+                "on_click": lambda: self._controller._navigate_to("declutter"),
             },
-        ]
-
-        standard_data = [
             {
                 "title": tr("Navigation & Mapping"),
                 "desc": tr("Configure road names, Vienna signs, and offroad routes."),
                 "icon": "navigate",
-                "color": "#8B5CF6",
-                "on_click": lambda: self._controller._navigate_to("nav")
+                "on_click": lambda: self._controller._navigate_to("nav"),
             },
             {
                 "title": tr("Camera & System Startup"),
                 "desc": tr("Manage driver monitoring cameras, boot logos, and startup sounds."),
                 "icon": "vehicle",
-                "color": "#8B5CF6",
-                "on_click": lambda: self._controller._navigate_to("system")
+                "on_click": lambda: self._controller._navigate_to("system"),
             },
             {
                 "title": tr("Advanced Metrics"),
                 "desc": tr("Adjust radar plots, lead vehicle info, and stop sign metrics."),
                 "icon": "sound",
-                "color": "#8B5CF6",
-                "on_click": lambda: self._controller._navigate_to("dev")
+                "on_click": lambda: self._controller._navigate_to("dev"),
             },
         ]
-
-        all_data = hero_data + standard_data
-        self._main_grid.clear()
-        for d in all_data:
-            self._main_grid.add_tile(
-                HubTile(
-                    title=d["title"],
-                    desc=d["desc"],
-                    icon_key=d["icon"],
-                    on_click=d["on_click"],
-                    bg_color=d["color"],
-                )
-            )
-
-    def _render(self, rect: rl.Rectangle):
-        self.set_rect(rect)
-        self._interactive_rects.clear()
-
-        margin_x = 10.0
-        margin_y = 10.0
-
-        grid_x = rect.x + margin_x
-        grid_y = rect.y + margin_y
-        grid_w = rect.width - margin_x * 2
-        grid_h = rect.y + rect.height - grid_y - margin_y
-
-        self._scroll_rect = rl.Rectangle(grid_x, grid_y, grid_w, grid_h)
-        self._content_height = grid_h
-
-        self._scroll_panel.set_enabled(self.is_visible)
-        self._scroll_offset = self._scroll_panel.update(
-            self._scroll_rect, self._scroll_rect.height
-        )
-
-        if self.vertical_scrolling_disabled:
-            self._scroll_offset = 0.0
-
-        self._draw_scroll_content(self._scroll_rect, self._scroll_rect.width)
-
-    def _draw_scroll_content(self, rect: rl.Rectangle, width: float):
-        y = rect.y + self._scroll_offset
-        self._main_grid.set_parent_rect(self._scroll_rect)
-        self._main_grid.render(rl.Rectangle(rect.x, y, width, rect.height))
 
 
 class StarPilotAppearanceLayout(_SettingsPage):
@@ -209,12 +162,19 @@ class StarPilotAppearanceLayout(_SettingsPage):
         if enabled:
             self._params.put_bool("DeveloperUI", True)
 
+    def _set_developer_metrics(self, enabled):
+        self._params.put_bool("DeveloperMetrics", enabled)
+        if enabled:
+            self._params.put_bool("DeveloperUI", True)
+
     def _build_view(self):
         po = lambda: self._params.get_bool("PedalsOnUI")
         ol = lambda: starpilot_state.car_state.hasOpenpilotLongitudinal
         bsm = lambda: starpilot_state.car_state.hasBSM
         model_on = lambda: self._params.get_bool("ModelUI")
         hud_on = lambda: self._params.get_bool("CustomUI")
+        dev_metrics_on = lambda: self._params.get_bool("DeveloperMetrics")
+        dev_sidebar_on = lambda: self._params.get_bool("DeveloperSidebar")
 
         # ═══ 1. Model & Path Visualization ═══
         self._model_rows = [
@@ -367,10 +327,6 @@ class StarPilotAppearanceLayout(_SettingsPage):
 
         # ═══ 3. Screen Declutter & Visibility ═══
         self._declutter_rows = [
-            SettingRow("AdvancedCustomUI", "toggle", tr_noop("Advanced UI Controls"),
-                       subtitle=tr_noop("Fine-tune which elements appear on screen."),
-                       get_state=lambda: self._params.get_bool("AdvancedCustomUI"),
-                       set_state=lambda s: self._params.put_bool("AdvancedCustomUI", s)),
             SettingRow("HideSpeed", "toggle", tr_noop("Hide Speed"),
                        subtitle="",
                        get_state=lambda: self._params.get_bool("HideSpeed"),
@@ -455,10 +411,6 @@ class StarPilotAppearanceLayout(_SettingsPage):
                        subtitle="",
                        get_state=lambda: self._params.get_bool("DriverCamera"),
                        set_state=lambda s: self._params.put_bool("DriverCamera", s)),
-            SettingRow("StockConfidenceBallWidget", "toggle", tr_noop("Stock Confidence Ball"),
-                       subtitle=tr_noop("Use the original moving confidence ball on the small comma 4 UI."),
-                       get_state=lambda: self._params.get_bool("StockConfidenceBallWidget"),
-                       set_state=lambda s: self._params.put_bool("StockConfidenceBallWidget", s)),
             SettingRow("BootLogo", "value", tr_noop("Boot Logo"),
                        subtitle="",
                        get_value=lambda: self._get_theme_value("BootLogo"),
@@ -473,7 +425,7 @@ class StarPilotAppearanceLayout(_SettingsPage):
         self._dev_rows = [
             SettingRow("DeveloperSidebar", "toggle", tr_noop("Developer Sidebar"),
                        subtitle=tr_noop("Driving metrics panel on the right"),
-                       get_state=lambda: bool(self._params.get("DeveloperSidebar") or False),
+                       get_state=lambda: self._params.get_bool("DeveloperSidebar"),
                        set_state=lambda s: self._set_developer_sidebar(s)),
             SettingRow("LeadDetectionThreshold", "value", tr_noop("Lead Detection Threshold"),
                        subtitle="",
@@ -488,7 +440,8 @@ class StarPilotAppearanceLayout(_SettingsPage):
             SettingRow("RadarTracksUI", "toggle", tr_noop("Radar Point Display"),
                        subtitle="",
                        get_state=lambda: self._params.get_bool("RadarTracksUI"),
-                       set_state=lambda s: self._params.put_bool("RadarTracksUI", s)),
+                       set_state=lambda s: self._params.put_bool("RadarTracksUI", s),
+                       enabled=lambda: starpilot_state.car_state.hasRadar),
             SettingRow("ShowStoppingPoint", "toggle", tr_noop("Show Stop Sign"),
                        subtitle="",
                        get_state=lambda: self._params.get_bool("ShowStoppingPoint"),
@@ -499,6 +452,53 @@ class StarPilotAppearanceLayout(_SettingsPage):
                        get_state=lambda: self._params.get_bool("ShowStoppingPointMetrics"),
                        set_state=lambda s: self._params.put_bool("ShowStoppingPointMetrics", s),
                        enabled=lambda: self._params.get_bool("ShowStoppingPoint") and ol()),
+            SettingRow("DeveloperMetrics", "toggle", tr_noop("Developer Metrics"),
+                       subtitle=tr_noop("Performance data, sensor readings, and system metrics."),
+                       get_state=lambda: self._params.get_bool("DeveloperMetrics"),
+                       set_state=lambda s: self._set_developer_metrics(s)),
+            SettingRow("FPSCounter", "toggle", tr_noop("FPS Display"),
+                       subtitle="",
+                       get_state=lambda: self._params.get_bool("FPSCounter"),
+                       set_state=lambda s: self._params.put_bool("FPSCounter", s),
+                       visible=dev_metrics_on),
+            SettingRow("ShowCPU", "toggle", tr_noop("CPU Metrics"),
+                       subtitle="",
+                       get_state=lambda: self._params.get_bool("ShowCPU"),
+                       set_state=lambda s: self._params.put_bool("ShowCPU", s),
+                       visible=dev_metrics_on),
+            SettingRow("ShowGPU", "toggle", tr_noop("GPU Metrics"),
+                       subtitle="",
+                       get_state=lambda: self._params.get_bool("ShowGPU"),
+                       set_state=lambda s: self._params.put_bool("ShowGPU", s),
+                       visible=dev_metrics_on),
+            SettingRow("NumericalTemp", "toggle", tr_noop("Temperature Metrics"),
+                       subtitle="",
+                       get_state=lambda: self._params.get_bool("NumericalTemp"),
+                       set_state=lambda s: self._params.put_bool("NumericalTemp", s),
+                       visible=dev_metrics_on),
+            SettingRow("ShowMemoryUsage", "toggle", tr_noop("RAM Metrics"),
+                       subtitle="",
+                       get_state=lambda: self._params.get_bool("ShowMemoryUsage"),
+                       set_state=lambda s: self._params.put_bool("ShowMemoryUsage", s),
+                       visible=dev_metrics_on),
+            SettingRow("DeveloperSidebarMetrics", "value", tr_noop("Developer Sidebar Metrics"),
+                       subtitle=tr_noop("Pick which metrics appear in the developer sidebar on the driving screen."),
+                       get_value=lambda: tr("Manage"),
+                       on_click=lambda: self._navigate_to("dev_sidebar"),
+                       visible=dev_sidebar_on),
+        ]
+
+        self._dev_sidebar_rows = [
+            SettingRow(
+                f"DeveloperSidebarMetric{i}",
+                "value",
+                tr_noop(f"Metric #{i}"),
+                subtitle="",
+                get_value=lambda i=i: self._get_developer_sidebar_metric_display(i),
+                on_click=lambda i=i: self._show_developer_sidebar_metric_selector(i),
+                visible=dev_sidebar_on,
+            )
+            for i in range(1, 8)
         ]
 
         self._manager_view = AppearanceManagerView(
@@ -513,6 +513,8 @@ class StarPilotAppearanceLayout(_SettingsPage):
             "Display the driving model path, lanes, and road edges.")
         pt_hud = self._make_parent("CustomUI", "Driving Screen Widgets",
             "Show interactive indicators on the driving screen.")
+        pt_declutter = self._make_parent("AdvancedCustomUI", "Advanced UI Controls",
+            "Fine-tune which elements appear on screen.")
 
         # Register subpanels for Level 2 slide transitions
         self._sub_panels["model"] = AetherSettingsView(
@@ -536,6 +538,7 @@ class StarPilotAppearanceLayout(_SettingsPage):
             [SettingSection(title="", rows=self._declutter_rows)],
             header_title=tr_noop("Screen Declutter & Visibility"),
             header_subtitle=tr_noop("Toggle speed limits, alert banners, and driver monitoring icon."),
+            parent_toggle=pt_declutter,
             panel_style=PANEL_STYLE,
         )
         self._sub_panels["nav"] = AetherSettingsView(
@@ -557,6 +560,13 @@ class StarPilotAppearanceLayout(_SettingsPage):
             [SettingSection(title="", rows=self._dev_rows)],
             header_title=tr_noop("Advanced Metrics"),
             header_subtitle=tr_noop("Adjust radar plots, lead vehicle info, and stop sign metrics."),
+            panel_style=PANEL_STYLE,
+        )
+        self._sub_panels["dev_sidebar"] = AetherSettingsView(
+            self,
+            [SettingSection(title="", rows=self._dev_sidebar_rows)],
+            header_title=tr_noop("Developer Sidebar Metrics"),
+            header_subtitle=tr_noop("Pick which metrics appear in the developer sidebar on the driving screen."),
             panel_style=PANEL_STYLE,
         )
         self._wire_sub_panels()
@@ -720,6 +730,29 @@ class StarPilotAppearanceLayout(_SettingsPage):
 
         dialog = MultiOptionDialog(tr("Startup Alert"), options, current, callback=on_select)
         gui_app.push_widget(dialog)
+
+    # ── Developer sidebar metric selectors ──
+
+    def _show_developer_sidebar_metric_selector(self, idx: int):
+        key = f"DeveloperSidebarMetric{idx}"
+        current_int = self._params.get_int(key)
+        options = list(DEVELOPER_SIDEBAR_METRIC_OPTIONS.values())
+        current_display = DEVELOPER_SIDEBAR_METRIC_OPTIONS.get(current_int, tr("None"))
+
+        def on_select(res):
+            if res == DialogResult.CONFIRM and dialog.selection:
+                selected_int = next(
+                    (k for k, v in DEVELOPER_SIDEBAR_METRIC_OPTIONS.items() if v == dialog.selection),
+                    0,
+                )
+                self._params.put_int(key, selected_int)
+
+        dialog = MultiOptionDialog(tr(f"Metric #{idx}"), options, current_display, callback=on_select)
+        gui_app.push_widget(dialog)
+
+    def _get_developer_sidebar_metric_display(self, idx: int) -> str:
+        val = self._params.get_int(f"DeveloperSidebarMetric{idx}")
+        return tr(DEVELOPER_SIDEBAR_METRIC_OPTIONS.get(val, "None"))
 
     # ── Boot logo manager ──
 

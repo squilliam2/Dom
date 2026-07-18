@@ -11,7 +11,8 @@ from opendbc.car.hyundai.carcontroller import CarController, Ioniq6LongitudinalT
                                              update_ioniq_6_longitudinal_tuning, \
                                              update_genesis_g90_longitudinal_tuning, egmp_dynamic_longitudinal_tuning, \
                                              should_reset_ev6_gt_line_longitudinal_tuning, reset_ev6_gt_line_longitudinal_tuning, \
-                                             get_angle_smoothing_alpha, apply_ev9_high_angle_gain_cap, ev9_driver_override_active, \
+                                             get_angle_smoothing_alpha, apply_ev9_tracking_gain, apply_ev9_high_angle_gain_cap, \
+                                             ev9_driver_override_active, \
                                              get_ev9_driver_override_recovery_limits, should_use_ev6_gt_line_stop_direct_tracking
 from opendbc.car.hyundai.carstate import CarState, decode_canfd_camera_lead, decode_ioniq_6_blindspot_radar_state
 from opendbc.car.hyundai.interface import CarInterface
@@ -90,6 +91,8 @@ CCNC_NON_HDA2_CARS = (
   CAR.HYUNDAI_SANTA_CRUZ_2025,
   CAR.KIA_K4_2025,
   CAR.KIA_K5_2025,
+  CAR.KIA_CARNIVAL_2025,
+  CAR.KIA_CARNIVAL_HEV_4TH_GEN,
   CAR.KIA_SPORTAGE_2026,
   CAR.KIA_SORENTO_2024,
 )
@@ -304,6 +307,17 @@ class TestHyundaiFingerprint:
     assert apply_ev9_high_angle_gain_cap(sportage_cp, 0.70, 320.0, True) == pytest.approx(0.70)
     assert apply_ev9_high_angle_gain_cap(sportage_cp, 0.70, 30.0, True, 400.0, True) == pytest.approx(0.70)
 
+  def test_ev9_tracking_gain_is_ev9_only_and_preserves_driver_override(self):
+    ev9_cp = SimpleNamespace(carFingerprint=CAR.KIA_EV9, flags=int(HyundaiFlags.CANFD_ANGLE_STEERING))
+    sportage_cp = SimpleNamespace(carFingerprint=CAR.KIA_SPORTAGE_HEV_2026, flags=int(HyundaiFlags.CANFD_ANGLE_STEERING))
+
+    assert apply_ev9_tracking_gain(ev9_cp, 0.848, 0.0, False, True) == pytest.approx(1.0)
+    assert apply_ev9_tracking_gain(ev9_cp, 0.848, 100.0, False, True) == pytest.approx(0.925)
+    assert apply_ev9_tracking_gain(ev9_cp, 0.60, 125.0, False, True) == pytest.approx(0.60)
+    assert apply_ev9_tracking_gain(ev9_cp, 0.60, 0.0, True, True) == pytest.approx(0.60)
+    assert apply_ev9_tracking_gain(ev9_cp, 0.60, 0.0, False, False) == pytest.approx(0.60)
+    assert apply_ev9_tracking_gain(sportage_cp, 0.60, 0.0, False, True) == pytest.approx(0.60)
+
   def test_ev9_driver_override_recovery_limits_are_ev9_only(self):
     ev9_cp = SimpleNamespace(carFingerprint=CAR.KIA_EV9, flags=int(HyundaiFlags.CANFD_ANGLE_STEERING))
     sportage_cp = SimpleNamespace(carFingerprint=CAR.KIA_SPORTAGE_HEV_2026, flags=int(HyundaiFlags.CANFD_ANGLE_STEERING))
@@ -332,16 +346,41 @@ class TestHyundaiFingerprint:
     assert ev9_cp.steerAtStandstill
     assert not sportage_cp.steerAtStandstill
 
-  def test_ccnc_hda2_lka_layout_does_not_set_ccnc_safety_param(self):
+  @pytest.mark.parametrize("candidate", (CAR.KIA_K4_2025, CAR.KIA_CARNIVAL_2025, CAR.KIA_CARNIVAL_HEV_4TH_GEN))
+  def test_ccnc_hda2_lka_layout_does_not_set_ccnc_safety_param(self, candidate):
     fingerprint = gen_empty_fingerprint()
     cam_can = CanBus(None, fingerprint).CAM
     fingerprint[cam_can] = {0x50: 16}
 
-    CP = CarInterface.get_params(CAR.KIA_K4_2025, fingerprint, [], False, False, False, None)
+    CP = CarInterface.get_params(candidate, fingerprint, [], False, False, False, None)
 
     assert CP.flags & HyundaiFlags.CCNC
     assert CP.flags & HyundaiFlags.CANFD_LKA_STEERING
     assert not (CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CCNC)
+
+  def test_carnival_hev_sets_hybrid_gas_safety(self):
+    CP = CarInterface.get_params(CAR.KIA_CARNIVAL_HEV_4TH_GEN, gen_empty_fingerprint(), [], False, False, False, None)
+
+    assert CP.flags & HyundaiFlags.HYBRID
+    assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.HYBRID_GAS
+
+  def test_carnival_2025_hda2_detects_alternate_buttons(self):
+    fingerprint = gen_empty_fingerprint()
+    CAN = CanBus(None, fingerprint)
+    fingerprint[CAN.CAM] = {0x110: 32}
+    fingerprint[1] = {0x1aa: 16}
+
+    carnival_cp = CarInterface.get_params(CAR.KIA_CARNIVAL_2025, fingerprint, [], False, False, False, None)
+    assert carnival_cp.flags & HyundaiFlags.CANFD_LKA_STEERING_ALT
+    assert carnival_cp.flags & HyundaiFlags.CANFD_ALT_BUTTONS
+    assert carnival_cp.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANFD_ALT_BUTTONS
+
+    carnival_state = CarState(carnival_cp, None)
+    pt_states = {state.name for state in carnival_state.get_can_parsers(carnival_cp)[Bus.pt].message_states.values()}
+    assert "CRUISE_BUTTONS" not in pt_states
+
+    k4_cp = CarInterface.get_params(CAR.KIA_K4_2025, fingerprint, [], False, False, False, None)
+    assert not (k4_cp.flags & HyundaiFlags.CANFD_ALT_BUTTONS)
 
   def test_ioniq_6_hda1_layout_stays_non_lka(self):
     fingerprint = gen_empty_fingerprint()
@@ -358,6 +397,13 @@ class TestHyundaiFingerprint:
     assert DBC[palisade_2023.carFingerprint][Bus.pt] == "hyundai_palisade_2023_generated"
     assert palisade_2023.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CAN_CANFD_BLENDED
     assert palisade_2023.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANCEL_BTN_ENABLE
+
+  @pytest.mark.parametrize("candidate", (CAR.HYUNDAI_ELANTRA_2024, CAR.HYUNDAI_ELANTRA_HEV_2024))
+  def test_hyundai_can_refresh_platforms_use_refresh_dbc_and_safety_param(self, candidate):
+    CP = CarInterface.get_params(candidate, gen_empty_fingerprint(), [], False, False, False, None)
+
+    assert DBC[CP.carFingerprint][Bus.pt] == "hyundai_can_refresh_generated"
+    assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CAN_REFRESH_MSGS
 
   def test_hyundai_lkas_button_sets_starpilot_safety_flag(self):
     fingerprint = gen_empty_fingerprint()
@@ -685,6 +731,35 @@ class TestHyundaiFingerprint:
 
   def test_kona_ev_non_scc_has_no_dedicated_fw_coverage(self):
     assert CAR.HYUNDAI_KONA_EV_NON_SCC not in FW_VERSIONS
+
+  def test_elantra_hev_2026_route_fw_exact_matches_2024_platform(self):
+    route_fw = {
+      (Ecu.fwdCamera, 0x7c4): b'\xf1\x00CN7HMFC  AT USA LHD 1.00 1.05 99210-AA510 240509',
+      (Ecu.fwdRadar, 0x7d0): b'\xf1\x00CN7_ RDR -----      1.00 1.01 99110-AA500         ',
+      (Ecu.eps, 0x7d4): b'\xf1\x00CN7 MDPS C 1.00 1.03 56300BY670\x00 4CSHC103',
+    }
+    car_fw = [
+      CarParams.CarFw(ecu=ecu, fwVersion=version, address=address, subAddress=0, brand="hyundai")
+      for (ecu, address), version in route_fw.items()
+    ]
+
+    exact, matches = match_fw_to_car(car_fw, "", allow_exact=True, allow_fuzzy=False, log=False)
+    assert exact
+    assert matches == {CAR.HYUNDAI_ELANTRA_HEV_2024}
+
+  def test_kia_carnival_2025_canadian_route_fw_exact_matches(self):
+    route_fw = {
+      (Ecu.fwdCamera, 0x7c4): b'\xf1\x00KA4 MFC  AT CAN LHD 1.00 1.00 99210-R0700 250324',
+      (Ecu.fwdRadar, 0x7d0): b'\xf1\x00KA4_ RDR -----      1.00 1.01 99110-R0510         ',
+    }
+    car_fw = [
+      CarParams.CarFw(ecu=ecu, fwVersion=version, address=address, subAddress=0, brand="hyundai")
+      for (ecu, address), version in route_fw.items()
+    ]
+
+    exact, matches = match_fw_to_car(car_fw, "", allow_exact=True, allow_fuzzy=False, log=False)
+    assert exact
+    assert matches == {CAR.KIA_CARNIVAL_2025}
 
   def test_kona_non_scc_fca_radar_fw_is_optional(self):
     fw_versions = FW_VERSIONS[CAR.HYUNDAI_KONA_NON_SCC]

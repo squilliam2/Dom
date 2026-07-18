@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import replace
-import json
 import os
 import re
 import shutil
@@ -33,7 +32,6 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   DEFAULT_PANEL_STYLE,
   PanelManagerView,
   TileGrid,
-  ToggleTile,
   draw_list_group_shell,
   draw_selection_list_row,
   draw_settings_panel_header,
@@ -42,7 +40,6 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   GROUP_HEADER_LINE_GAP,
   GROUP_HEADER_HEIGHT,
   draw_group_header,
-  draw_tab_bar,
   AetherSliderDialog,
   mix_colors,
   snap_rect,
@@ -53,6 +50,9 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.aethergrid import (
   wrap_text,
   SECTION_GAP,
   ROW_HEIGHT,
+  SPACING,
+  TOGGLE_MIN_HEIGHT,
+  TOGGLE_ROW_HEIGHT,
 )
 from openpilot.starpilot.common.connect_server import prepare_konik_server_switch
 
@@ -92,7 +92,7 @@ REPORT_CATEGORIES = [
 ]
 
 
-FADE_HEIGHT = AETHER_LIST_METRICS.fade_height
+
 PANEL_STYLE = DEFAULT_PANEL_STYLE
 
 SYSTEM_PANEL_METRICS = AETHER_LIST_METRICS
@@ -107,13 +107,18 @@ class SystemSettingsManagerView(PanelManagerView):
   TAB_BOTTOM_GAP = 26
   ACTION_PILL_WIDTH = 132
   DANGER_PILL_WIDTH = 112
-  _TOPBAR_HEIGHT = 76.0
-  _TOPBAR_GAP = 16.0
+  _TOPBAR_HEIGHT = 120.0
+  _TOPBAR_GAP = 0.0
   METRICS = SYSTEM_PANEL_METRICS
 
   @property
   def vertical_scrolling_disabled(self) -> bool:
     return True
+
+  @property
+  def _hit_rect(self) -> rl.Rectangle:
+    base = super()._hit_rect
+    return rl.Rectangle(base.x, base.y - 72, base.width, base.height + 72)
 
   def __init__(self, controller: StarPilotSystemLayout):
     super().__init__()
@@ -258,14 +263,14 @@ class SystemSettingsManagerView(PanelManagerView):
       {
         "title": tr("Show FPS"),
         "subtitle": "",
-        "get_state": lambda: self._controller._params.get_bool("ShowFPS"),
-        "set_state": lambda v: self._controller._params.put_bool("ShowFPS", v),
+        "get_state": lambda: self._controller._params.get_bool("FPSCounter"),
+        "set_state": lambda v: self._controller._params.put_bool("FPSCounter", v),
       },
       {
         "title": tr("Disable Uploads"),
         "subtitle": "",
         "get_state": lambda: self._controller._params.get_bool("NoUploads"),
-        "set_state": lambda v: self._controller._params.put_bool("NoUploads", v),
+        "set_state": self._controller._on_no_uploads_toggle,
       },
       {
         "title": tr("Disable Onroad Uploads"),
@@ -279,7 +284,7 @@ class SystemSettingsManagerView(PanelManagerView):
         "title": tr("Disable Logging"),
         "subtitle": "",
         "get_state": lambda: self._controller._params.get_bool("NoLogging"),
-        "set_state": lambda v: self._controller._params.put_bool("NoLogging", v),
+        "set_state": self._controller._on_no_logging_toggle,
       },
       {
         "title": tr("High Bitrate Recording"),
@@ -293,12 +298,16 @@ class SystemSettingsManagerView(PanelManagerView):
 
     self._basics_tile_grid_h = 0.0
 
-    self._connectivity_tile_grid = TileGrid(columns=2, padding=12, min_tile_height=130.0)
+    if self.PANEL_STYLE.toggle_row_mode:
+      self._connectivity_tile_grid = TileGrid(columns=1, padding=SPACING.md, min_tile_height=TOGGLE_MIN_HEIGHT)
+    else:
+      self._connectivity_tile_grid = TileGrid(columns=2, padding=12, min_tile_height=130.0)
     for toggle_def in self._toggle_defs:
       tile = self._make_toggle_tile(toggle_def)
       self._connectivity_tile_grid.add_tile(tile)
     self.register_page_grid(self._connectivity_tile_grid)
-    self._set_toggle_pages([self._toggle_defs[i:i+4] for i in range(0, len(self._toggle_defs), 4)])
+    page_size = self._compute_page_size(TOGGLE_ROW_HEIGHT)
+    self._set_toggle_pages([self._toggle_defs[i:i+page_size] for i in range(0, len(self._toggle_defs), page_size)])
 
     self._drive_mode_control = self._child(
       AetherSegmentedControl(
@@ -428,18 +437,28 @@ class SystemSettingsManagerView(PanelManagerView):
     return 0.0
 
   def _draw_static_elements(self, scroll_rect: rl.Rectangle, content_width: float) -> None:
-    if not self._uses_two_columns(content_width):
-      return
+    pass
 
-    column_w = self._column_width(content_width)
-    right_x = scroll_rect.x + column_w + self.COLUMN_GAP
+  def _draw_header(self, rect: rl.Rectangle):
+    content_width = self._scroll_rect.width - AETHER_LIST_METRICS.content_right_gutter
+    bar_rect = rl.Rectangle(rect.x, rect.y - 6.0, content_width, self._TOPBAR_HEIGHT)
+    draw_list_group_shell(bar_rect, style=self.PANEL_STYLE)
+    self._drive_mode_control.render(bar_rect)
+    total_offset = self._TOPBAR_HEIGHT + self._TOPBAR_GAP
+    self._scroll_rect.y += total_offset
+    self._scroll_rect.height = max(0.0, self._scroll_rect.height - total_offset)
 
-    btn_size = 32.0
-    btn_rect = rl.Rectangle(
-      right_x + column_w - 12 - 44 - btn_size,
-      scroll_rect.y + self._system_max_container_h - 12 - 10 - btn_size,
-      btn_size, btn_size,
-    )
+    self._draw_breadcrumb_first_aid()
+
+  def _draw_breadcrumb_first_aid(self):
+    top_bar_height = 72
+    shell_w = min(self._rect.width - AETHER_LIST_METRICS.outer_margin_x * 2, AETHER_LIST_METRICS.max_content_width)
+    shell_x = self._rect.x + (self._rect.width - shell_w) / 2
+
+    btn_size = 48.0
+    btn_x = shell_x + shell_w - 24 - btn_size
+    btn_y = self._rect.y - top_bar_height + (top_bar_height - btn_size) / 2
+    btn_rect = rl.Rectangle(btn_x, btn_y, btn_size, btn_size)
 
     hovered, pressed = self._interactive_state("static:first_aid", btn_rect, pad_y=6)
 
@@ -458,7 +477,6 @@ class SystemSettingsManagerView(PanelManagerView):
     s = btn_size / 60.0
     icon_x = btn_rect.x + (btn_rect.width - 60.0 * s) / 2.0
     icon_y = btn_rect.y + (btn_rect.height - 60.0 * s) / 2.0
-
     if pressed:
       icon_color = rl.Color(139, 92, 246, 190)
     elif hovered:
@@ -466,15 +484,6 @@ class SystemSettingsManagerView(PanelManagerView):
     else:
       icon_color = rl.Color(160, 170, 185, 80)
     draw_custom_icon("first_aid", icon_x, icon_y, s, icon_color)
-
-  def _draw_header(self, rect: rl.Rectangle):
-    content_width = self._scroll_rect.width - AETHER_LIST_METRICS.content_right_gutter
-    bar_rect = rl.Rectangle(rect.x, rect.y - 6.0, content_width, self._TOPBAR_HEIGHT)
-    draw_list_group_shell(bar_rect, style=self.PANEL_STYLE)
-    self._drive_mode_control.render(bar_rect)
-    total_offset = self._TOPBAR_HEIGHT + self._TOPBAR_GAP
-    self._scroll_rect.y += total_offset
-    self._scroll_rect.height = max(0.0, self._scroll_rect.height - total_offset)
 
   def _measure_content_height(self, width: float) -> float:
     hdr_h = GROUP_HEADER_HEIGHT + GROUP_HEADER_LINE_GAP + GROUP_HEADER_GAP
@@ -487,7 +496,6 @@ class SystemSettingsManagerView(PanelManagerView):
       # Reset custom heights to calculate natural measurements first
       for key in self._display_slider_keys + self._power_slider_keys:
         self._adjustor_rows[key].custom_row_height = None
-      self._connectivity_tile_grid._tile_height = None
 
       display_container_h = self._slider_section_height(self._display_slider_keys, column_w)
       power_container_h = self._slider_section_height(self._power_slider_keys, column_w)
@@ -522,7 +530,6 @@ class SystemSettingsManagerView(PanelManagerView):
       # Ensure defaults are restored in single column mode
       for key in self._display_slider_keys + self._power_slider_keys:
         self._adjustor_rows[key].custom_row_height = None
-      self._connectivity_tile_grid._tile_height = None
       tiles_content_h = self.measure_page_grid_height(self._connectivity_tile_grid, width - 24)
       return self._stacked_section_height([display_h, power_h, tiles_content_h + 24])
 
@@ -543,19 +550,22 @@ class SystemSettingsManagerView(PanelManagerView):
       adj_container_h = self._system_max_container_h
 
       draw_list_group_shell(rl.Rectangle(x, y, column_w, adj_container_h), style=PANEL_STYLE)
-      
+
       current_y = y + 4
-      current_y = draw_group_header(x + 24, current_y, column_w - 48, tr("DISPLAY"))
+      current_y = draw_group_header(x + 24, current_y, column_w - 48, tr("Display"))
       for index, key in enumerate(self._display_slider_keys):
         current_y = self._draw_slider_row(rl.Rectangle(x, current_y, column_w, 0), key, is_last=index == len(self._display_slider_keys) - 1)
         
       current_y += SECTION_GAP
       
-      current_y = draw_group_header(x + 24, current_y, column_w - 48, tr("POWER"))
+      current_y = draw_group_header(x + 24, current_y, column_w - 48, tr("Power"))
       for index, key in enumerate(self._power_slider_keys):
         current_y = self._draw_slider_row(rl.Rectangle(x, current_y, column_w, 0), key, is_last=index == len(self._power_slider_keys) - 1)
 
-      self._draw_two_column_tile_grid(self._connectivity_tile_grid, x + column_w + self.COLUMN_GAP, y, column_w, self._system_max_container_h)
+      tg_cols = 1 if self.PANEL_STYLE.toggle_row_mode else 2
+      self._draw_two_column_tile_grid(
+        self._connectivity_tile_grid, x + column_w + self.COLUMN_GAP, y, column_w,
+        self._system_max_container_h, columns=tg_cols)
       return
 
     y = self._draw_slider_section(y, x, width, tr("Display"), self._display_slider_keys)
@@ -664,45 +674,37 @@ class AetherBackupsCareDialog(Widget):
   def _render(self, rect: rl.Rectangle):
     rl.draw_rectangle(0, 0, gui_app.width, gui_app.height, rl.Color(0, 0, 0, 160))
 
-    dialog_w = 960
-    dialog_h = 660
+    dialog_w = min(2320, int(rect.width - 40))
+    dialog_h = min(1015, int(rect.height - 40))
     dx = rect.x + (rect.width - dialog_w) / 2
     dy = rect.y + (rect.height - dialog_h) / 2
 
-    MARGIN = 40
-    COL_GAP = 24
-    content_w = dialog_w - MARGIN * 2
-    btn_pad = 12.0
-    col_w = (content_w - btn_pad * 2 - COL_GAP) / 2
-
     d_rect = snap_rect(rl.Rectangle(dx, dy, dialog_w, dialog_h))
-    draw_rounded_fill(d_rect, rl.Color(10, 12, 16, 255), radius_px=24)
-    draw_rounded_stroke(d_rect, rl.Color(255, 255, 255, 16), radius_px=24)
-    rl.draw_rectangle_rec(rl.Rectangle(d_rect.x, d_rect.y, d_rect.width, 4), self._color)
+    draw_rounded_fill(d_rect, rl.Color(10, 12, 16, 255), radius_px=35)
+    draw_rounded_stroke(d_rect, rl.Color(255, 255, 255, 16), radius_px=35)
+    rl.draw_rectangle_rec(rl.Rectangle(d_rect.x, d_rect.y, d_rect.width, 3), self._color)
 
     title_text = tr("Maintenance")
-    title_size = 32
+    title_size = 64
     ts = measure_text_cached(self._font_title, title_text, title_size)
-    rl.draw_text_ex(self._font_title, title_text, rl.Vector2(round(dx + (dialog_w - ts.x) / 2), round(dy + (84 - title_size) / 2)), title_size, 0, rl.WHITE)
+    rl.draw_text_ex(self._font_title, title_text, rl.Vector2(round(dx + (dialog_w - ts.x) / 2), round(dy + 87)), title_size, 0, rl.WHITE)
 
-    status_rect = snap_rect(rl.Rectangle(dx + MARGIN, dy + 84, content_w, 90))
+    MARGIN = 80
+    content_w = dialog_w - MARGIN * 2
+
+    status_rect = snap_rect(rl.Rectangle(dx + MARGIN, dy + 170, content_w, 80))
     draw_list_group_shell(status_rect, style=PANEL_STYLE)
 
-    gui_label(rl.Rectangle(status_rect.x + 16, status_rect.y + 8, status_rect.width - 32, 18),
-              tr("System Status"), 14, AetherListColors.MUTED, FontWeight.SEMI_BOLD)
+    gui_label(rl.Rectangle(status_rect.x + 20, status_rect.y + 10, status_rect.width - 40, 24),
+              tr("System Status"), 22, AetherListColors.MUTED, FontWeight.SEMI_BOLD)
 
-    metric_rows = [
-      (tr("Storage"), self._controller.storage_summary()),
-      (tr("System Backups"), self._controller.backup_count_text()),
-      (tr("Toggle Snapshots"), self._controller.toggle_backup_count_text()),
-    ]
-    metric_label_w = 160.0
-    for i, (label, value) in enumerate(metric_rows):
-      row_y = status_rect.y + 32 + i * 16
-      gui_label(rl.Rectangle(status_rect.x + 16, row_y, metric_label_w, 16),
-                label, 14, AetherListColors.MUTED, FontWeight.MEDIUM)
-      gui_label(rl.Rectangle(status_rect.x + 16 + metric_label_w, row_y, status_rect.width - 32 - metric_label_w, 16),
-                value, 14, AetherListColors.HEADER, FontWeight.MEDIUM)
+    storage_text = tr("Storage: {}").format(self._controller.storage_summary())
+    backup_text = tr("Backups: {}  •  Snapshots: {}").format(
+      self._controller.backup_count_text(), self._controller.toggle_backup_count_text())
+    gui_label(rl.Rectangle(status_rect.x + 20, status_rect.y + 40, status_rect.width - 40, 24),
+              storage_text, 22, AetherListColors.HEADER, FontWeight.MEDIUM)
+    gui_label(rl.Rectangle(status_rect.x + 300, status_rect.y + 40, status_rect.width - 320, 24),
+              backup_text, 22, AetherListColors.HEADER, FontWeight.MEDIUM)
 
     mouse_pos = gui_app.last_mouse_event.pos
 
@@ -710,10 +712,15 @@ class AetherBackupsCareDialog(Widget):
     btn_border = rl.Color(255, 255, 255, 40)
     btn_fill_hover = rl.Color(30, 32, 42, 255)
     btn_fill_pressed = mix_colors(self._color, rl.Color(0, 0, 0, 255), 0.15)
-    btn_radius = 14.0
+    btn_radius = 18.0
+    COL_GAP = 24
+    ROW_GAP = 20
+    btn_pad = 16.0
+    BTN_HEIGHT = 120.0
+    col_w = (content_w - btn_pad * 2 - COL_GAP) / 2
 
-    btn_group_y = dy + 192
-    btn_group_h = 4 * 68 + 3 * 14 + btn_pad * 2
+    btn_group_y = dy + 278
+    btn_group_h = btn_pad * 2 + 4 * BTN_HEIGHT + 3 * ROW_GAP
     btn_group_rect = snap_rect(rl.Rectangle(dx + MARGIN, btn_group_y, content_w, btn_group_h))
     draw_list_group_shell(btn_group_rect, style=PANEL_STYLE)
 
@@ -723,8 +730,8 @@ class AetherBackupsCareDialog(Widget):
       row = i % 4
       col = i // 4
       bx = btn_group_rect.x + btn_pad + col * (col_w + COL_GAP)
-      by = btn_group_rect.y + btn_pad + row * (68 + 14)
-      btn_rect = snap_rect(rl.Rectangle(bx, by, col_w, 68))
+      by = btn_group_rect.y + btn_pad + row * (BTN_HEIGHT + ROW_GAP)
+      btn_rect = snap_rect(rl.Rectangle(bx, by, col_w, BTN_HEIGHT))
       self._button_rects[btn_id] = btn_rect
 
       hovered = rl.check_collision_point_rec(mouse_pos, btn_rect)
@@ -756,20 +763,22 @@ class AetherBackupsCareDialog(Widget):
       draw_rounded_fill(btn_rect, fill, radius_px=btn_radius)
       draw_rounded_stroke(btn_rect, border, thickness=2, radius_px=btn_radius)
 
-      font_size = 20
+      font_size = 36
       draw_text_fit_common(
         self._font_btn,
         btn["text"],
-        rl.Vector2(btn_rect.x + 12, btn_rect.y + (btn_rect.height - font_size) / 2),
-        btn_rect.width - 24,
+        rl.Vector2(btn_rect.x + 16, btn_rect.y + (btn_rect.height - font_size) / 2),
+        btn_rect.width - 32,
         font_size,
         align_center=True,
         color=text_color,
       )
 
-    cx = dx + (dialog_w - 320) / 2
-    cy = d_rect.y + d_rect.height - 36 - 72
-    self._close_rect = snap_rect(rl.Rectangle(cx, cy, 320, 72))
+    close_w = 600.0
+    close_h = 110.0
+    cx = dx + (dialog_w - close_w) / 2
+    cy = btn_group_rect.y + btn_group_rect.height + 40
+    self._close_rect = snap_rect(rl.Rectangle(cx, cy, close_w, close_h))
 
     close_hovered = rl.check_collision_point_rec(mouse_pos, self._close_rect)
     close_pressed = self._pressed_btn_id == "close"
@@ -784,10 +793,11 @@ class AetherBackupsCareDialog(Widget):
       close_fill = rl.Color(255, 255, 255, 14)
       close_border = rl.Color(255, 255, 255, 28)
 
-    draw_soft_card(self._close_rect, close_fill, close_border)
+    draw_rounded_fill(self._close_rect, close_fill, radius_px=28)
+    draw_rounded_stroke(self._close_rect, close_border, thickness=2, radius_px=28)
 
     close_text = tr("Close")
-    close_size = 22
+    close_size = 38
     cts = measure_text_cached(self._font_btn, close_text, close_size)
     rl.draw_text_ex(
       self._font_btn,
@@ -958,10 +968,12 @@ class StarPilotSystemLayout(_SettingsPage):
 
   def _set_brightness(self, key, val):
     self._params.put_int(key, int(val))
-    if key == "ScreenBrightnessOnroad" and not ui_state.started:
-      return
-    if key in ("ScreenBrightnessOnroad", "ScreenBrightness") and hasattr(HARDWARE, 'set_brightness'):
-      HARDWARE.set_brightness(int(val))
+    if not ui_state.started and key == "ScreenBrightness":
+      if hasattr(HARDWARE, 'set_screen_brightness'):
+        HARDWARE.set_screen_brightness(int(val))
+    elif ui_state.started and key == "ScreenBrightnessOnroad":
+      if hasattr(HARDWARE, 'set_screen_brightness'):
+        HARDWARE.set_screen_brightness(int(val))
 
   def _get_konik_state(self):
     if Path("/data/not_vetted").exists():
@@ -1002,6 +1014,24 @@ class StarPilotSystemLayout(_SettingsPage):
         callback=on_confirm
       )
     )
+
+  def _on_no_uploads_toggle(self, state):
+    if state:
+      gui_app.push_widget(ConfirmDialog(
+        tr("This will prevent your drives from being uploaded to comma connect which may impact receiving support. Are you sure?"),
+        lambda res: self._params.put_bool("NoUploads", True) if res == DialogResult.CONFIRM else None
+      ))
+    else:
+      self._params.put_bool("NoUploads", False)
+
+  def _on_no_logging_toggle(self, state):
+    if state:
+      gui_app.push_widget(ConfirmDialog(
+        tr("This will prevent your drives from being logged. Are you sure?"),
+        lambda res: self._params.put_bool("NoLogging", True) if res == DialogResult.CONFIRM else None
+      ))
+    else:
+      self._params.put_bool("NoLogging", False)
 
   def _on_higher_bitrate_toggle(self, state):
     self._params.put_bool("HigherBitrate", state)
@@ -1219,7 +1249,7 @@ class StarPilotSystemLayout(_SettingsPage):
       def on_discord(res2, username):
         if res2 == DialogResult.CONFIRM and username:
           self._params.put("DiscordUsername", username)
-          report = json.dumps({"DiscordUser": username, "Issue": dialog.selection})
+          report = {"DiscordUser": username, "Issue": dialog.selection}
           self._params_memory.put("IssueReported", report)
           gui_app.push_widget(alert_dialog(tr("Issue reported. Thank you!")))
       self._keyboard.reset(min_text_size=1)

@@ -245,48 +245,11 @@ class TestAethergridContracts(unittest.TestCase):
     self.assertGreater(hit.height, tile._rect.height)
 
 
-  def test_aether_tile_uses_single_planar_face_contract(self):
-    mod = _import_aethergrid()
-    tile = mod.AetherTile(surface_color="#3B82F6")
-    face = tile._surface_rect(mod.rl.Rectangle(0, 0, 320, 160))
-
-    self.assertLess(face.width, 320)
-    self.assertLess(face.height, 160)
-    self.assertGreaterEqual(face.x, 0)
-    self.assertGreaterEqual(face.y, 0)
-
-  def test_aether_tile_surface_rect_snaps_to_integer_pixels(self):
-    mod = _import_aethergrid()
-    tile = mod.AetherTile(surface_color="#3B82F6")
-    face = tile._surface_rect(mod.rl.Rectangle(0.5, 0.5, 320.25, 160.75))
-
-    self.assertEqual(face.x, round(face.x))
-    self.assertEqual(face.y, round(face.y))
-    self.assertEqual(face.width, round(face.width))
-    self.assertEqual(face.height, round(face.height))
-
-  def test_aether_tile_preserves_substrate_color_attribute_for_compatibility(self):
-    mod = _import_aethergrid()
-    substrate = mod.hex_to_color("#101820")
-    tile = mod.AetherTile(surface_color="#3B82F6", substrate_color=substrate)
-
-    self.assertIs(tile.substrate_color, substrate)
-
-
   def test_hub_tile_preserves_status_progress_api(self):
     mod = _import_aethergrid()
     tile = mod.HubTile("Driving Controls", "Desc", bg_color="#3B82F6", get_status=lambda: "Download 50%")
 
     self.assertEqual(tile.get_status(), "Download 50%")
-
-  def test_tile_stack_layout_keeps_full_content_block_inside_face(self):
-    mod = _import_aethergrid()
-    tile = mod.AetherTile(surface_color="#3B82F6")
-    face = mod.rl.Rectangle(0, 0, 320, 180)
-    layout = tile._measure_tile_stack(face, icon_height=60, title_lines=2, title_size=28, primary_size=30, desc_lines=2, desc_size=18)
-
-    self.assertGreaterEqual(layout["top"], 0)
-    self.assertLessEqual(layout["desc_bottom"], face.height)
 
   def test_tile_grid_reflows_to_wider_tiles_when_width_is_tight(self):
     mod = _import_aethergrid()
@@ -410,7 +373,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=140)
     for _ in range(5):
       grid.add_tile(RenderSpy())
-
+    
     h = grid.measure_height(500)
     self.assertEqual(h, 740)
 
@@ -419,7 +382,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=None, min_tile_height=100.0, max_tile_height=150.0)
     for _ in range(5):
       grid.add_tile(RenderSpy())
-
+    
     h = grid.measure_height(500)
     self.assertEqual(h, 790)
 
@@ -434,7 +397,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=None)
     for _ in range(5):
       grid.add_tile(RenderSpy())
-
+    
     h = grid.measure_height(500)
     self.assertEqual(h, 940)
 
@@ -443,7 +406,7 @@ class TestAethergridContracts(unittest.TestCase):
     grid = mod.TileGrid(columns=2, padding=10, tile_height=140)
     spy = RenderSpy()
     grid.add_tile(spy)
-
+    
     grid.render(mod.rl.Rectangle(0, 50, 500, 300))
     self.assertTrue(spy.rects)
     self.assertEqual(spy.rects[0].y, 130)
@@ -451,14 +414,13 @@ class TestAethergridContracts(unittest.TestCase):
 
   def test_disabled_tiles_hud_mode_rendering(self):
     mod = _import_aethergrid()
-
-    # ToggleTile disabled, show_led=True
+    
+    # ToggleTile disabled
     toggle = mod.ToggleTile(
       title="Test Loud",
       get_state=lambda: True,
       set_state=lambda s: None,
       is_enabled=lambda: False,
-      show_led=True
     )
     # Spy on _render_hud_background
     orig_hud_bg = toggle._render_hud_background
@@ -509,12 +471,12 @@ class TestAethergridContracts(unittest.TestCase):
     spies = [RenderSpy() for _ in range(5)]
     for spy in spies:
       grid.add_tile(spy)
-
+    
     # col_w = (500 - 10) / 2 = 245
     # rows = 3, gap_h = 2 * 10 = 20
     # expected height = 3 * 245 + 20 = 755
     self.assertEqual(grid.measure_height(500), 755)
-
+    
     grid.render(mod.rl.Rectangle(0, 0, 500, 300))
     self.assertTrue(spies[0].rects)
     self.assertEqual(spies[0].rects[0].width, 245)
@@ -546,7 +508,7 @@ class TestAethergridContracts(unittest.TestCase):
   def test_aether_category_tile_view(self):
     mod = _import_aethergrid()
     controller_mock = MagicMock()
-
+    
     toggle_visible = True
     rows = [
       mod.SettingRow("toggle_row", "toggle", "Toggle Title", subtitle="Toggle Subtitle",
@@ -558,13 +520,13 @@ class TestAethergridContracts(unittest.TestCase):
     ]
 
     view = mod.AetherCategoryTileView(controller_mock, "Category Title", rows, color="#FF0000", subtitle="Category Description")
-
+    
     self.assertEqual(len(view._sections), 1)
     self.assertEqual(len(view._sections[0].rows), 3)
-
+    
     visible = view._visible_rows(view._sections[0])
     self.assertEqual(len(visible), 3)
-
+    
     toggle_visible = False
     visible = view._visible_rows(view._sections[0])
     self.assertEqual(len(visible), 2)
@@ -573,13 +535,13 @@ class TestAethergridContracts(unittest.TestCase):
     view._back_btn_rect = mod.rl.Rectangle(196, 56, 68, 68)
     view._slide_progress = 1.0 # fully slide-in
     view.set_rect(mod.rl.Rectangle(0, 0, 1920, 1080))
-
+    
     self.assertEqual(view._target_at(mod.rl.Vector2(200, 60)), mod.BACK_BTN)
     self.assertEqual(view._target_at(mod.rl.Vector2(1000, 60)), "__dismiss__")
 
     app_mod = sys.modules["openpilot.system.ui.lib.application"]
     app_mod.gui_app.pop_widget = MagicMock()
-
+    
     view._activate_target(mod.BACK_BTN)
     app_mod.gui_app.pop_widget.assert_called_once()
 

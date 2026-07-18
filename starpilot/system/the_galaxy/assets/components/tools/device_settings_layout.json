@@ -25,15 +25,25 @@
         "is_parent_toggle": true
       },
       {
+        "key": "UseAutoSteerDelay",
+        "label": "Use Auto-Learned Delay",
+        "description": "Automatically learn the full steering delay. The manual actuator delay is ignored while enabled.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "AdvancedLateralTune"
+      },
+      {
         "key": "SteerDelay",
         "label": "Actuator Delay",
-        "description": "Actuator Delay",
+        "description": "Exact full delay between steering command and vehicle response.",
         "data_type": "float",
         "ui_type": "numeric",
         "min": 0.01,
         "max": 1.0,
         "step": 0.01,
         "precision": 2,
+        "disabled_when_key_true": "UseAutoSteerDelay",
+        "disabled_reason": "Auto-learned delay is enabled.",
         "parent_key": "AdvancedLateralTune"
       },
       {
@@ -617,6 +627,16 @@
         "parent_key": "CurveSpeedController"
       },
       {
+        "key": "ResetCurveData",
+        "label": "Reset Curve Data",
+        "description": "Clear learned Curve Speed Controller data and begin training again from the default lateral acceleration.",
+        "ui_type": "action",
+        "action_label": "Reset",
+        "action_endpoint": "/api/curve_speed_controller/reset",
+        "confirm_message": "Reset all learned Curve Speed Controller data? Training will restart from the default value.",
+        "parent_key": "CurveSpeedController"
+      },
+      {
         "key": "CustomPersonalities",
         "label": "Driving Personalities",
         "description": "Customize the \"Driving Personalities\" to better match your driving style.",
@@ -1017,14 +1037,6 @@
         "key": "HumanAcceleration",
         "label": "Human-Like Acceleration",
         "description": "Acceleration that mimics human behavior by easing the throttle at low speeds and adding extra power when taking off from a stop.",
-        "data_type": "bool",
-        "ui_type": "toggle",
-        "parent_key": "LongitudinalTune"
-      },
-      {
-        "key": "PrioritizeSmoothFollowing",
-        "label": "Prioritize Smooth Following",
-        "description": "Disable the newer far-lead follow logic on cars that show lead-follow stutter or springy gas/brake behavior. Tradeoff: the car may react later and brake less proactively in some edge-case lead approaches.",
         "data_type": "bool",
         "ui_type": "toggle",
         "parent_key": "LongitudinalTune"
@@ -2408,6 +2420,13 @@
         "ui_type": "toggle"
       },
       {
+        "key": "TeslaCoopSteering",
+        "label": "Tesla Model 3 Cooperative Steering",
+        "description": "For Tesla Model 3 only. Converts light driver steering input into bounded steering-wheel rotation while lateral control remains active. Change while parked.",
+        "data_type": "bool",
+        "ui_type": "toggle"
+      },
+      {
         "key": "NAPRadarEnabled",
         "label": "Tesla Pre-AP Bosch Radar",
         "description": "Use the stock Bosch radar path on pre-Autopilot Teslas.",
@@ -2561,6 +2580,13 @@
         "key": "VoltOnePedalMode",
         "label": "Volt One Pedal Mode",
         "description": "On supported Chevy Volts in L / single-pedal mode, blend friction braking so the car can slow to a stop and hold without using the brake pedal.",
+        "data_type": "bool",
+        "ui_type": "toggle"
+      },
+      {
+        "key": "JeepBrakeHold",
+        "label": "Jeep Brake Hold",
+        "description": "Hold the brakes after Jeep ACC times out at a stop, then send resume when traffic moves again.",
         "data_type": "bool",
         "ui_type": "toggle"
       },
@@ -3609,16 +3635,6 @@
         "step": 0.1
       },
       {
-        "key": "StopDistance",
-        "label": "Stop Distance",
-        "description": "Adjust the model's stopping distance in meters (minimum 4 for safety). Most users prefer 6.",
-        "data_type": "float",
-        "ui_type": "numeric",
-        "min": 4.0,
-        "max": 10.0,
-        "step": 0.1
-      },
-      {
         "key": "DrivingModel",
         "label": "Select Driving Model",
         "description": "Select the active driving model.",
@@ -3633,9 +3649,66 @@
     "icon": "bi-exclamation-triangle",
     "params": [
       {
-        "key": "TryRaylibUI",
-        "label": "Try raylib UI",
-        "description": "Use the beta raylib UI instead of the default Qt UI on tici/tizi devices. This setting has no effect on C4/mici devices.",
+        "key": "DeveloperUI",
+        "label": "Developer UI",
+        "description": "Detailed information about openpilot's internal operations.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "is_parent_toggle": true
+      },
+      {
+        "key": "DeveloperMetrics",
+        "label": "Developer Metrics",
+        "description": "Performance data, sensor readings, and system metrics for debugging and optimizing openpilot.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "is_parent_toggle": true,
+        "parent_key": "DeveloperUI"
+      },
+      {
+        "key": "FPSCounter",
+        "label": "FPS Display",
+        "description": "Show the frames per second at the bottom of the driving screen.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "DeveloperMetrics"
+      },
+      {
+        "key": "ShowCPU",
+        "label": "CPU Metrics",
+        "description": "Show CPU usage in the driving screen developer metrics.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "DeveloperMetrics"
+      },
+      {
+        "key": "ShowGPU",
+        "label": "GPU Metrics",
+        "description": "Show GPU usage in the driving screen developer metrics.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "DeveloperMetrics"
+      },
+      {
+        "key": "NumericalTemp",
+        "label": "Temperature Metrics",
+        "description": "Show numerical device temperature in the driving screen developer metrics.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "DeveloperMetrics"
+      },
+      {
+        "key": "ShowMemoryUsage",
+        "label": "RAM Metrics",
+        "description": "Show memory usage in the driving screen developer metrics.",
+        "data_type": "bool",
+        "ui_type": "toggle",
+        "parent_key": "DeveloperMetrics"
+      },
+      {
+        "key": "UseOldUI",
+        "label": "Use Old UI",
+        "description": "Use the old Qt UI instead of the default raylib UI on tici/tizi devices. This setting has no effect on C4/mici devices.",
         "data_type": "bool",
         "ui_type": "toggle"
       },

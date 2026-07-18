@@ -3,6 +3,8 @@ import datetime
 import pytest
 
 from openpilot.common.constants import CV
+from openpilot.common.realtime import DT_MDL
+from openpilot.starpilot.controls.lib.curve_speed_controller import CSC_MAX_DECEL_RATE, CurveSpeedController
 from openpilot.starpilot.controls.lib.starpilot_vcruise import (
   StarPilotVCruise,
   get_active_slc_control_target,
@@ -98,6 +100,89 @@ def test_active_slc_control_target_does_not_require_set_speed_limit():
   )
 
   assert target == pytest.approx((48.0 * CV.MPH_TO_MS) - 0.4)
+
+
+def test_curve_speed_controller_holds_target_through_brief_detector_dropout():
+  planner, vcruise = make_vcruise()
+  sm = make_sm(standstill=False)
+  toggles = make_toggles()
+  toggles.curve_speed_controller = True
+
+  def set_curve_target(_v_ego):
+    vcruise.csc.target_set = True
+    vcruise.csc.target = 14.0
+
+  vcruise.csc.update_target = set_curve_target
+  planner.road_curvature_detected = True
+  result = update_vcruise(vcruise, sm, toggles, now=10.0, v_ego=20.0)
+  assert result == pytest.approx(14.0)
+  assert vcruise.csc_controlling_speed
+
+  planner.road_curvature_detected = False
+  result = update_vcruise(vcruise, sm, toggles, now=10.25, v_ego=20.0)
+  assert result == pytest.approx(14.0)
+  assert vcruise.csc_controlling_speed
+
+  result = update_vcruise(vcruise, sm, toggles, now=10.8, v_ego=20.0)
+  assert result == pytest.approx(20.0)
+  assert not vcruise.csc_controlling_speed
+
+
+def test_curve_speed_controller_releases_immediately_when_disabled():
+  planner, vcruise = make_vcruise()
+  sm = make_sm(standstill=False)
+  toggles = make_toggles()
+  toggles.curve_speed_controller = True
+
+  def set_curve_target(_v_ego):
+    vcruise.csc.target_set = True
+    vcruise.csc.target = 14.0
+
+  vcruise.csc.update_target = set_curve_target
+  planner.road_curvature_detected = True
+  update_vcruise(vcruise, sm, toggles, now=20.0, v_ego=20.0)
+  assert vcruise.csc_controlling_speed
+
+  planner.road_curvature_detected = False
+  toggles.curve_speed_controller = False
+  result = update_vcruise(vcruise, sm, toggles, now=20.1, v_ego=20.0)
+  assert result == pytest.approx(20.0)
+  assert not vcruise.csc_controlling_speed
+
+
+def test_curve_speed_controller_ramps_toward_curve_speed_at_bounded_rate():
+  planner = SimpleNamespace(
+    params=FakeParams(),
+    road_curvature=0.004,
+    time_to_curve=2.0,
+    starpilot_weather=SimpleNamespace(weather_id=0, reduce_lateral_acceleration=0.0),
+  )
+  controller = CurveSpeedController(SimpleNamespace(starpilot_planner=planner))
+  controller.lateral_acceleration = 2.0
+  controller.target_set = True
+  controller.target = 30.0
+
+  controller.update_target(30.0)
+
+  assert controller.target == pytest.approx(30.0 - CSC_MAX_DECEL_RATE * DT_MDL)
+  assert controller.target > (controller.lateral_acceleration / planner.road_curvature) ** 0.5
+
+
+def test_curve_speed_controller_does_not_slow_for_curve_speed_above_ego():
+  planner = SimpleNamespace(
+    params=FakeParams(),
+    road_curvature=0.001,
+    time_to_curve=2.0,
+    starpilot_weather=SimpleNamespace(weather_id=0, reduce_lateral_acceleration=0.0),
+  )
+  controller = CurveSpeedController(SimpleNamespace(starpilot_planner=planner))
+  controller.lateral_acceleration = 2.0
+  controller.target_set = True
+  controller.target = 28.0
+
+  controller.update_target(30.0)
+
+  assert controller.target == pytest.approx(30.0)
 
 
 def test_active_slc_control_target_applies_offset_and_cluster_diff():
@@ -286,7 +371,7 @@ def test_force_stop_turn_scene_veto_blocks_new_activation():
   _, vcruise = make_vcruise(red_light=True, raw_model_stopped=False, forcing_stop=False)
   sm = make_sm(standstill=False)
   sm["carState"].leftBlinker = True
-  sm["carState"].steeringAngleDeg = 15.0
+  sm["carState"].steeringAngleDeg = 30.0
 
   result = update_vcruise(vcruise, sm, make_toggles(), now=0.0, v_ego=7.0)
 
@@ -321,17 +406,17 @@ def test_force_stop_still_activates_for_straight_red_light_approach():
   assert vcruise.forcing_stop
 
 
-def test_force_stop_turn_scene_clears_moving_commitment():
+def test_force_stop_turn_scene_does_not_abandon_moving_commitment():
   _, vcruise = make_vcruise(red_light=False, raw_model_stopped=False, forcing_stop=True)
   sm = make_sm(standstill=False)
   sm["carState"].rightBlinker = True
-  sm["carState"].steeringAngleDeg = -15.0
+  sm["carState"].steeringAngleDeg = -30.0
 
   result = update_vcruise(vcruise, sm, make_toggles(), now=0.0, v_ego=8.0)
 
-  assert result == pytest.approx(20.0)
-  assert vcruise.force_stop_timer == pytest.approx(0.0)
-  assert not vcruise.forcing_stop
+  assert result == pytest.approx(0.0)
+  assert vcruise.force_stop_timer >= 0.5
+  assert vcruise.forcing_stop
 
 
 def test_engage_while_already_stopped_in_red_light_scene_seeds_force_stop_hold():

@@ -106,6 +106,12 @@ class FakeManagedProcess:
     return SimpleNamespace(name="ui")
 
 
+def test_reboot_guard_includes_raw_ignition_state():
+  assert manager.should_defer_reboot(started=True, ignition=False)
+  assert manager.should_defer_reboot(started=False, ignition=True)
+  assert not manager.should_defer_reboot(started=False, ignition=False)
+
+
 class TestManager:
   def setup_method(self):
     HARDWARE.set_power_save(False)
@@ -138,26 +144,26 @@ class TestManager:
     ui_process._qt_process = qt_process
     ui_process._raylib_process = raylib_process
 
-    params = FileBackedFakeParams(tmp_path / "params", {"TryRaylibUI": False})
+    params = FileBackedFakeParams(tmp_path / "params", {"UseOldUI": False})
 
     assert ui_process.should_run(False, params, car.CarParams.new_message(), SimpleNamespace())
     ui_process.start()
-    assert ui_process.proc is qt_process.proc
-    assert qt_process.starts == 1
-    assert raylib_process.starts == 0
+    assert ui_process.proc is raylib_process.proc
+    assert qt_process.starts == 0
+    assert raylib_process.starts == 1
 
-    params.put_bool("TryRaylibUI", True)
+    params.put_bool("UseOldUI", True)
     assert ui_process.should_run(True, params, car.CarParams.new_message(), SimpleNamespace())
     ui_process.start()
-    assert ui_process.proc is qt_process.proc
+    assert ui_process.proc is raylib_process.proc
     assert qt_process.stops == 0
-    assert raylib_process.starts == 0
+    assert qt_process.starts == 0
 
     assert ui_process.should_run(False, params, car.CarParams.new_message(), SimpleNamespace())
     ui_process.start()
-    assert qt_process.stops == 1
-    assert raylib_process.starts == 1
-    assert ui_process.proc is raylib_process.proc
+    assert raylib_process.stops == 1
+    assert qt_process.starts == 1
+    assert ui_process.proc is qt_process.proc
 
   def test_blacklisted_procs(self):
     # TODO: ensure there are blacklisted procs until we have a dedicated test
@@ -250,16 +256,20 @@ class TestManager:
 
   def test_cleanup_removed_starpilot_params(self, tmp_path):
     params = FileBackedFakeParams(tmp_path / "params", {
+      "CoastUpToLeads": True,
       "HumanFollowing": True,
     })
     params_cache = FileBackedFakeParams(tmp_path / "cache", {
       "HumanFollowing": False,
+      "PrioritizeSmoothFollowing": True,
     })
 
     manager.cleanup_removed_starpilot_params(params, params_cache)
 
+    assert not Path(params.get_param_path("CoastUpToLeads")).exists()
     assert not Path(params.get_param_path("HumanFollowing")).exists()
     assert not Path(params_cache.get_param_path("HumanFollowing")).exists()
+    assert not Path(params_cache.get_param_path("PrioritizeSmoothFollowing")).exists()
 
   def test_migrate_legacy_starpilot_params_cache_copies_marker_sources(self, tmp_path, monkeypatch):
     monkeypatch.setattr(manager, "STARPILOT_PARAMS_CACHE_MIGRATION_FLAG", tmp_path / "starpilot_params_cache_v1")
@@ -338,43 +348,6 @@ class TestManager:
 
     assert params.get("ClusterOffset") == "1.02"
     assert params_cache.get("ClusterOffset") is None
-
-  def test_migrate_prioritize_smooth_following_default_seeds_disabled(self, tmp_path, monkeypatch):
-    monkeypatch.setattr(manager, "STARPILOT_PRIORITIZE_SMOOTH_FOLLOWING_MIGRATION_FLAG", tmp_path / "starpilot_prioritize_smooth_following_v1")
-
-    params = FileBackedFakeParams(tmp_path / "params", {})
-    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
-
-    manager.migrate_prioritize_smooth_following_default(params, params_cache)
-
-    assert not params.get_bool("PrioritizeSmoothFollowing")
-    assert not params_cache.get_bool("PrioritizeSmoothFollowing")
-
-  def test_migrate_prioritize_smooth_following_default_inverts_legacy_coast_toggle(self, tmp_path, monkeypatch):
-    monkeypatch.setattr(manager, "STARPILOT_PRIORITIZE_SMOOTH_FOLLOWING_MIGRATION_FLAG", tmp_path / "starpilot_prioritize_smooth_following_v1")
-
-    params = FileBackedFakeParams(tmp_path / "params", {
-      "CoastUpToLeads": False,
-    })
-    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
-
-    manager.migrate_prioritize_smooth_following_default(params, params_cache)
-
-    assert params.get_bool("PrioritizeSmoothFollowing")
-    assert params_cache.get_bool("PrioritizeSmoothFollowing")
-
-  def test_migrate_prioritize_smooth_following_default_preserves_existing_values(self, tmp_path, monkeypatch):
-    monkeypatch.setattr(manager, "STARPILOT_PRIORITIZE_SMOOTH_FOLLOWING_MIGRATION_FLAG", tmp_path / "starpilot_prioritize_smooth_following_v1")
-
-    params = FileBackedFakeParams(tmp_path / "params", {
-      "PrioritizeSmoothFollowing": True,
-      "CoastUpToLeads": True,
-    })
-    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
-
-    manager.migrate_prioritize_smooth_following_default(params, params_cache)
-
-    assert params.get_bool("PrioritizeSmoothFollowing")
 
   def test_cleanup_inaccessible_msgq_files_removes_only_blocked_files(self, tmp_path, monkeypatch):
     healthy = tmp_path / "msgq_deviceState"

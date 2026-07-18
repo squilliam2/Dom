@@ -12,8 +12,16 @@ const FAVORITE_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, s
 // Plain variables — scheduling/routing flags that must NOT be reactive
 let syncScheduled = false
 let lastParams = null
+let flmWorkspaceInflight = null
+let lastFlmWorkspaceFetch = 0
+let favoritePollInflight = null
+let favoritePollTimer = null
 const DYNAMIC_DEFAULT_DEP_KEYS = new Set(["AccelerationProfile", "EVTuning", "TruckTuning"])
 const PANDA_FIRMWARE_TOGGLE_KEYS = new Set(["IgnoreIgnitionLine", "RemoteStartBootsComma", "HKGRemoteStartBootsComma"])
+const FLM_ADVANCED_LATERAL_KEYS = new Set([
+  "AdvancedLateralTune", "ForceAutoTune", "ForceAutoTuneOff", "UseAutoSteerDelay", "SteerDelay",
+  "SteerFriction", "SteerKP", "SteerLatAccel", "SteerRatio",
+])
 
 // Module-level state (persists across route changes)
 const state = reactive({
@@ -22,6 +30,7 @@ const state = reactive({
   paramMetaByKey: {},
   values: {},
   defaultValues: {},
+  flmActiveTrial: null,
   loadingLayout: true,
   loadingValues: true,
   filter: "",
@@ -29,6 +38,7 @@ const state = reactive({
   fetched: false,
   activeSectionSlug: "",
   numericUpdating: {},
+  actionUpdating: {},
   favoriteLoading: false,
   favoriteSaving: false,
   favoriteOptions: [],
@@ -267,8 +277,28 @@ async function fetchDefaultValues() {
   }
 }
 
+async function fetchFlmWorkspace(force = false) {
+  const now = Date.now()
+  if (!force && now - lastFlmWorkspaceFetch < 1500) return
+  if (flmWorkspaceInflight) return flmWorkspaceInflight
+
+  lastFlmWorkspaceFetch = now
+  flmWorkspaceInflight = fetch("/api/flm/workspace", { cache: "no-store" })
+    .then(async res => {
+      if (!res.ok) return
+      const workspace = await res.json()
+      state.flmActiveTrial = workspace?.activeTrial || null
+    })
+    .catch(error => console.warn("Failed to load active FLM trial state:", error))
+    .finally(() => {
+      flmWorkspaceInflight = null
+    })
+
+  return flmWorkspaceInflight
+}
+
 async function refreshParamsAndDefaults() {
-  await fetchDefaultValues()
+  await Promise.all([fetchDefaultValues(), fetchFlmWorkspace(true)])
 
   try {
     const valuesRes = await fetch("/api/params/all")
@@ -317,7 +347,8 @@ async function fetchLayoutAndParams() {
 
   // Pull params once at page load; local state handles subsequent edits.
   try {
-    if (!(await fetchDefaultValues())) {
+    const [defaultsLoaded] = await Promise.all([fetchDefaultValues(), fetchFlmWorkspace(true)])
+    if (!defaultsLoaded) {
       state.defaultValues = {}
     }
 
@@ -502,7 +533,7 @@ function populateFavoriteSelect(index, selectEl = null) {
 async function fetchFavoriteSlots() {
   state.favoriteLoading = true
   try {
-    const res = await fetch("/api/favorites/slots")
+    const res = await fetch("/api/favorites/slots", { cache: "no-store" })
     const data = await res.json()
     if (res.ok) {
       state.favoriteOptions = normalizeFavoriteOptions(data.options)
@@ -514,6 +545,45 @@ async function fetchFavoriteSlots() {
     console.error("Failed to fetch favorite slots:", e)
   }
   state.favoriteLoading = false
+}
+
+async function refreshFavoriteValues() {
+  if (favoritePollInflight || state.favoriteSaving || state.favoriteLoading) return favoritePollInflight
+
+  favoritePollInflight = fetch("/api/favorites/values", { cache: "no-store" })
+    .then(async res => {
+      if (!res.ok) return
+
+      const data = await res.json()
+      const values = (data.values && typeof data.values === "object") ? data.values : {}
+      const changed = Object.entries(values).some(([key, value]) => state.values[key] !== value)
+      if (!changed) return
+
+      state.favoriteValues = { ...state.favoriteValues, ...values }
+      state.values = { ...state.values, ...values }
+      scheduleSyncInputs()
+    })
+    .catch(() => {})
+    .finally(() => {
+      favoritePollInflight = null
+    })
+
+  return favoritePollInflight
+}
+
+function ensureFavoriteValuePolling() {
+  if (favoritePollTimer !== null) return
+
+  favoritePollTimer = setInterval(() => {
+    if (!window.location.pathname.startsWith("/device_settings")) {
+      clearInterval(favoritePollTimer)
+      favoritePollTimer = null
+      return
+    }
+    if (document.visibilityState === "visible") {
+      refreshFavoriteValues()
+    }
+  }, 1000)
 }
 
 async function saveFavoriteSlots(slots) {
@@ -832,6 +902,35 @@ async function resetNumericParam(param) {
   })
 }
 
+async function runSettingAction(param) {
+  const key = String(param?.key || "")
+  const endpoint = String(param?.action_endpoint || "")
+  if (!key || !endpoint || state.actionUpdating[key]) return
+
+  const confirmation = String(param?.confirm_message || `Run ${param?.label || key}?`)
+  if (!window.confirm(confirmation)) return
+
+  state.actionUpdating = { ...state.actionUpdating, [key]: true }
+  try {
+    const response = await fetch(endpoint, { method: "POST" })
+    const payload = await response.json()
+    if (!response.ok) {
+      throw new Error(payload.error || response.statusText || "Action failed")
+    }
+
+    const updated = payload.updated && typeof payload.updated === "object" ? payload.updated : {}
+    state.values = { ...state.values, ...updated }
+    showParamSnackbar(payload.message || `${param?.label || key} completed.`)
+    scheduleSyncInputs()
+  } catch (error) {
+    showParamSnackbar(error?.message || `${param?.label || key} failed.`, "error")
+  } finally {
+    const next = { ...state.actionUpdating }
+    delete next[key]
+    state.actionUpdating = next
+  }
+}
+
 async function updateParam(key, elType) {
   if (String(key).toLowerCase() === "starpilotfavoriteslots") {
     await saveFavoriteSlots(state.favoriteSlots)
@@ -992,7 +1091,58 @@ function clearSearchFilter() {
 const cancelButtonKeys = new Set(["CancelButtonControl", "LongCancelButtonControl", "VeryLongCancelButtonControl"])
 
 function getSettingLockReason(param) {
+  if (param?.disabled_when_key_true && state.values[param.disabled_when_key_true]) {
+    return param.disabled_reason || "Disabled by another setting."
+  }
   return ""
+}
+
+function valuesEqual(left, right) {
+  if (typeof left === "number" || typeof right === "number") {
+    const leftNumber = Number(left)
+    const rightNumber = Number(right)
+    return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && Math.abs(leftNumber - rightNumber) < 1e-9
+  }
+  return left === right
+}
+
+function getFlmParamStatus(key) {
+  const trial = state.flmActiveTrial
+  if (!trial || !FLM_ADVANCED_LATERAL_KEYS.has(key)) return null
+
+  const applied = trial.appliedGenericParams || {}
+  const hasExplicitMetadata = Object.prototype.hasOwnProperty.call(applied, key)
+  const previous = trial.params || {}
+  const hasPreviousValue = Object.prototype.hasOwnProperty.call(previous, key)
+
+  // Older active snapshots did not record the applied bundle, so infer only
+  // changed values for compatibility. New snapshots always use explicit metadata.
+  if (!hasExplicitMetadata && (!hasPreviousValue || valuesEqual(previous[key], state.values[key]))) return null
+
+  return {
+    effectiveValue: state.values[key],
+    previousValue: hasPreviousValue ? previous[key] : undefined,
+  }
+}
+
+function formatFlmValue(param, value) {
+  if (value === undefined || value === null) return "not set"
+  if (param.data_type === "bool") return value ? "On" : "Off"
+  if (param.ui_type === "numeric") {
+    const bounds = numericBounds(param)
+    return formatSliderValue(value, String(bounds.step), param.precision, param.key)
+  }
+  return String(value)
+}
+
+function getFlmTrialSummary() {
+  const trial = state.flmActiveTrial
+  if (!trial) return null
+  const genericCount = Object.keys(trial.appliedGenericParams || {}).filter(key => key !== "AdvancedLateralTune").length
+  const thresholdCount = Object.keys(trial.appliedFrictionThresholds || {}).length
+  const vehicleKnobCount = Object.keys(trial.appliedVehicleKnobs || {}).length
+  const title = [trial.pathLabel, trial.profileLabel].filter(Boolean).join(" / ") || "Active trial"
+  return { title, genericCount, thresholdCount, vehicleKnobCount }
 }
 
 function handleSectionTabClick(sectionSlug, event) {
@@ -1151,13 +1301,25 @@ function renderSettingRow(p) {
 
   const isNumeric = p.ui_type === "numeric"
   const isColor = p.ui_type === "color"
+  const isAction = p.ui_type === "action"
   const isGroup = isGroupParam(p)
   const isChild = p.parent_key ? "ds-child-modifier" : ""
-  const lockReason = getSettingLockReason(p)
-  const isLocked = lockReason !== ""
+  const lockReason = () => getSettingLockReason(p)
+  const isLocked = () => lockReason() !== ""
+  const flmParamStatus = getFlmParamStatus(p.key)
+  const flmTrialSummary = p.key === "AdvancedLateralTune" ? getFlmTrialSummary() : null
   let rowControl = ""
 
-  if (isNumeric) {
+  if (isAction) {
+    rowControl = html`
+      <button
+        class="ds-reset-btn"
+        disabled="${() => isLocked() || !!state.actionUpdating[p.key]}"
+        @click="${() => runSettingAction(p)}">
+        ${() => state.actionUpdating[p.key] ? "Resetting..." : (p.action_label || "Run")}
+      </button>
+    `
+  } else if (isNumeric) {
     rowControl = html`
       <div class="ds-stepper-container">
         ${(() => {
@@ -1178,7 +1340,7 @@ function renderSettingRow(p) {
             <div class="ds-stepper">
               <button
                 class="ds-stepper-btn"
-                disabled="${() => !canDecrease || false}"
+                disabled="${() => isLocked() || !canDecrease || false}"
                 @click="${() => stepNumericParam(p, -1)}">-</button>
               <div class="ds-stepper-meta">
                 <span>${formatSliderValue(bounds.min, String(bounds.step), p.precision, p.key)} to ${formatSliderValue(bounds.max, String(bounds.step), p.precision, p.key)}</span>
@@ -1192,7 +1354,7 @@ function renderSettingRow(p) {
                     min="${bounds.min}"
                     max="${bounds.max}"
                     step="${bounds.step}"
-                    disabled="${() => updating}"
+                    disabled="${() => isLocked() || updating}"
                     value="${() => formatNumericForInput(resolveCurrentNumericValue(p, numericBounds(p)), precision)}"
                     @keydown="${(e) => {
                       if (e.key !== "Enter") return
@@ -1201,17 +1363,17 @@ function renderSettingRow(p) {
                     }}" />
                   <button
                     class="ds-apply-btn"
-                    disabled="${() => updating}"
+                    disabled="${() => isLocked() || updating}"
                     @click="${() => applyManualNumericParam(p)}">Apply</button>
                 </div>
                 <button
                   class="ds-reset-btn"
-                  disabled="${() => !canReset || false}"
+                  disabled="${() => isLocked() || !canReset || false}"
                   @click="${() => resetNumericParam(p)}">Reset to Default</button>
               </div>
               <button
                 class="ds-stepper-btn"
-                disabled="${() => !canIncrease || false}"
+                disabled="${() => isLocked() || !canIncrease || false}"
                 @click="${() => stepNumericParam(p, 1)}">+</button>            </div>
           `
     })()}
@@ -1223,7 +1385,7 @@ function renderSettingRow(p) {
         class="ds-select"
         id="ds-${p.key}"
         data-endpoint="${p.options_endpoint || ""}"
-        disabled="${() => isLocked}"
+        disabled="${() => isLocked()}"
         @change="${() => updateParam(p.key, "dropdown")}">
         <option value="">Loading...</option>
       </select>
@@ -1235,12 +1397,12 @@ function renderSettingRow(p) {
           type="color"
           class="ds-color"
           id="ds-${p.key}"
-          disabled="${() => isLocked}"
+          disabled="${() => isLocked()}"
           value="${() => resolveColorInputValue(p)}"
           @change="${() => updateParam(p.key, "color")}" />
         <button
           class="ds-reset-btn"
-          disabled="${() => isLocked || isStockColorValue(state.values[p.key])}"
+          disabled="${() => isLocked() || isStockColorValue(state.values[p.key])}"
           @click="${() => resetColorParam(p)}">Stock</button>
       </div>
     `
@@ -1275,9 +1437,34 @@ function renderSettingRow(p) {
     <div class="ds-row ${isNumeric ? "ds-row-numeric" : ""} ${isChild}">
       <div class="ds-row-info">
         <div class="ds-row-text">
-          <span class="ds-row-label">${p.label}</span>
+          <div class="ds-row-heading">
+            <span class="ds-row-label">${p.label}</span>
+            ${flmParamStatus ? html`<span class="ds-flm-badge">Currently overridden by FLM</span>` : ""}
+          </div>
           ${p.description ? html`<div class="ds-row-desc">${p.description}</div>` : ""}
-          ${lockReason ? html`<div class="ds-row-desc"><strong>Locked:</strong> ${lockReason}</div>` : ""}
+          ${() => {
+            const reason = lockReason()
+            return reason ? html`<div class="ds-row-desc"><strong>Locked:</strong> ${reason}</div>` : ""
+          }}
+          ${flmParamStatus ? html`
+            <div class="ds-flm-detail">
+              Effective now: <strong>${formatFlmValue(p, flmParamStatus.effectiveValue)}</strong>.
+              Revert restores: <strong>${formatFlmValue(p, flmParamStatus.previousValue)}</strong>.
+              You can still edit this while the trial is active.
+            </div>
+          ` : ""}
+          ${flmTrialSummary ? html`
+            <div class="ds-flm-summary">
+              <div><strong>FLM trial active:</strong> ${flmTrialSummary.title}</div>
+              <div>
+                ${flmTrialSummary.genericCount} advanced setting${flmTrialSummary.genericCount === 1 ? "" : "s"},
+                ${flmTrialSummary.thresholdCount} friction curve${flmTrialSummary.thresholdCount === 1 ? "" : "s"}, and
+                ${flmTrialSummary.vehicleKnobCount} vehicle-specific knob${flmTrialSummary.vehicleKnobCount === 1 ? "" : "s"} active.
+              </div>
+              <div>Revert from Lateral Tuning restores the exact settings saved before this trial.</div>
+              <a class="ds-flm-link" href="/tuning">Open Lateral Tuning</a>
+            </div>
+          ` : ""}
 
           ${() => p.is_parent_toggle && isParamEnabledForChildren(p) ? html`
             <div class="ds-manage-btn" @click="${() => toggleManage(p.key)}">
@@ -1339,6 +1526,9 @@ function resolveActiveSectionSlug(params) {
 
 export function DeviceSettings({ params }) {
   lastParams = params
+
+  fetchFlmWorkspace()
+  ensureFavoriteValuePolling()
 
   if (!state.fetched) {
     state.fetched = true

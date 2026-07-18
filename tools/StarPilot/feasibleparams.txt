@@ -61,7 +61,6 @@ ColorScheme
 CommunityFavorites
 ConditionalChill
 ConditionalExperimental
-PrioritizeSmoothFollowing
 CurveSpeedController
 CustomAlerts
 CustomCruise
@@ -331,6 +330,7 @@ StartupMessageBottom
 StartupMessageTop
 StaticPedalsOnUI
 SteerDelay
+SteerDelayModeMigrated
 SteerDelayStock
 SteerFriction
 SteerFrictionStock
@@ -343,7 +343,6 @@ SteerRatioStock
 StockConfidenceBallWidget
 StopAccel
 StopAccelStock
-StopDistance
 StoppedTimer
 StoppingDecelRate
 StoppingDecelRateStock
@@ -367,6 +366,7 @@ TuningLevelConfirmed
 TurnDesires
 UnlockDoors
 UpdaterAvailableBranches
+UseAutoSteerDelay
 UseKonikServer
 UsePrebuilt
 UseSI

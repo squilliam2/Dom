@@ -999,6 +999,21 @@ FW_VERSIONS = {
       b'\xf1\x00CN ESC \t 105 \x10\x03 58910-AA800',
     ],
   },
+  CAR.HYUNDAI_ELANTRA_2024: {
+    (Ecu.fwdRadar, 0x7d0, None): [
+      b'\xf1\x00CN7_ RDR -----      1.00 1.01 99110-AA500         ',
+    ],
+    (Ecu.eps, 0x7d4, None): [
+      b'\xf1\x00CN7 MDPS C 1.00 1.02 56300AA670\x00 4CSDC102',
+    ],
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00CN7 MFC  AT USA LHD 1.00 1.02 99210-AA500 230420',
+      b'\xf1\x00CN7 MFC  AT USA LHD 1.00 1.03 99210-AA500 230918',
+    ],
+    (Ecu.abs, 0x7d1, None): [
+      b'\xf1\x00CN ESC \t 104#\x07\x03 58910-AA850',
+    ],
+  },
   CAR.HYUNDAI_ELANTRA_HEV_2021: {
     (Ecu.fwdCamera, 0x7c4, None): [
       b'\xf1\x00CN7HMFC  AT USA LHD 1.00 1.03 99210-AA000 200819',
@@ -1016,6 +1031,22 @@ FW_VERSIONS = {
       b'\xf1\x00CN7 MDPS C 1.00 1.03 56310BY050\x00 4CNHC103',
       b'\xf1\x00CN7 MDPS C 1.00 1.03 56310BY0500 4CNHC103',
       b'\xf1\x00CN7 MDPS C 1.00 1.04 56310BY050\x00 4CNHC104',
+    ],
+  },
+  CAR.HYUNDAI_ELANTRA_HEV_2024: {
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00CN7HMFC  AT AUS RHD 1.00 1.02 99210-AA500 230420',
+      b'\xf1\x00CN7HMFC  AT CAN LHD 1.00 1.05 99210-AA510 240509',
+      b'\xf1\x00CN7HMFC  AT USA LHD 1.00 1.03 99210-AA500 230918',
+      b'\xf1\x00CN7HMFC  AT USA LHD 1.00 1.05 99210-AA510 240509',
+    ],
+    (Ecu.fwdRadar, 0x7d0, None): [
+      b'\xf1\x00CN7_ RDR -----      1.00 1.01 99110-AA500         ',
+    ],
+    (Ecu.eps, 0x7d4, None): [
+      b'\xf1\x00CN7 MDPS C 1.00 1.00 56300BY670\x00 4CSHC100',
+      b'\xf1\x00CN7 MDPS C 1.00 1.00 56300BY680\x00 4CSHC100',
+      b'\xf1\x00CN7 MDPS C 1.00 1.03 56300BY670\x00 4CSHC103',
     ],
   },
   CAR.HYUNDAI_KONA_HEV: {
@@ -1479,6 +1510,26 @@ FW_VERSIONS = {
       b'\xf1\x00KA4_ SCC FHCUP      1.00 1.02 99110-R0000         ',
       b'\xf1\x00KA4_ SCC FHCUP      1.00 1.03 99110-R0000         ',
       b'\xf1\x00KA4c SCC FHCUP      1.00 1.01 99110-I4000         ',
+    ],
+  },
+  CAR.KIA_CARNIVAL_2025: {
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00KA4 MFC  AT CAN LHD 1.00 1.00 99210-R0700 250324',
+      b'\xf1\x00KA4 MFC  AT USA LHD 1.00 1.05 99210-R0500 240305',
+    ],
+    (Ecu.fwdRadar, 0x7d0, None): [
+      b'\xf1\x00KA4_ SCC FHCUP      1.00 1.01 99110-R0510         ',
+      b'\xf1\x00KA4_ RDR -----      1.00 1.01 99110-R0510         ',
+    ],
+  },
+  CAR.KIA_CARNIVAL_HEV_4TH_GEN: {
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00KA4HMFC  AT USA LHD 1.00 1.05 99210-R0500 240305',
+      b'\xf1\x00KA4HMFC  AT KOR LHD 1.00 1.00 99210-R0600 240924',
+      b'\xf1\x00KA4HMFC  AT USA LHD 1.00 1.00 99210-R0700 250324',
+    ],
+    (Ecu.fwdRadar, 0x7d0, None): [
+      b'\xf1\x00KAhe RDR -----      1.00 1.01 99110-ES500         ',
     ],
   },
   CAR.KIA_K8_HEV_1ST_GEN: {

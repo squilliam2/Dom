@@ -15,6 +15,7 @@ import numpy as np
 
 from openpilot.common.constants import CV
 from openpilot.common.realtime import set_core_affinity
+from openpilot.starpilot.common.cpu_throttle import device_cpu_throttle_factor
 from openpilot.system.hardware import PC
 
 RUNTIME_LOOP_HZ = 20
@@ -157,8 +158,9 @@ SPEED_LIMIT_CLASSES = {
   13: 90,
 }
 
-VALID_SPEED_LIMITS_MPH = set(range(10, 125, 5))
-MIN_PUBLISHABLE_SPEED_LIMIT_MPH = 20
+VALID_SPEED_LIMITS_MPH = set(range(5, 125, 5))
+MIN_PUBLISHABLE_SPEED_LIMIT_MPH = 5
+MAX_IMPERIAL_PUBLISHABLE_SPEED_LIMIT_MPH = 80
 LEGACY_MODEL_PATH = Path(__file__).resolve().parents[1] / "assets" / "vision_models" / "speed_limit_vision.onnx"
 US_DETECTOR_MODEL_PATH = Path(__file__).resolve().parents[1] / "assets" / "vision_models" / "speed_limit_us_detector.onnx"
 US_CLASSIFIER_MODEL_PATH = Path(__file__).resolve().parents[1] / "assets" / "vision_models" / "speed_limit_us_value_classifier.onnx"
@@ -168,10 +170,12 @@ US_DETECTOR_CLASSES = {
   1: "advisory_speed_limit",
   2: "school_zone_speed_limit",
 }
-US_CLASSIFIER_SPEED_VALUES = (15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75)
+US_CLASSIFIER_SPEED_VALUES = (10, 100, 15, 20, 25, 30, 35, 40, 45, 5, 50, 55, 60, 65, 70, 75, 80, 90)
+EXTENDED_CLASSIFIER_SPEED_VALUES = frozenset((5, 10, 80, 90, 100))
 SCHOOL_ZONE_SPEED_VALUES = frozenset((15, 20, 25))
 US_DETECTOR_MIN_CONFIDENCE = 0.06
 US_CLASSIFIER_MIN_CONFIDENCE = 0.60
+EXTENDED_CLASSIFIER_MIN_CONFIDENCE = 0.90
 US_CLASSIFIER_REJECT_MIN_CONFIDENCE = 0.85
 SEPARATE_REJECT_CLASSIFIER_ENABLED = False
 US_REJECT_CLASSIFIER_MIN_CONFIDENCE = 0.85
@@ -234,6 +238,13 @@ DEBUG_RUNTIME_STATUS_PATH = DEBUG_BASE_DIR / "runtime_status.json"
 DEBUG_CAPTURE_DIRNAME = "captures"
 SNAPSHOT_JPEG_QUALITY = 85
 SPEED_LIMIT_VISION_AFFINITY_CORES = [0, 1, 2]
+SPEED_LIMIT_VISION_COEXISTENCE_AFFINITY_CORES = [0, 1]
+COEXISTENCE_PARAM_REFRESH_SECONDS = 2.0
+COEXISTENCE_TRACK_DETECTOR_INTERVAL = 0.80
+COEXISTENCE_DETECTOR_CLASSIFIER_EXPANSIONS = (
+  (0.00, 0.00, 0.00, 0.00, 1.10),
+  (0.10, 0.06, 0.10, 0.12, 1.00),
+)
 
 
 def device_cpu_usage_busy(cpu_usage):
@@ -309,7 +320,7 @@ class SpeedLimitVisionDaemon:
       self.Ratekeeper = Ratekeeper
       self.VisionIpcClient = VisionIpcClient
       self.VisionStreamType = VisionStreamType
-      self.sm = messaging.SubMaster(["deviceState", "mapdOut", "userBookmark", "livePose"])
+      self.sm = messaging.SubMaster(["deviceState", "mapdOut", "userBookmark", "livePose", "starpilotCarState"])
 
     self.client = None
     self.stream_name = ""
@@ -333,6 +344,7 @@ class SpeedLimitVisionDaemon:
     self.track_start_count = 0
     self.max_track_proposal_confidence = 0.0
     self.started_prev = False
+    self.parked_prev = False
 
     self.history: deque[HistoryEntry] = deque()
     self.published_speed_limit_mph = 0
@@ -377,6 +389,11 @@ class SpeedLimitVisionDaemon:
     self.last_inference_interval = INFERENCE_INTERVAL
     self.last_inference_interval_reason = "steady"
     self.last_cpu_busy = False
+    self.coexistence_mode = False
+    self.last_coexistence_param_refresh_at = -float("inf")
+    self.temporal_tracking_enabled = TEMPORAL_TRACKING_ENABLED
+    self.track_detector_interval = TRACK_DETECTOR_INTERVAL
+    self.detector_classifier_expansions = DETECTOR_CLASSIFIER_EXPANSIONS
     self.last_frame_process_duration_s = 0.0
     self.last_detector_forward_count = 0
     self.last_detector_forward_duration_s = 0.0
@@ -835,6 +852,32 @@ class SpeedLimitVisionDaemon:
       return False
     return device_cpu_usage_busy(self.sm["deviceState"].cpuUsagePercent)
 
+  def _update_coexistence_mode(self, now):
+    if self.params is None or now - self.last_coexistence_param_refresh_at < COEXISTENCE_PARAM_REFRESH_SECONDS:
+      return
+    self.last_coexistence_param_refresh_at = now
+
+    coexistence_mode = self.params.get_bool("VASMEnabled")
+    if coexistence_mode == self.coexistence_mode:
+      return
+
+    self.coexistence_mode = coexistence_mode
+    self.latest_detector_proposal = None
+    self._clear_proposal_track()
+    if coexistence_mode:
+      self.temporal_tracking_enabled = True
+      self.track_detector_interval = COEXISTENCE_TRACK_DETECTOR_INTERVAL
+      self.detector_classifier_expansions = COEXISTENCE_DETECTOR_CLASSIFIER_EXPANSIONS
+      affinity_cores = SPEED_LIMIT_VISION_COEXISTENCE_AFFINITY_CORES
+    else:
+      self.temporal_tracking_enabled = TEMPORAL_TRACKING_ENABLED
+      self.track_detector_interval = TRACK_DETECTOR_INTERVAL
+      self.detector_classifier_expansions = DETECTOR_CLASSIFIER_EXPANSIONS
+      affinity_cores = SPEED_LIMIT_VISION_AFFINITY_CORES
+
+    if not PC:
+      set_core_affinity(affinity_cores)
+
   def _inference_interval(self, now):
     in_followup = now < self.followup_until
     interval = FOLLOWUP_INFERENCE_INTERVAL if in_followup else INFERENCE_INTERVAL
@@ -843,6 +886,13 @@ class SpeedLimitVisionDaemon:
     if now - self.last_live_pose_inputs_not_ok_at < LIVE_POSE_RECOVERY_THROTTLE_SECONDS:
       interval = max(interval, LIVE_POSE_RECOVERY_INFERENCE_INTERVAL)
       reason = "live_pose_recovery"
+    elif self.coexistence_mode:
+      cpu_usage = list(self.sm["deviceState"].cpuUsagePercent) if self.sm is not None and self.sm.valid.get("deviceState", False) else []
+      factor = device_cpu_throttle_factor(cpu_usage, name="SpeedLimit")
+      if factor > 1.05:
+        self.last_cpu_busy = True
+        interval *= factor
+        reason = f"cpu_{factor:.1f}x"
     elif self._device_cpu_busy():
       self.last_cpu_busy = True
       interval = max(interval, BUSY_INFERENCE_INTERVAL)
@@ -1033,6 +1083,25 @@ class SpeedLimitVisionDaemon:
     self.stream_type = None
     self.stream_name = ""
 
+  def _receive_frame_bgr(self):
+    # Keep VisionBuf and its NumPy view inside this short-lived scope. A local
+    # in run() survives loop iterations and can otherwise retain the old
+    # VisionIpcClient, including all imported camera buffers, while offroad.
+    client = self.client
+    if client is None:
+      return None
+
+    buffer = client.recv()
+    if buffer is None:
+      return None
+
+    data = buffer.data
+    if not data.any():
+      return None
+
+    image = np.frombuffer(data, dtype=np.uint8).reshape((len(data) // client.stride, client.stride))
+    return cv2.cvtColor(image[:client.height * 3 // 2, :client.width], cv2.COLOR_YUV2BGR_NV12)
+
   @staticmethod
   def _letterbox(image, shape=(640, 640), color=(114, 114, 114)):
     image_height, image_width = image.shape[:2]
@@ -1123,7 +1192,7 @@ class SpeedLimitVisionDaemon:
 
   def _remember_detector_proposal(self, confidence, class_id, bbox, speed_limit_mph=0, preferred=False):
     min_confidence = TRACK_MIN_PROPOSAL_CONFIDENCE if speed_limit_mph else TRACK_UNREADABLE_MIN_PROPOSAL_CONFIDENCE
-    if not TEMPORAL_TRACKING_ENABLED or class_id == 1 or confidence < min_confidence:
+    if not getattr(self, "temporal_tracking_enabled", TEMPORAL_TRACKING_ENABLED) or class_id == 1 or confidence < min_confidence:
       return
     proposal = DetectorProposal(float(confidence), int(class_id), bbox, int(speed_limit_mph))
     latest_proposal = getattr(self, "latest_detector_proposal", None)
@@ -1134,7 +1203,7 @@ class SpeedLimitVisionDaemon:
     proposal = self.latest_detector_proposal
     self.latest_detector_proposal = None
     if (
-      not TEMPORAL_TRACKING_ENABLED or
+      not getattr(self, "temporal_tracking_enabled", TEMPORAL_TRACKING_ENABLED) or
       proposal is None or
       (proposal.speed_limit_mph and not TRACK_CONFIRMED_PROPOSALS_ENABLED)
     ):
@@ -1165,7 +1234,11 @@ class SpeedLimitVisionDaemon:
     interval = TRACK_CLASSIFICATION_INTERVAL
     if now - self.last_live_pose_inputs_not_ok_at < LIVE_POSE_RECOVERY_THROTTLE_SECONDS:
       return max(interval, LIVE_POSE_RECOVERY_INFERENCE_INTERVAL)
-    if self._device_cpu_busy():
+    if self.coexistence_mode:
+      cpu_usage = list(self.sm["deviceState"].cpuUsagePercent) if self.sm is not None and self.sm.valid.get("deviceState", False) else []
+      if device_cpu_throttle_factor(cpu_usage, name="SpeedLimit") > 1.05:
+        return max(interval, TRACK_BUSY_CLASSIFICATION_INTERVAL)
+    elif self._device_cpu_busy():
       return max(interval, TRACK_BUSY_CLASSIFICATION_INTERVAL)
     return interval
 
@@ -1177,6 +1250,13 @@ class SpeedLimitVisionDaemon:
       self._clear_proposal_track()
       return False
     return now - track.last_classified_at >= self._track_classification_interval(now)
+
+  def _detector_interval(self, inference_interval):
+    if self.coexistence_mode:
+      return max(inference_interval, self.track_detector_interval)
+    if self.proposal_track is not None:
+      return max(inference_interval, TRACK_DETECTOR_INTERVAL)
+    return inference_interval
 
   def _classify_proposal_track(self, frame_bgr, now):
     track = self.proposal_track
@@ -1285,6 +1365,8 @@ class SpeedLimitVisionDaemon:
     if detection is None:
       return None
     if detection.speed_limit_mph < MIN_PUBLISHABLE_SPEED_LIMIT_MPH:
+      return None
+    if not getattr(self, "is_metric", False) and detection.speed_limit_mph > MAX_IMPERIAL_PUBLISHABLE_SPEED_LIMIT_MPH:
       return None
     return detection
 
@@ -1614,12 +1696,16 @@ class SpeedLimitVisionDaemon:
     speed_probabilities = probabilities[:speed_class_count]
     class_index = int(np.argmax(speed_probabilities))
     confidence = float(speed_probabilities[class_index])
+    speed_limit = US_CLASSIFIER_SPEED_VALUES[class_index]
     if has_reject_class and float(probabilities[speed_class_count]) >= max(confidence, US_CLASSIFIER_REJECT_MIN_CONFIDENCE):
       return None
-    if confidence < US_CLASSIFIER_MIN_CONFIDENCE:
+    minimum_confidence = (
+      EXTENDED_CLASSIFIER_MIN_CONFIDENCE if speed_limit in EXTENDED_CLASSIFIER_SPEED_VALUES else US_CLASSIFIER_MIN_CONFIDENCE
+    )
+    if confidence < minimum_confidence:
       return None
 
-    return US_CLASSIFIER_SPEED_VALUES[class_index], confidence
+    return speed_limit, confidence
 
   def _detect_sign_from_detector_classifier(self, frame_bgr):
     frame_height, frame_width = frame_bgr.shape[:2]
@@ -1720,7 +1806,8 @@ class SpeedLimitVisionDaemon:
       speed_direct_model_support: dict[int, int] = {}
       speed_strong_model_support: dict[int, int] = {}
 
-      for expand_left, expand_top, expand_right, expand_bottom, expansion_weight in DETECTOR_CLASSIFIER_EXPANSIONS:
+      expansions = getattr(self, "detector_classifier_expansions", DETECTOR_CLASSIFIER_EXPANSIONS)
+      for expand_left, expand_top, expand_right, expand_bottom, expansion_weight in expansions:
         expanded_x1 = max(int(x1 - box_width * expand_left), 0)
         expanded_y1 = max(int(y1 - box_height * expand_top), 0)
         expanded_x2 = min(int(x2 + box_width * expand_right), frame_width)
@@ -2227,6 +2314,24 @@ class SpeedLimitVisionDaemon:
     if self.params_memory is not None:
       self.params_memory.remove("VisionSpeedLimit")
       self.params_memory.remove("VisionSpeedLimitConfidence")
+      self.params_memory.remove("VisionSpeedLimitSupportCount")
+      self.params_memory.remove("VisionSpeedLimitSupportSpeed")
+
+  def _enter_parked(self, now):
+    self.current_frame_bgr = None
+    self.latest_detector_proposal = None
+    self._clear_proposal_track()
+    self.pending_auto_bookmark = None
+    self.pending_training_capture = None
+    self.followup_until = 0.0
+    self._publish_status("Idle - parked", clear_speed=False)
+    self._publish_runtime_telemetry(now, "parked", force=True)
+
+  def _publish_detection_support(self, speed_limit_mph, support_count):
+    if self.params_memory is None:
+      return
+    self.params_memory.put_int("VisionSpeedLimitSupportCount", support_count)
+    self.params_memory.put_float("VisionSpeedLimitSupportSpeed", self._speed_value_to_ms(speed_limit_mph))
 
   def _publish_status(self, status, clear_speed=False):
     if clear_speed:
@@ -2424,6 +2529,7 @@ class SpeedLimitVisionDaemon:
     confirmed = self._confirm_detection()
     if confirmed is not None:
       speed_limit_mph, confidence = confirmed
+      support_count = sum(entry.speed_limit_mph == speed_limit_mph for entry in self.history)
       if self._should_hold_current_publish(speed_limit_mph, confidence, now):
         self._publish_status(
           f"Candidate {self._format_speed_value(speed_limit_mph)} ({confidence * 100:.0f}%)",
@@ -2431,6 +2537,7 @@ class SpeedLimitVisionDaemon:
         )
       else:
         self._publish_detection(speed_limit_mph, confidence, "Holding")
+        self._publish_detection_support(speed_limit_mph, support_count)
     else:
       self._publish_status(
         f"Candidate {self._format_speed_value(detection.speed_limit_mph)} ({detection.confidence * 100:.0f}%)",
@@ -2467,6 +2574,7 @@ class SpeedLimitVisionDaemon:
           self._disconnect_camera()
         self.last_road_name = ""
         self.started_prev = False
+        self.parked_prev = False
         self.current_frame_bgr = None
         self.pending_auto_bookmark = None
         self._publish_status("Idle - offroad", clear_speed=True)
@@ -2486,6 +2594,20 @@ class SpeedLimitVisionDaemon:
         self._write_debug_event("session_recovered", reason="missing_debug_session_while_onroad")
         self._publish_runtime_telemetry(now, "session_recovered", force=True)
 
+      parked = self.sm["starpilotCarState"].isParked if self.sm.valid.get("starpilotCarState", False) else False
+      if parked:
+        if not self.parked_prev:
+          self._enter_parked(now)
+        else:
+          self._publish_runtime_telemetry(now, "parked")
+        self.parked_prev = True
+        ratekeeper.keep_time()
+        continue
+      if self.parked_prev:
+        self.parked_prev = False
+        self.last_inference_at = -float("inf")
+        self._publish_runtime_telemetry(now, "parked_exit", force=True)
+
       road_name = self.sm["mapdOut"].roadName
       if self.last_road_name and road_name and road_name != self.last_road_name:
         self._write_debug_event("road_change", previousRoadName=self.last_road_name, roadName=road_name)
@@ -2503,13 +2625,14 @@ class SpeedLimitVisionDaemon:
         ratekeeper.keep_time()
         continue
 
+      self._update_coexistence_mode(now)
       inference_interval = self._inference_interval(now)
       track_due = self._track_classification_due(now)
-      detector_interval = max(inference_interval, TRACK_DETECTOR_INTERVAL) if self.proposal_track is not None else inference_interval
+      detector_interval = self._detector_interval(inference_interval)
       detector_due = now - self.last_inference_at >= detector_interval
       if not track_due and not detector_due:
         self.interval_skip_count += 1
-        if self.last_inference_interval_reason == "cpu_busy":
+        if self.last_cpu_busy:
           self.busy_skip_count += 1
         stale_cleared = self._clear_published_detection_if_stale(now, "inference_interval")
         if self.published_speed_limit_mph > 0 and not stale_cleared:
@@ -2520,7 +2643,7 @@ class SpeedLimitVisionDaemon:
         ratekeeper.keep_time()
         continue
 
-      buffer = self.client.recv() if self.client is not None else None
+      frame_bgr = self._receive_frame_bgr()
       self.inference_count += 1
       inference_started_at = time.monotonic()
       self.last_frame_process_duration_s = 0.0
@@ -2528,7 +2651,7 @@ class SpeedLimitVisionDaemon:
       self.last_detector_forward_duration_s = 0.0
       self.last_classifier_forward_count = 0
       self.last_classifier_forward_duration_s = 0.0
-      if buffer is None or not buffer.data.any():
+      if frame_bgr is None:
         self.empty_frame_count += 1
         stale_cleared = self._clear_published_detection_if_stale(now, "empty_frame")
         if self.published_speed_limit_mph > 0 and not stale_cleared:
@@ -2542,8 +2665,6 @@ class SpeedLimitVisionDaemon:
         ratekeeper.keep_time()
         continue
 
-      image = np.frombuffer(buffer.data, dtype=np.uint8).reshape((len(buffer.data) // self.client.stride, self.client.stride))
-      frame_bgr = cv2.cvtColor(image[:self.client.height * 3 // 2, :self.client.width], cv2.COLOR_YUV2BGR_NV12)
       self.current_frame_bgr = frame_bgr
 
       if detector_due:

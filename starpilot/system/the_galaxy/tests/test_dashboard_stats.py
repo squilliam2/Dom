@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sys
 
 from pathlib import Path
@@ -140,10 +141,39 @@ def _install_server_import_stubs():
     sync_persist_chill_state=lambda *args, **kwargs: None,
     sync_persist_experimental_state=lambda *args, **kwargs: None,
   )
+  def _trigger_stub_favorite_action(key, params_memory=None):
+    if params_memory is None:
+      return False
+    counter_key = (
+      "FavoriteVirtualAccelCruiseCounter"
+      if str(key or "").endswith("distance_increase")
+      else "FavoriteVirtualDecelCruiseCounter"
+    )
+    params_memory.put_int(counter_key, params_memory.get_int(counter_key) + 1)
+    return True
+
   sys.modules["openpilot.starpilot.common.favorite_slots"] = _simple_module(
     "openpilot.starpilot.common.favorite_slots",
+    FAVORITE_ACTION_OPTIONS=(
+      {
+        "key": "__starpilot_favorite_action__:distance_decrease",
+        "label": "Distance - / SET",
+        "description": "Acts like a short press of the car's SET/- cruise button.",
+        "section": "Actions",
+        "action": "decelCruise",
+      },
+      {
+        "key": "__starpilot_favorite_action__:distance_increase",
+        "label": "Distance + / RES",
+        "description": "Acts like a short press of the car's RES/+ cruise button.",
+        "section": "Actions",
+        "action": "accelCruise",
+      },
+    ),
     FAVORITE_SLOTS_PARAM="FavoriteSlots",
+    is_favorite_action_key=lambda key: str(key or "").startswith("__starpilot_favorite_action__:"),
     normalize_favorite_slots=lambda *args, **kwargs: "",
+    trigger_favorite_action=_trigger_stub_favorite_action,
   )
   sys.modules["openpilot.starpilot.common.starpilot_utilities"] = _simple_module(
     "openpilot.starpilot.common.starpilot_utilities",
@@ -428,6 +458,27 @@ def test_route_listing_prefers_segment_candidates_with_logs(tmp_path):
   assert routes[0]["segments"][0]["path"] == standard_segment
 
 
+def test_route_listing_uses_all_segment_times_when_segment_zero_was_touched(tmp_path):
+  route_start = utilities.datetime(2026, 7, 18, 7, 19, 0)
+  route_name = "000011e3--6e01289631"
+  for segment_num in range(2):
+    segment = tmp_path / f"{route_name}--{segment_num}"
+    segment.mkdir()
+    segment_end = route_start.timestamp() + (segment_num + 1) * 60
+    os.utime(segment, (segment_end, segment_end))
+
+  touched_segment = tmp_path / f"{route_name}--0"
+  touched_time = utilities.datetime(2026, 7, 20, 12, 8, 38).timestamp()
+  os.utime(touched_segment, (touched_time, touched_time))
+
+  routes = utilities._list_dashboard_routes([tmp_path])
+
+  assert routes[0]["startedAt"] == route_start
+  start, end = utilities._route_time_range(routes[0], 180)
+  assert start == "2026-07-18T07:19:00"
+  assert end == "2026-07-18T07:22:00"
+
+
 def test_top_models_are_ranked_from_persisted_usage_not_favorites():
   params = FakeParams({
     "AvailableModels": "orion,vega,atlas,nova",
@@ -694,6 +745,57 @@ def test_cpu_temp_reader_ignores_non_cpu_thermal_zones(tmp_path):
   assert utilities._read_cpu_temp_c(tmp_path) == 61
 
 
+def test_network_name_uses_wifi_ssid(monkeypatch):
+  monkeypatch.setattr(utilities, "HARDWARE", SimpleNamespace(get_network_type=lambda: 1))
+  monkeypatch.setattr(utilities, "_read_active_wifi_ssid", lambda: "Garage Wi-Fi")
+  utilities._NETWORK_STATUS_CACHE.update({"updated_at": 0.0, "value": None})
+
+  assert utilities.get_current_network_name() == "Garage Wi-Fi"
+
+
+def test_wifi_ssid_reader_uses_active_nmcli_row(monkeypatch):
+  result = SimpleNamespace(
+    returncode=0,
+    stdout=" :Nearby Network\n*:Garage:Main Wi-Fi\n",
+  )
+  monkeypatch.setattr(utilities.subprocess, "run", lambda *args, **kwargs: result)
+
+  assert utilities._read_active_wifi_ssid() == "Garage:Main Wi-Fi"
+
+
+def test_network_name_labels_cellular_generations(monkeypatch):
+  network_type = {"value": 4}
+  monkeypatch.setattr(utilities, "HARDWARE", SimpleNamespace(get_network_type=lambda: network_type["value"]))
+  monkeypatch.setattr(utilities, "_read_active_wifi_ssid", lambda: None)
+
+  utilities._NETWORK_STATUS_CACHE.update({"updated_at": 0.0, "value": None})
+  assert utilities.get_current_network_name() == "Cellular (LTE)"
+
+  network_type["value"] = 5
+  utilities._NETWORK_STATUS_CACHE.update({"updated_at": 0.0, "value": None})
+  assert utilities.get_current_network_name() == "Cellular (5G)"
+
+
+def test_network_name_reports_no_wireless_connectivity(monkeypatch):
+  monkeypatch.setattr(utilities, "HARDWARE", SimpleNamespace(get_network_type=lambda: 0))
+  monkeypatch.setattr(utilities, "_read_active_wifi_ssid", lambda: None)
+  utilities._NETWORK_STATUS_CACHE.update({"updated_at": 0.0, "value": None})
+
+  assert utilities.get_current_network_name() == "No wireless connectivity"
+
+
+def test_device_summary_includes_network_name(monkeypatch):
+  monkeypatch.setattr(utilities, "_read_uptime_seconds", lambda: 120)
+  monkeypatch.setattr(utilities, "_read_cpu_temp_c", lambda: 55)
+  monkeypatch.setattr(utilities, "get_current_lan_ip", lambda: "192.168.1.10")
+  monkeypatch.setattr(utilities, "get_current_network_name", lambda: "Home Network")
+
+  summary = utilities._build_device_summary(FakeParams({"IsOnroad": False}))
+
+  assert summary["networkName"] == "Home Network"
+  assert summary["lanIp"] == "192.168.1.10"
+
+
 def test_persistent_loader_accepts_decoded_param_dict():
   params = FakeParams({
     utilities.DASHBOARD_PERSISTENT_STATS_PARAM: {
@@ -770,7 +872,7 @@ def test_lightweight_routes_surface_recent_drives_without_log_analysis(monkeypat
   dashboard = utilities.get_dashboard_stats(["/tmp/missing"], params, now=utilities.datetime(2026, 6, 16, 12, 0, 0))
 
   assert [drive["name"] for drive in dashboard["recentDrives"]] == ["route-new", "route-old"]
-  assert dashboard["lastDrive"]["model"] == "Orion"
+  assert dashboard["lastDrive"]["model"] == "Unknown model"
   assert dashboard["week"]["drives"] == 2
   assert dashboard["favoriteModels"] == []
   assert dashboard["analysis"]["pendingRoutes"] == 2
@@ -896,7 +998,7 @@ def test_shell_update_preserves_old_analysis_version_for_reparse():
     "distanceMeters": 0.0,
     "duration": 660,
     "engagedSeconds": 0.0,
-    "model": "Orion",
+    "model": "Vega",
     "routeModifiedAt": 100,
     "attentionKnown": False,
     "analysisComplete": False,
@@ -906,8 +1008,65 @@ def test_shell_update_preserves_old_analysis_version_for_reparse():
   stats = utilities._update_dashboard_persistent_stats(params, [shell_drive], wall_now=1000)
 
   assert stats["routes"]["route-1"]["date"] == "2026-06-18T09:24:00"
+  assert stats["routes"]["route-1"]["model"] == "Orion"
   assert stats["routes"]["route-1"]["analysisVersion"] == utilities.DASHBOARD_ROUTE_ANALYSIS_VERSION - 1
   assert utilities._analysis_candidates([{"name": "route-1", "modifiedAt": 100}], stats)
+
+
+def test_route_shell_does_not_assign_the_current_model():
+  route_info = {
+    "name": "route-1",
+    "segments": [],
+    "segmentCount": 1,
+    "startedAt": utilities.datetime(2026, 6, 18, 9, 24, 0),
+    "modifiedAt": utilities.datetime(2026, 6, 18, 9, 25, 0).timestamp(),
+  }
+  params = FakeParams({"DrivingModelName": "Vega"})
+
+  shell_drive = utilities._route_shell_drive(route_info, params, {}, is_metric=False)
+
+  assert shell_drive["model"] == "Unknown model"
+
+
+def test_reanalysis_replaces_the_shell_model_and_recalculates_usage():
+  params = FakeParams({
+    utilities.DASHBOARD_PERSISTENT_STATS_PARAM: {
+      "routes": {
+        "route-1": {
+          "date": "2026-07-17T16:58:00",
+          "endDate": "2026-07-17T17:51:00",
+          "distanceMeters": 57000.0,
+          "duration": 3180,
+          "engagedSeconds": 1800.0,
+          "model": "Pop Model V2",
+          "modelKey": "Pop Model V2",
+          "modifiedAt": 100,
+          "attentionKnown": True,
+          "analysisComplete": True,
+          "analysisVersion": utilities.DASHBOARD_ROUTE_ANALYSIS_VERSION - 1,
+        },
+      },
+    },
+  })
+  analyzed_drive = {
+    "name": "route-1",
+    "date": "2026-07-17T16:58:00",
+    "endDate": "2026-07-17T17:51:00",
+    "distanceMeters": 57000.0,
+    "duration": 3180,
+    "engagedSeconds": 1800.0,
+    "model": "Michael RL",
+    "routeModifiedAt": 100,
+    "attentionKnown": True,
+    "analysisComplete": True,
+    "analysisVersion": utilities.DASHBOARD_ROUTE_ANALYSIS_VERSION,
+  }
+
+  stats = utilities._update_dashboard_persistent_stats(params, [analyzed_drive], wall_now=1000)
+
+  assert stats["routes"]["route-1"]["model"] == "Michael RL"
+  assert list(stats["modelUsage"]) == ["michael-rl"]
+  assert stats["modelUsage"]["michael-rl"]["drives"] == 1
 
 
 def test_week_summary_ignores_stale_premigration_route_rows(monkeypatch):
@@ -1200,6 +1359,52 @@ def test_invalid_filesystem_time_requests_reanalysis():
   assert utilities._analysis_candidates([route], stats) == [route]
 
 
+def test_corrected_filesystem_time_replaces_touched_persisted_time_without_losing_stats():
+  params = FakeParams({
+    utilities.DASHBOARD_PERSISTENT_STATS_PARAM: {
+      "routes": {
+        "000011e5--92dc4759b2": {
+          "date": "2026-07-20T11:33:49",
+          "endDate": "2026-07-20T12:08:38",
+          "distanceMeters": 45919.2,
+          "duration": 2089,
+          "engagedSeconds": 1200.0,
+          "model": "Pop Model V2",
+          "modifiedAt": 100.0,
+          "timeSource": utilities.DASHBOARD_TIME_SOURCE_FILESYSTEM,
+          "attentionKnown": True,
+          "analysisComplete": True,
+          "analysisVersion": utilities.DASHBOARD_ROUTE_ANALYSIS_VERSION,
+        },
+      },
+    },
+  })
+  corrected_shell = {
+    "name": "000011e5--92dc4759b2",
+    "date": "2026-07-19T04:55:02",
+    "endDate": "2026-07-19T05:30:02",
+    "distanceMeters": 0.0,
+    "duration": 2100,
+    "engagedSeconds": 0.0,
+    "model": "Unknown model",
+    "segmentCount": 35,
+    "routeModifiedAt": 100.0,
+    "timeSource": utilities.DASHBOARD_TIME_SOURCE_FILESYSTEM,
+    "attentionKnown": False,
+    "analysisComplete": False,
+    "analysisVersion": 0,
+  }
+
+  stats = utilities._update_dashboard_persistent_stats(params, [corrected_shell], wall_now=1000.0)
+  corrected = stats["routes"]["000011e5--92dc4759b2"]
+
+  assert corrected["date"] == "2026-07-19T04:55:02"
+  assert corrected["endDate"] == "2026-07-19T05:29:51"
+  assert corrected["distanceMeters"] == 45919.2
+  assert corrected["duration"] == 2089
+  assert corrected["model"] == "Pop Model V2"
+
+
 def test_github_urls_accept_owner_repo_origin():
   assert utilities.get_github_changelog_url("owner/repo", "main") == "https://github.com/owner/repo/commits/main/"
   assert utilities.get_github_changelog_url("github.com/owner/repo", "main") == "https://github.com/owner/repo/commits/main/"
@@ -1212,6 +1417,20 @@ def _load_server_module():
   module = importlib.util.module_from_spec(spec)
   spec.loader.exec_module(module)
   return module
+
+
+def test_troubleshoot_steer_delay_normalizes_vehicle_delay_for_display():
+  server = _load_server_module()
+
+  assert server._normalize_troubleshoot_current_display_value("SteerDelay", 0.1, 0.3) == 0.3
+  assert server._normalize_troubleshoot_current_display_value("SteerDelay", 0.3, 0.3) == 0.3
+
+
+def test_troubleshoot_steer_delay_preserves_real_custom_values():
+  server = _load_server_module()
+
+  assert server._normalize_troubleshoot_current_display_value("SteerDelay", 0.2, 0.3) == 0.2
+  assert server._normalize_troubleshoot_current_display_value("LongitudinalActuatorDelay", 0.1, 0.3) == 0.1
 
 
 def test_stats_endpoint_keeps_existing_keys_and_adds_dashboard(monkeypatch):

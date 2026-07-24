@@ -36,6 +36,16 @@ def test_get_starpilot_toggles_uses_last_non_empty_broadcast(monkeypatch):
   assert second.vision_speed_limit_detection is True
 
 
+def test_get_starpilot_toggles_uses_persisted_force_torque_request(monkeypatch):
+  params = SimpleNamespace(get_bool=lambda key: key == "ForceTorqueController")
+  monkeypatch.setattr(spv.get_starpilot_toggles, "_params", params, raising=False)
+
+  payload = '{"force_torque_controller": false}'
+  toggles = spv.get_starpilot_toggles({"starpilotPlan": SimpleNamespace(starpilotToggles=payload)})
+
+  assert toggles.force_torque_controller is True
+
+
 class _FakeParams:
   def __init__(self, floats=None, ints=None, bools=None):
     self.floats = dict(floats or {})
@@ -197,15 +207,13 @@ def test_aol_safe_defaults_migration_does_not_enable_aol_or_add_marker_params():
   assert set(params.bools) == {"AlwaysOnLateral"}
 
 
-def test_button_function_ignores_tuning_level_gate():
+def test_runtime_values_ignore_legacy_tuning_level_metadata():
   params = _FakeParams(ints={"LKASButtonControl": spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]})
   variables = object.__new__(spv.StarPilotVariables)
   variables.params = params
-  variables.starpilot_toggles = SimpleNamespace(tuning_level=spv.TUNING_LEVELS["STANDARD"])
-  variables.tuning_levels = {"LKASButtonControl": spv.TUNING_LEVELS["ADVANCED"]}
   variables.default_values = {"LKASButtonControl": str(spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"])}
 
-  assert variables.get_value("LKASButtonControl", cast=int) == spv.BUTTON_FUNCTIONS["EXPERIMENTAL_MODE"]
+  assert variables.get_value("LKASButtonControl", cast=int) == spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]
   assert variables.get_button_function("LKASButtonControl") == spv.BUTTON_FUNCTIONS["AOL_TOGGLE"]
 
 

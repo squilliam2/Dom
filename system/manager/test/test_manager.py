@@ -106,10 +106,11 @@ class FakeManagedProcess:
     return SimpleNamespace(name="ui")
 
 
-def test_reboot_guard_includes_raw_ignition_state():
-  assert manager.should_defer_reboot(started=True, ignition=False)
-  assert manager.should_defer_reboot(started=False, ignition=True)
-  assert not manager.should_defer_reboot(started=False, ignition=False)
+def test_reboot_guard_only_defers_automatic_requests():
+  assert manager.should_defer_reboot("DoReboot", started=True, ignition=False)
+  assert manager.should_defer_reboot("DoReboot", started=False, ignition=True)
+  assert not manager.should_defer_reboot("DoReboot", started=False, ignition=False)
+  assert not manager.should_defer_reboot("DoUserReboot", started=True, ignition=True)
 
 
 class TestManager:
@@ -222,7 +223,6 @@ class TestManager:
     params = FileBackedFakeParams(tmp_path / "params", {
       "AdvancedLateralTune": False,
       "ForceAutoTuneOff": False,
-      "HumanAcceleration": True,
       "CEModelStopTime": 3.5,
     })
     params_cache = FileBackedFakeParams(tmp_path / "cache", {
@@ -233,30 +233,26 @@ class TestManager:
 
     assert not params.get_bool("AdvancedLateralTune")
     assert not params.get_bool("ForceAutoTuneOff")
-    assert params.get_bool("HumanAcceleration")
     assert params.get("CEModelStopTime") == "3.5"
     assert params_cache.get_bool("NNFF")
 
   def test_migrate_disable_humanlike_defaults(self, tmp_path, monkeypatch):
     monkeypatch.setattr(manager, "STARPILOT_HUMANLIKE_DISABLE_MIGRATION_FLAG", tmp_path / "starpilot_humanlike_disable_v1")
 
-    params = FileBackedFakeParams(tmp_path / "params", {
-      "HumanAcceleration": True,
-    })
+    params = FileBackedFakeParams(tmp_path / "params", {})
     params_cache = FileBackedFakeParams(tmp_path / "cache", {
       "HumanLaneChanges": True,
     })
 
     manager.migrate_disable_humanlike_defaults(params, params_cache)
 
-    assert not params.get_bool("HumanAcceleration")
     assert not params.get_bool("HumanLaneChanges")
-    assert not params_cache.get_bool("HumanAcceleration")
     assert not params_cache.get_bool("HumanLaneChanges")
 
   def test_cleanup_removed_starpilot_params(self, tmp_path):
     params = FileBackedFakeParams(tmp_path / "params", {
       "CoastUpToLeads": True,
+      "HumanAcceleration": True,
       "HumanFollowing": True,
     })
     params_cache = FileBackedFakeParams(tmp_path / "cache", {
@@ -267,6 +263,7 @@ class TestManager:
     manager.cleanup_removed_starpilot_params(params, params_cache)
 
     assert not Path(params.get_param_path("CoastUpToLeads")).exists()
+    assert not Path(params.get_param_path("HumanAcceleration")).exists()
     assert not Path(params.get_param_path("HumanFollowing")).exists()
     assert not Path(params_cache.get_param_path("HumanFollowing")).exists()
     assert not Path(params_cache.get_param_path("PrioritizeSmoothFollowing")).exists()
@@ -348,6 +345,77 @@ class TestManager:
 
     assert params.get("ClusterOffset") == "1.02"
     assert params_cache.get("ClusterOffset") is None
+
+  def test_migrate_traffic_mode_smooth_defaults_resets_legacy_default_only(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_TRAFFIC_SMOOTH_MIGRATION_FLAG", tmp_path / "starpilot_traffic_smooth_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params", {
+      "TrafficJerkAcceleration": 50.0,
+      "TrafficJerkDeceleration": 50.0,
+      "TrafficJerkSpeed": 50.0,
+    })
+    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
+
+    manager.migrate_traffic_mode_smooth_defaults(params, params_cache)
+
+    for key in ("TrafficJerkAcceleration", "TrafficJerkDeceleration", "TrafficJerkSpeed"):
+      assert params.get(key) == "100.0"
+      assert params_cache.get(key) == "100.0"
+    # unset keys stay unset so the new compiled default applies on its own
+    assert params.get("TrafficJerkSpeedDecrease") is None
+    assert manager.STARPILOT_TRAFFIC_SMOOTH_MIGRATION_FLAG.exists()
+
+  def test_migrate_traffic_mode_smooth_defaults_preserves_custom_values(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_TRAFFIC_SMOOTH_MIGRATION_FLAG", tmp_path / "starpilot_traffic_smooth_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params", {
+      "TrafficJerkAcceleration": 80.0,
+    })
+    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
+
+    manager.migrate_traffic_mode_smooth_defaults(params, params_cache)
+
+    assert params.get("TrafficJerkAcceleration") == "80.0"
+    assert params_cache.get("TrafficJerkAcceleration") is None
+
+  def test_migrate_traffic_follow_default_resets_legacy_default_only(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_TRAFFIC_FOLLOW_MIGRATION_FLAG", tmp_path / "starpilot_traffic_follow_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params", {
+      "TrafficFollow": 0.5,
+    })
+    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
+
+    manager.migrate_traffic_follow_default(params, params_cache)
+
+    assert params.get("TrafficFollow") == "0.75"
+    assert params_cache.get("TrafficFollow") == "0.75"
+    assert manager.STARPILOT_TRAFFIC_FOLLOW_MIGRATION_FLAG.exists()
+
+  def test_migrate_traffic_follow_default_preserves_custom_values(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_TRAFFIC_FOLLOW_MIGRATION_FLAG", tmp_path / "starpilot_traffic_follow_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params", {
+      "TrafficFollow": 1.2,
+    })
+    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
+
+    manager.migrate_traffic_follow_default(params, params_cache)
+
+    assert params.get("TrafficFollow") == "1.2"
+    assert params_cache.get("TrafficFollow") is None
+
+  def test_migrate_traffic_mode_smooth_defaults_runs_once(self, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STARPILOT_TRAFFIC_SMOOTH_MIGRATION_FLAG", tmp_path / "starpilot_traffic_smooth_v1")
+
+    params = FileBackedFakeParams(tmp_path / "params", {"TrafficJerkAcceleration": 50.0})
+    params_cache = FileBackedFakeParams(tmp_path / "cache", {})
+
+    manager.migrate_traffic_mode_smooth_defaults(params, params_cache)
+    params.put_float("TrafficJerkAcceleration", 50.0)
+    manager.migrate_traffic_mode_smooth_defaults(params, params_cache)
+
+    assert params.get("TrafficJerkAcceleration") == "50.0"
 
   def test_cleanup_inaccessible_msgq_files_removes_only_blocked_files(self, tmp_path, monkeypatch):
     healthy = tmp_path / "msgq_deviceState"

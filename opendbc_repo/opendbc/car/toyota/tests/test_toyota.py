@@ -8,7 +8,8 @@ from opendbc.can import CANPacker, CANParser
 from opendbc.car.structs import CarParams
 from opendbc.car.fw_versions import build_fw_dict
 from opendbc.car.toyota import toyotacan
-from opendbc.car.toyota.carcontroller import CarController, get_camry_hybrid_feedforward, get_long_tune, get_prius_positive_feedforward_scale, \
+from opendbc.car.toyota.carcontroller import CarController, get_camry_hybrid_feedforward, get_long_tune, get_prius_feedforward, \
+                                             get_prius_positive_feedforward_scale, \
                                              limit_interceptor_pcm_accel, \
                                              limit_interceptor_stopping_accel, limit_no_lead_cruise_sign_flip, \
                                              limit_prius_stopping_accel, update_permit_braking
@@ -38,6 +39,23 @@ class TestToyotaInterfaces:
   def test_lta_platforms(self):
     # At this time, only RAV4 2023 is expected to use LTA/angle control
     assert ANGLE_CONTROL_CAR == {CAR.TOYOTA_RAV4_TSS2_2023}
+
+  def test_rav4_prime_force_torque_controller(self):
+    fingerprint = {bus: {} for bus in range(8)}
+
+    default_params = CarInterface.get_params(
+      CAR.TOYOTA_RAV4_PRIME, fingerprint, [], False, False, False,
+      SimpleNamespace(force_torque_controller=False, nnff=False, nnff_lite=False),
+    )
+    forced_params = CarInterface.get_params(
+      CAR.TOYOTA_RAV4_PRIME, fingerprint, [], False, False, False,
+      SimpleNamespace(force_torque_controller=True, nnff=False, nnff_lite=False),
+    )
+
+    assert default_params.lateralTuning.which() == "pid"
+    assert forced_params.lateralTuning.which() == "torque"
+    assert forced_params.lateralTuning.torque.latAccelFactor == pytest.approx(1.7)
+    assert forced_params.lateralTuning.torque.friction == pytest.approx(0.14)
 
   def test_tss2_dbc(self):
     # We make some assumptions about TSS2 platforms,
@@ -83,6 +101,32 @@ class TestToyotaInterfaces:
     assert abs(car_params.vEgoStopping - 0.25) < 1e-6
     assert abs(car_params.vEgoStarting - 0.25) < 1e-6
 
+  def test_highlander_ice_openpilot_long_uses_measured_actuator_delay(self):
+    stock_params = CarInterface.get_params(
+      CAR.TOYOTA_HIGHLANDER,
+      {bus: {} for bus in range(8)},
+      [],
+      alpha_long=False,
+      is_release=False,
+      docs=False,
+      starpilot_toggles=SimpleNamespace(),
+    )
+    long_params = CarInterface.get_params(
+      CAR.TOYOTA_HIGHLANDER,
+      {bus: ({0x2FF: 8} if bus == 0 else {}) for bus in range(8)},
+      [],
+      alpha_long=False,
+      is_release=False,
+      docs=False,
+      starpilot_toggles=SimpleNamespace(),
+    )
+
+    assert not stock_params.openpilotLongitudinalControl
+    assert stock_params.longitudinalActuatorDelay == pytest.approx(0.15)
+    assert long_params.openpilotLongitudinalControl
+    assert not long_params.flags & ToyotaFlags.HYBRID.value
+    assert long_params.longitudinalActuatorDelay == pytest.approx(0.4)
+
   @pytest.mark.parametrize("camera_message", [0x343, 0x4CB])
   def test_dsu_bypass_enables_longitudinal(self, camera_message):
     fingerprint = {bus: {} for bus in range(8)}
@@ -112,6 +156,48 @@ class TestToyotaInterfaces:
     for message in ("ACC_CONTROL", "PRE_COLLISION", "PCS_HUD"):
       assert message not in can_parsers[Bus.pt].vl
       assert message in can_parsers[Bus.cam].vl
+
+  @pytest.mark.parametrize(("native_bus", "message"), [(1, 0x343), (0, 0x4CB)])
+  def test_dsu_bypass_ignores_startup_bus_mirror(self, native_bus, message):
+    fingerprint = {bus: {} for bus in range(8)}
+    fingerprint[native_bus][message] = 8
+    fingerprint[2][message] = 8
+
+    car_params = CarInterface.get_params(
+      CAR.LEXUS_IS,
+      fingerprint,
+      [],
+      alpha_long=False,
+      is_release=False,
+      docs=False,
+      starpilot_toggles=SimpleNamespace(),
+    )
+
+    assert not car_params.flags & ToyotaFlags.DSU_BYPASS.value
+    assert not car_params.openpilotLongitudinalControl
+    assert car_params.safetyConfigs[0].safetyParam & ToyotaSafetyFlags.STOCK_LONGITUDINAL.value
+    assert car_params.safetyConfigs[0].safetyParam & ToyotaSafetyFlags.ALT_CRUISE.value
+
+  @pytest.mark.parametrize(("native_bus", "message"), [(1, 0x343), (0, 0x4CB)])
+  def test_prius_dsu_bypass_allows_native_bus_message(self, native_bus, message):
+    fingerprint = {bus: {} for bus in range(8)}
+    fingerprint[native_bus][message] = 8
+    fingerprint[2][message] = 8
+
+    car_params = CarInterface.get_params(
+      CAR.TOYOTA_PRIUS,
+      fingerprint,
+      [],
+      alpha_long=False,
+      is_release=False,
+      docs=False,
+      starpilot_toggles=SimpleNamespace(),
+    )
+
+    assert car_params.flags & ToyotaFlags.DSU_BYPASS.value
+    assert car_params.openpilotLongitudinalControl
+    assert not car_params.safetyConfigs[0].safetyParam & ToyotaSafetyFlags.STOCK_LONGITUDINAL.value
+    assert not car_params.safetyConfigs[0].safetyParam & ToyotaSafetyFlags.ALT_CRUISE.value
 
   def test_dsu_bypass_does_not_change_tss2_or_smart_dsu(self):
     fingerprint = {bus: {} for bus in range(8)}
@@ -464,6 +550,10 @@ class TestToyotaCarController:
   def test_prius_positive_feedforward_scale_restores_cruise_authority(self):
     assert get_prius_positive_feedforward_scale(20.0) > get_prius_positive_feedforward_scale(8.0)
     assert abs(get_prius_positive_feedforward_scale(20.0) - 1.0) < 1e-6
+
+  def test_prius_feedforward_adds_braking_authority_without_changing_acceleration(self):
+    assert get_prius_feedforward(-2.0, 8.0) == pytest.approx(-2.25)
+    assert get_prius_feedforward(1.0, 8.0) == pytest.approx(0.7)
 
   def test_camry_hybrid_feedforward_only_softens_acceleration(self):
     assert get_camry_hybrid_feedforward(1.0) == pytest.approx(0.8)

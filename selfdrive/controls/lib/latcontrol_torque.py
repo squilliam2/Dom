@@ -99,6 +99,7 @@ class LatControlTorque(LatControl):
     self.is_elantra_non_scc = CP.carFingerprint in ELANTRA_NON_SCC_CARS
     self.is_kia_xceed = CP.carFingerprint in KIA_XCEED_CARS
     self.is_kia_niro_phev_2022 = CP.carFingerprint in KIA_NIRO_PHEV_2022_CARS
+    self.is_kia_stinger_2022 = CP.carFingerprint in KIA_STINGER_2022_CARS
     self.is_kia_forte = CP.carFingerprint in KIA_FORTE_CARS
     self.is_kia_ev6 = CP.carFingerprint in KIA_EV6_CARS
     self.is_kia_carnival = CP.carFingerprint in KIA_CARNIVAL_CARS
@@ -266,6 +267,7 @@ class LatControlTorque(LatControl):
       elantra_non_scc_active = self.is_elantra_non_scc
       kia_xceed_active = self.is_kia_xceed
       kia_niro_phev_2022_active = self.is_kia_niro_phev_2022
+      kia_stinger_2022_active = self.is_kia_stinger_2022
       kia_forte_active = self.is_kia_forte
       kia_ev6_active = self.is_kia_ev6
       kia_carnival_active = self.is_kia_carnival
@@ -281,6 +283,7 @@ class LatControlTorque(LatControl):
       sonata_hybrid_center_taper = get_sonata_hybrid_center_taper_scale(setpoint, CS.vEgo) if sonata_hybrid_active else 1.0
       kia_xceed_center_taper = get_kia_xceed_center_taper_scale(setpoint, CS.vEgo) if kia_xceed_active else 1.0
       kia_niro_phev_2022_center_taper = get_kia_niro_phev_2022_center_taper_scale(setpoint, CS.vEgo) if kia_niro_phev_2022_active else 1.0
+      kia_stinger_2022_center_taper = get_kia_stinger_2022_center_taper_scale(setpoint, CS.vEgo) if kia_stinger_2022_active else 1.0
       kia_forte_center_taper = get_kia_forte_center_taper_scale(setpoint, CS.vEgo) if kia_forte_active else 1.0
       kia_ev6_center_taper = get_kia_ev6_center_taper_scale(setpoint, CS.vEgo) if kia_ev6_active else 1.0
       kia_ev6_low_speed_center_taper = get_kia_ev6_low_speed_center_taper_scale(setpoint, CS.vEgo) if kia_ev6_active else 1.0
@@ -356,6 +359,8 @@ class LatControlTorque(LatControl):
         ff *= get_kia_xceed_ff_scale(setpoint, desired_lateral_jerk, CS.vEgo) * kia_xceed_center_taper
       elif kia_niro_phev_2022_active:
         friction_threshold = get_kia_niro_phev_2022_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
+      elif kia_stinger_2022_active:
+        friction_threshold = get_kia_stinger_2022_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
       elif kia_forte_active:
         ff *= get_kia_forte_ff_scale(setpoint, desired_lateral_jerk, CS.vEgo) * kia_forte_center_taper
         friction_threshold = get_kia_forte_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
@@ -462,6 +467,8 @@ class LatControlTorque(LatControl):
         output_torque *= silverado_center_taper
       elif kia_niro_phev_2022_active:
         output_torque *= kia_niro_phev_2022_center_taper
+      elif kia_stinger_2022_active:
+        output_torque *= kia_stinger_2022_center_taper
       elif self.is_civic_bosch_modified and civic_bosch_modified_a_lateral_testing_ground_active():
         output_torque *= civic_bosch_modified_a_center_taper
       if self.hyundai_torque_angle_feedback is not None:

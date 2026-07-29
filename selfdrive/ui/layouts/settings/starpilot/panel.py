@@ -5,7 +5,7 @@ from enum import IntEnum
 
 import pyray as rl
 
-from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.common.params import Params
 from openpilot.starpilot.common.starpilot_variables import update_starpilot_toggles
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.application import gui_app
@@ -16,32 +16,50 @@ from openpilot.selfdrive.ui.layouts.settings.starpilot.sectioned_panel import Se
 import time
 
 
-class SettingsParamsWrapper:
-  """
-  Proxy for ui_state.params. Relies on CachedParams for global TTL caching.
-  Intercepts UI writes (put/remove) to trigger system migrations automatically.
-  """
+class FrameCachedParams:
   def __init__(self):
-    self._params = ui_state.params
+    self._params = Params()
+    self._cache = {}
+    self._last_frame_time = 0.0
 
-  # --- Read Operations (Forwarded directly to global TTL cache) ---
+  def _check_clear_cache(self):
+    now = time.monotonic()
+    if now != self._last_frame_time:
+      self._cache.clear()
+      self._last_frame_time = now
+
   def get(self, key, **kwargs):
-    return self._params.get(key, **kwargs)
+    self._check_clear_cache()
+    cache_key = (key, "get", tuple(kwargs.items()))
+    if cache_key not in self._cache:
+      self._cache[cache_key] = self._params.get(key, **kwargs)
+    return self._cache[cache_key]
 
   def get_bool(self, key, **kwargs):
-    return self._params.get_bool(key, **kwargs)
+    self._check_clear_cache()
+    cache_key = (key, "get_bool", tuple(kwargs.items()))
+    if cache_key not in self._cache:
+      self._cache[cache_key] = self._params.get_bool(key, **kwargs)
+    return self._cache[cache_key]
 
   def get_int(self, key, **kwargs):
-    return self._params.get_int(key, **kwargs)
+    self._check_clear_cache()
+    cache_key = (key, "get_int", tuple(kwargs.items()))
+    if cache_key not in self._cache:
+      self._cache[cache_key] = self._params.get_int(key, **kwargs)
+    return self._cache[cache_key]
 
   def get_float(self, key, **kwargs):
-    return self._params.get_float(key, **kwargs)
+    self._check_clear_cache()
+    cache_key = (key, "get_float", tuple(kwargs.items()))
+    if cache_key not in self._cache:
+      self._cache[cache_key] = self._params.get_float(key, **kwargs)
+    return self._cache[cache_key]
 
   def _notify_changed(self):
-    # Triggers backend state sync when UI settings are modified
+    self._cache.clear()
     update_starpilot_toggles()
 
-  # --- Write Operations (Triggers side-effects) ---
   def put(self, key, val, **kwargs):
     self._params.put(key, val, **kwargs)
     self._notify_changed()
@@ -62,7 +80,6 @@ class SettingsParamsWrapper:
     self._params.remove(key)
     self._notify_changed()
 
-  # Safety net for any newly added parameter methods
   def __getattr__(self, name):
     return getattr(self._params, name)
 
@@ -90,8 +107,8 @@ class StarPilotPanelInfo:
 class StarPilotPanel(Widget):
     def __init__(self):
         super().__init__()
-        self._params_memory = ui_state.params_memory
-        self._params = SettingsParamsWrapper()
+        self._params_memory = Params(memory=True)
+        self._params = FrameCachedParams()
         self._navigate_callback: Callable | None = None
         self._back_callback: Callable | None = None
         self._current_sub_panel = ""

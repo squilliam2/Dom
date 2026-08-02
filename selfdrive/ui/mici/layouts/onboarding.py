@@ -389,8 +389,6 @@ class OnboardingWindow(Widget):
   def _render(self, _):
     rl.draw_rectangle_rec(self._rect, rl.BLACK)
 
-    # If terms were already accepted before this widget was shown, wait until
-    # the nav stack is active before pushing the camera training page.
     if self._needs_initial_push:
       self._needs_initial_push = False
       if self._accepted_terms and not self._training_done:

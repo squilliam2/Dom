@@ -116,11 +116,12 @@ class AugmentedRoadView(CameraView):
     # Draw all UI overlays
     if self._draw_road_overlays:
       self.model_renderer.render(self._content_rect)
+      self._render_extra_road_overlays(self._content_rect)
     if self._draw_hud_controls:
       self._hud_renderer.render(self._content_rect)
-    self.alert_renderer.render(self._content_rect)
     if self._draw_driver_state:
       self.driver_state_renderer.render(self._content_rect)
+    self.alert_renderer.render(self._content_rect)
 
     # Custom UI extension point - add custom overlays here
     # Use self._content_rect for positioning within camera bounds
@@ -135,6 +136,9 @@ class AugmentedRoadView(CameraView):
     msg = messaging.new_message('uiDebug')
     msg.uiDebug.drawTimeMillis = (time.monotonic() - start_draw) * 1000
     self._pm.send('uiDebug', msg)
+
+  def _render_extra_road_overlays(self, rect: rl.Rectangle) -> None:
+    """Render subclass road overlays inside the content scissor, above the model and below the HUD."""
 
   def _handle_mouse_press(self, _):
     if not self._hud_renderer.user_interacting() and self._click_callback is not None:
@@ -205,7 +209,9 @@ class AugmentedRoadView(CameraView):
       self._reverse_driver_camera_active = False
       return
 
-    if getattr(self, "_onroad_reentry_pending", False):
+    reentry_selection_pending = (getattr(self, "_onroad_reentry_pending", False) and
+                                 not getattr(self, "_reentry_stream_selected", False))
+    if reentry_selection_pending:
       self._refresh_available_streams()
 
     if self._update_reverse_driver_camera_state():
@@ -228,7 +234,7 @@ class AugmentedRoadView(CameraView):
     else:
       target = ROAD_CAM
 
-    if (getattr(self, "_onroad_reentry_pending", False) or
+    if (reentry_selection_pending or
         self.stream_type != target or (self._switching and self._target_stream_type != target)):
       self.switch_stream(target)
 

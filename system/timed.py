@@ -18,15 +18,23 @@ except Exception:
   TimezoneFinder = None
 
 
+def utc_from_unix_millis(unix_timestamp_millis: int | float) -> datetime.datetime:
+  return datetime.datetime.fromtimestamp(unix_timestamp_millis / 1000., tz=datetime.timezone.utc).replace(tzinfo=None)
+
+
+def utc_now() -> datetime.datetime:
+  return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 def set_time(new_time):
-  diff = datetime.datetime.now() - new_time
+  diff = utc_now() - new_time
   if abs(diff) < datetime.timedelta(seconds=10):
     cloudlog.debug(f"Time diff too small: {diff}")
     return
 
   cloudlog.debug(f"Setting time to {new_time}")
   try:
-    subprocess.run(f"TZ=UTC date -s '{new_time}'", shell=True, check=True)
+    subprocess.run(["date", "-u", "-s", new_time.isoformat(sep=" ")], check=True)
   except subprocess.CalledProcessError:
     cloudlog.exception("timed.failed_setting_time")
 
@@ -82,7 +90,7 @@ def main() -> NoReturn:
     pm.send('clocks', msg)
 
     gps = sm[gps_location_service]
-    gps_time = datetime.datetime.fromtimestamp(gps.unixTimestampMillis / 1000.)
+    gps_time = utc_from_unix_millis(gps.unixTimestampMillis)
     if not sm.updated[gps_location_service] or (time.monotonic() - sm.logMonoTime[gps_location_service] / 1e9) > 2.0:
       continue
     if not gps.hasFix:

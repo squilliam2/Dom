@@ -1,10 +1,22 @@
 import datetime
+import os
+import time
 
 from openpilot.system import timed
 
 
-def test_gps_timestamp_is_decoded_as_utc():
-  gps_time = timed.utc_from_unix_millis(1782694275400)
+def test_gps_timestamp_is_decoded_as_utc(monkeypatch):
+  original_timezone = os.environ.get("TZ")
+  monkeypatch.setenv("TZ", "America/New_York")
+  time.tzset()
+  try:
+    gps_time = timed.utc_from_unix_millis(1782694275400)
+  finally:
+    if original_timezone is None:
+      monkeypatch.delenv("TZ")
+    else:
+      monkeypatch.setenv("TZ", original_timezone)
+    time.tzset()
 
   assert gps_time == datetime.datetime(2026, 6, 29, 0, 51, 15, 400000)
   assert gps_time.tzinfo is None

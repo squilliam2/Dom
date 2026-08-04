@@ -149,7 +149,7 @@ lenv = {
 
   "ACADOS_SOURCE_DIR": Dir("#third_party/acados").abspath,
   "ACADOS_PYTHON_INTERFACE_PATH": Dir("#third_party/acados/acados_template").abspath,
-  "TERA_PATH": os.environ.get("TERA_PATH", Dir("#").abspath + f"/third_party/acados/{arch}/t_renderer")
+  "TERA_PATH": Dir("#").abspath + f"/third_party/acados/{arch}/t_renderer"
 }
 
 # Allow callers to override cache/temp dirs used by subprocesses (e.g. tinygrad model compilation).
@@ -200,8 +200,6 @@ if arch == "larch64":
     cflags += [f"--target={cross_target}"]
     cxxflags += [f"--target={cross_target}"]
     arch_ldflags += [f"--target={cross_target}"]
-    if os.environ.get("SP_TICI_SYSROOT"):
-      arch_ldflags += [f"--sysroot={os.environ['SP_TICI_SYSROOT']}"]
   rpath += ["/usr/local/lib"]
 else:
   cflags = []

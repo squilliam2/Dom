@@ -20,6 +20,38 @@ function sp_launch_timing {
   SP_LAUNCH_LAST_SECONDS=$now
 }
 
+function apply_mici_screen_calibration {
+  [ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0
+
+  local calibration_script="/usr/comma/screen_calibration.py"
+  local gamma_curves="/persist/comma/dwo_gamma_curves"
+  local command_file="/sys/kernel/debug/dsi_dwo_video_display/mipi_command"
+  local boot_marker="/tmp/starpilot_mici_screen_calibrated"
+
+  [ -f "$boot_marker" ] && return 0
+  if [ ! -f "$calibration_script" ]; then
+    echo "Mici screen calibration skipped: custom AGNOS calibration utility not found"
+    return 0
+  fi
+  [ -f "$gamma_curves" ] || return 0
+
+  for _ in $(seq 1 50); do
+    [ -e "$command_file" ] && break
+    sleep 0.1
+  done
+
+  if [ ! -e "$command_file" ]; then
+    echo "Mici screen calibration skipped: MIPI command interface not found"
+    return 0
+  fi
+
+  if sudo /usr/bin/python3 "$calibration_script"; then
+    touch "$boot_marker"
+  else
+    echo "Mici screen calibration failed; continuing with the existing display state"
+  fi
+}
+
 function agnos_init {
   sp_launch_timing "agnos_init_start"
 
@@ -51,25 +83,12 @@ function agnos_init {
   # StarPilot variables
   sudo chmod 0777 /cache
 
+  # Dom's custom AGNOS contains the panel calibration utility but does not call
+  # it during boot. Apply the stock comma 4 calibration without replacing AGNOS.
+  apply_mici_screen_calibration
+
   # Check if AGNOS update is required
   AGNOS_CURRENT_VERSION="$(< /VERSION)"
-
-  # StarPilot previously generated a persistent Weston display calibration.
-  # Remove only those obsolete files when Mici moves to stock AGNOS. Stock Mici
-  # applies its panel gamma from /persist/comma/dwo_gamma_curves during boot;
-  # leave that hardware calibration untouched.
-  STOCK_CAMERA_MIGRATION_MARKER="/cache/starpilot/stock_camera_pipeline_18_4"
-  if [ "$SP_DEVICE_TYPE" = "mici" ] && [ ! -f "$STOCK_CAMERA_MIGRATION_MARKER" ]; then
-    sudo rm -f /data/misc/display/color_cal/color_cal /data/misc/display/color_cal/source.sha256
-    sudo mkdir -p "$(dirname "$STOCK_CAMERA_MIGRATION_MARKER")"
-    sudo touch "$STOCK_CAMERA_MIGRATION_MARKER"
-    sudo chmod 644 "$STOCK_CAMERA_MIGRATION_MARKER"
-
-    if [ "$AGNOS_CURRENT_VERSION" = "$AGNOS_VERSION" ] && systemctl is-active --quiet weston.service; then
-      sudo systemctl restart weston.service
-    fi
-  fi
-
   AGNOS_UPDATE_REQUIRED=1
   for accepted_version in $AGNOS_ACCEPTED_VERSIONS; do
     if [ "$AGNOS_CURRENT_VERSION" = "$accepted_version" ]; then
@@ -80,10 +99,7 @@ function agnos_init {
 
   if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]; then
     AGNOS_PY="$DIR/system/hardware/tici/agnos.py"
-    MANIFEST="${AGNOS_MANIFEST:-system/hardware/tici/agnos.json}"
-    if [[ "$MANIFEST" != /* ]]; then
-      MANIFEST="$DIR/$MANIFEST"
-    fi
+    MANIFEST="$DIR/system/hardware/tici/agnos.json"
     if $AGNOS_PY --verify $MANIFEST; then
       sudo reboot
     fi
@@ -123,7 +139,7 @@ function launch {
           cd $DIR
 
           echo "Restarting launch script ${LAUNCHER_LOCATION}"
-          unset AGNOS_VERSION AGNOS_ACCEPTED_VERSIONS AGNOS_MANIFEST SP_DEVICE_TYPE
+          unset AGNOS_VERSION
           exec "${LAUNCHER_LOCATION}"
         else
           echo "openpilot backup found, not updating"

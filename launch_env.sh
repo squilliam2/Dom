@@ -26,22 +26,8 @@ if [ -z "$SP_DEVICE_TYPE" ] && [ -r /sys/firmware/devicetree/base/model ]; then
 fi
 export SP_DEVICE_TYPE
 
-# The comma 4 camera stack is paired with stock Mici AGNOS. Keep Dom's custom
-# AGNOS on comma 3/3X, where its legacy camera and runtime libraries are needed.
-if [ "$SP_DEVICE_TYPE" = "mici" ]; then
-  DEFAULT_AGNOS_VERSION="18.4"
-  DEFAULT_AGNOS_MANIFEST="system/hardware/tici/agnos-mici.json"
-else
-  DEFAULT_AGNOS_VERSION="12.8.28"
-  DEFAULT_AGNOS_MANIFEST="system/hardware/tici/agnos.json"
-fi
-
 if [ -z "$AGNOS_VERSION" ]; then
-  export AGNOS_VERSION="$DEFAULT_AGNOS_VERSION"
-fi
-
-if [ -z "$AGNOS_MANIFEST" ]; then
-  export AGNOS_MANIFEST="$DEFAULT_AGNOS_MANIFEST"
+  export AGNOS_VERSION="12.8.28"
 fi
 
 if [ -z "$AGNOS_ACCEPTED_VERSIONS" ]; then

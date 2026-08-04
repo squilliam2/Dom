@@ -8,12 +8,10 @@ from types import SimpleNamespace
 from cereal import car
 from openpilot.common.params import Params
 from openpilot.system.hardware import HARDWARE, PC, TICI
-from openpilot.system.hardware.tici.device_config import runtime_executable
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 UI_WATCHDOG_MAX_DT = int(os.getenv("UI_WATCHDOG_MAX_DT", "10"))
-DEVICE_TYPE = HARDWARE.get_device_type()
 
 def driverview(started: bool, params: Params, CP: car.CarParams, starpilot_toggles: SimpleNamespace) -> bool:
   return started or params.get_bool("IsDriverViewEnabled")
@@ -179,12 +177,12 @@ class BigDeviceUIProcess:
 procs = [
   DaemonProcess("manage_athenad", "system.athena.manage_athenad", "AthenadPid"),
 
-  NativeProcess("loggerd", "system/loggerd", [runtime_executable("./loggerd", DEVICE_TYPE)], and_(allow_logging, logging)),
-  NativeProcess("encoderd", "system/loggerd", [runtime_executable("./encoderd", DEVICE_TYPE)], and_(allow_logging, only_onroad)),
-  NativeProcess("stream_encoderd", "system/loggerd", [runtime_executable("./encoderd", DEVICE_TYPE), "--stream"], or_(and_(livestream, not_(iscar)), notcar)),
+  NativeProcess("loggerd", "system/loggerd", ["./loggerd"], and_(allow_logging, logging)),
+  NativeProcess("encoderd", "system/loggerd", ["./encoderd"], and_(allow_logging, only_onroad)),
+  NativeProcess("stream_encoderd", "system/loggerd", ["./encoderd", "--stream"], or_(and_(livestream, not_(iscar)), notcar)),
   PythonProcess("logmessaged", "system.logmessaged", always_run),
 
-  NativeProcess("camerad", "system/camerad", [runtime_executable("./camerad", DEVICE_TYPE)], or_(driverview, livestream), enabled=not WEBCAM),
+  NativeProcess("camerad", "system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
   PythonProcess("webcamerad", "tools.webcam.camerad", driverview, enabled=WEBCAM),
   PythonProcess("proclogd", "system.proclogd", and_(allow_logging, only_onroad), enabled=platform.system() != "Darwin"),
   PythonProcess("journald", "system.journald", and_(allow_logging, only_onroad), platform.system() != "Darwin"),
@@ -236,7 +234,8 @@ procs += [
   PythonProcess("galaxy", "starpilot.system.galaxy.galaxy", always_run, nice=10),
 ]
 
-if DEVICE_TYPE in ("tici", "tizi"):
+device_type = HARDWARE.get_device_type()
+if device_type in ("tici", "tizi"):
   procs.append(BigDeviceUIProcess(always_run, watchdog_max_dt=UI_WATCHDOG_MAX_DT))
 else:
   # C4 (mici) already runs the Python raylib UI path; UseOldUI must not affect it.

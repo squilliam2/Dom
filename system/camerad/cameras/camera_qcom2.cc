@@ -19,6 +19,8 @@
 #define CL_CONTEXT_PRIORITY_HINT_QCOM NULL
 #endif
 
+#include "media/cam_sensor_cmn_header.h"
+
 #include "common/clutil.h"
 #include "common/params.h"
 #include "common/swaglog.h"
@@ -55,7 +57,7 @@ public:
 
   CameraState(SpectraMaster *master, const CameraConfig &config) : camera(master, config) {};
   ~CameraState();
-  void init(VisionIpcServer *v, cl_device_id device_id, cl_context context);
+  void init(VisionIpcServer *v, cl_device_id device_id, cl_context ctx);
   void update_exposure_score(float desired_ev, int exp_t, int exp_g_idx, float exp_gain);
   void set_camera_exposure(float grey_frac);
   void set_exposure_rect();
@@ -66,8 +68,8 @@ public:
   }
 };
 
-void CameraState::init(VisionIpcServer *v, cl_device_id device_id, cl_context context) {
-  camera.camera_open(v, device_id, context);
+void CameraState::init(VisionIpcServer *v, cl_device_id device_id, cl_context ctx) {
+  camera.camera_open(v, device_id, ctx);
 
   if (!camera.enabled) return;
 
@@ -270,6 +272,7 @@ void camerad_thread() {
   for (const auto &config : ALL_CAMERA_CONFIGS) {
     auto cam = std::make_unique<CameraState>(&m, config);
     cam->init(&v, device_id, ctx);
+    if (!cam->camera.enabled) continue;
     cams.emplace_back(std::move(cam));
   }
 

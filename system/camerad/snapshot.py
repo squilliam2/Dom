@@ -43,15 +43,9 @@ def yuv_to_rgb(y, u, v):
 
 
 def extract_image(buf):
-  # NV12 format: Y plane followed by interleaved UV plane
-  # UV plane size is stride * uv_height, where uv_height = align(height/2, 16)
-  uv_height = ((buf.height // 2) + 15) // 16 * 16
-  uv_plane_size = buf.stride * uv_height
-
   y = np.array(buf.data[:buf.uv_offset], dtype=np.uint8).reshape((-1, buf.stride))[:buf.height, :buf.width]
-  uv_data = buf.data[buf.uv_offset:buf.uv_offset + uv_plane_size]
-  u = np.array(uv_data[::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2]
-  v = np.array(uv_data[1::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2]
+  u = np.array(buf.data[buf.uv_offset::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2]
+  v = np.array(buf.data[buf.uv_offset+1::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2]
 
   return yuv_to_rgb(y, u, v)
 
@@ -87,7 +81,7 @@ def snapshot():
     return None, None
 
   front_camera_allowed = params.get_bool("RecordFront")
-  params.put_bool("IsTakingSnapshot", True, block=True)
+  params.put_bool("IsTakingSnapshot", True)
   set_offroad_alert("Offroad_IsTakingSnapshot", True)
   time.sleep(2.0)  # Give hardwared time to read the param, or if just started give camerad time to start
 
@@ -95,7 +89,7 @@ def snapshot():
   try:
     subprocess.check_call(["pgrep", "camerad"])
     print("Camerad already running")
-    params.put_bool("IsTakingSnapshot", False, block=True)
+    params.put_bool("IsTakingSnapshot", False)
     params.remove("Offroad_IsTakingSnapshot")
     return None, None
   except subprocess.CalledProcessError:
@@ -111,7 +105,7 @@ def snapshot():
     rear, front = get_snapshots(frame, front_frame)
   finally:
     managed_processes['camerad'].stop()
-    params.put_bool("IsTakingSnapshot", False, block=True)
+    params.put_bool("IsTakingSnapshot", False)
     set_offroad_alert("Offroad_IsTakingSnapshot", False)
 
   if not front_camera_allowed:

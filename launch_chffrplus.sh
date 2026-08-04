@@ -55,10 +55,11 @@ function agnos_init {
   AGNOS_CURRENT_VERSION="$(< /VERSION)"
 
   # StarPilot previously generated a persistent Weston display calibration.
-  # Remove it once before moving to stock AGNOS so the stock display profile is
-  # used instead of carrying custom color correction across the OS migration.
+  # Remove only those obsolete files when Mici moves to stock AGNOS. Stock Mici
+  # applies its panel gamma from /persist/comma/dwo_gamma_curves during boot;
+  # leave that hardware calibration untouched.
   STOCK_CAMERA_MIGRATION_MARKER="/cache/starpilot/stock_camera_pipeline_18_4"
-  if [ ! -f "$STOCK_CAMERA_MIGRATION_MARKER" ]; then
+  if [ "$SP_DEVICE_TYPE" = "mici" ] && [ ! -f "$STOCK_CAMERA_MIGRATION_MARKER" ]; then
     sudo rm -f /data/misc/display/color_cal/color_cal /data/misc/display/color_cal/source.sha256
     sudo mkdir -p "$(dirname "$STOCK_CAMERA_MIGRATION_MARKER")"
     sudo touch "$STOCK_CAMERA_MIGRATION_MARKER"
@@ -79,7 +80,10 @@ function agnos_init {
 
   if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]; then
     AGNOS_PY="$DIR/system/hardware/tici/agnos.py"
-    MANIFEST="$DIR/system/hardware/tici/agnos.json"
+    MANIFEST="${AGNOS_MANIFEST:-system/hardware/tici/agnos.json}"
+    if [[ "$MANIFEST" != /* ]]; then
+      MANIFEST="$DIR/$MANIFEST"
+    fi
     if $AGNOS_PY --verify $MANIFEST; then
       sudo reboot
     fi
@@ -119,7 +123,7 @@ function launch {
           cd $DIR
 
           echo "Restarting launch script ${LAUNCHER_LOCATION}"
-          unset AGNOS_VERSION
+          unset AGNOS_VERSION AGNOS_ACCEPTED_VERSIONS AGNOS_MANIFEST SP_DEVICE_TYPE
           exec "${LAUNCHER_LOCATION}"
         else
           echo "openpilot backup found, not updating"

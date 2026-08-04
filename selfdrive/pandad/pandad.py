@@ -10,6 +10,7 @@ from panda import Panda, PandaDFU, PandaProtocolMismatch, FW_PATH
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.system.hardware import HARDWARE
+from openpilot.system.hardware.tici.device_config import runtime_executable
 from openpilot.common.swaglog import cloudlog
 
 
@@ -222,7 +223,8 @@ def main() -> None:
     else:
       os.environ.pop("BOARDD_SKIP_FW_CHECK", None)
     os.environ['MANAGER_DAEMON'] = 'pandad'
-    process = subprocess.Popen(["./pandad", *panda_serials], cwd=os.path.join(BASEDIR, "selfdrive/pandad"))
+    pandad_binary = runtime_executable("./pandad", HARDWARE.get_device_type())
+    process = subprocess.Popen([pandad_binary, *panda_serials], cwd=os.path.join(BASEDIR, "selfdrive/pandad"))
     process.wait()
 
 

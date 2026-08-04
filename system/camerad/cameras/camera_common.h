@@ -36,8 +36,7 @@ public:
 
   CameraBuf() = default;
   ~CameraBuf();
-  void init(cl_device_id device_id, cl_context context, SpectraCamera *cam, VisionIpcServer *v,
-            int frame_cnt, VisionStreamType type);
+  void init(cl_device_id device_id, cl_context context, SpectraCamera *cam, VisionIpcServer * v, int frame_cnt, VisionStreamType type);
   void sendFrameToVipc();
 };
 

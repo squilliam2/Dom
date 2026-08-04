@@ -41,6 +41,7 @@ from openpilot.common.params import ParamKeyFlag, ParamKeyType, Params
 from openpilot.common.realtime import DT_HW
 from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.hardware import HARDWARE, PC
+from openpilot.system.hardware.tici.device_config import agnos_manifest_path
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.loggerd.deleter import PRESERVE_ATTR_NAME, PRESERVE_ATTR_VALUE, PRESERVE_COUNT
 from openpilot.system.version import get_build_metadata
@@ -818,7 +819,7 @@ _FAST_UPDATE_REBOOT_NOTICE_SECONDS = 6.0
 _FAST_UPDATE_FETCH_TIMEOUT_S = 60
 _FAST_BRANCH_SWITCH_FETCH_TIMEOUT_S = 60
 _FAST_ROLLBACK_FETCH_TIMEOUT_S = 60
-_AGNOS_MANIFEST_PATH = "system/hardware/tici/agnos.json"
+_AGNOS_MANIFEST_PATH = agnos_manifest_path(HARDWARE.get_device_type())
 _AGNOS_REMOTE_MANIFEST_TIMEOUT_S = 8
 _AGNOS_UPDATE_ESTIMATED_DOWNLOAD_MB = 900
 _GIT_PROGRESS_PERCENT_RE = re.compile(r'([A-Za-z][A-Za-z /_-]+):\s*([0-9]{1,3})%')

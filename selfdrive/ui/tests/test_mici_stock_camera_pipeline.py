@@ -60,6 +60,9 @@ def test_dom_custom_agnos_remains_active_for_every_device():
 
 
 def test_screen_calibration_is_strictly_mici_only():
+  launch_env = (ROOT / "launch_env.sh").read_text()
+  assert 'SP_DEVICE_TYPE="${SP_DEVICE_TYPE##*comma }"' in launch_env
+
   launcher = (ROOT / "launch_chffrplus.sh").read_text()
   function_start = launcher.index("function apply_mici_screen_calibration")
   function_end = launcher.index("\n}\n", function_start)

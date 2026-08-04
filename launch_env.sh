@@ -22,7 +22,7 @@ export QCOM_PRIORITY=12
 
 if [ -z "$SP_DEVICE_TYPE" ] && [ -r /sys/firmware/devicetree/base/model ]; then
   SP_DEVICE_TYPE="$(tr -d '\000' < /sys/firmware/devicetree/base/model)"
-  SP_DEVICE_TYPE="${SP_DEVICE_TYPE#comma }"
+  SP_DEVICE_TYPE="${SP_DEVICE_TYPE##*comma }"
 fi
 export SP_DEVICE_TYPE
 

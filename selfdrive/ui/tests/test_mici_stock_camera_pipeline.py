@@ -84,6 +84,44 @@ def test_screen_calibration_is_strictly_mici_only():
   assert launcher.index("apply_mici_screen_calibration", function_end) > update_block
 
 
+def test_legacy_weston_color_correction_is_disabled_only_on_mici():
+  launcher = (ROOT / "launch_chffrplus.sh").read_text()
+  function_start = launcher.index("function disable_mici_weston_color_correction")
+  function_end = launcher.index("\n}\n", function_start)
+  correction_function = launcher[function_start:function_end]
+
+  assert '[ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0' in correction_function
+  assert "systemctl is-active --quiet weston.service || return 0" in correction_function
+  assert "systemctl is-active --quiet weston-ready.service || return 0" in correction_function
+  assert "/usr/lib/arm-linux-gnueabihf/weston/gl-renderer.so" in correction_function
+  assert "grep -aq 'DISABLE_COLOR_CORRECTION'" in correction_function
+  assert 'Environment="DISABLE_COLOR_CORRECTION=1"' in correction_function
+  assert "/run/systemd/system/weston.service.d" in launcher
+  assert "systemctl restart weston.service" in correction_function
+  assert "systemctl restart weston-ready.service" in correction_function
+  assert "mici_weston_has_color_correction_disabled" in correction_function
+  assert "/data/misc/display/color_cal/color_cal" in correction_function
+  assert "/persist/comma/color_cal" not in launcher
+  assert "/etc/systemd/system" not in launcher
+
+
+def test_weston_color_change_rolls_back_and_precedes_panel_calibration():
+  launcher = (ROOT / "launch_chffrplus.sh").read_text()
+  rollback_start = launcher.index("function restore_mici_weston_color_correction")
+  rollback_end = launcher.index("\n}\n", rollback_start)
+  rollback_function = launcher[rollback_start:rollback_end]
+
+  assert 'rm -f "$MICI_WESTON_COLOR_DROPIN"' in rollback_function
+  assert "systemctl daemon-reload" in rollback_function
+  assert "systemctl restart weston.service" in rollback_function
+  assert "wait_for_mici_weston" in rollback_function
+
+  call_start = launcher.index('if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]')
+  disable_call = launcher.index("disable_mici_weston_color_correction", call_start)
+  calibration_call = launcher.index("apply_mici_screen_calibration", call_start)
+  assert disable_call < calibration_call
+
+
 @pytest.mark.parametrize(("relative_path", "expected_hash"), DOM_RUNTIME_BINARIES.items())
 def test_camera_and_runtime_binaries_remain_dom_builds(relative_path: str, expected_hash: str):
   assert binary_sha256(relative_path) == expected_hash

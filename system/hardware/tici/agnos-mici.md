@@ -7,10 +7,10 @@ Tici and Tizi continue to use `agnos.json` and Dom's original system image.
 
 - Base version: `12.8.28`
 - Base raw system SHA-256: `4c01245932068aedfceb41cb1aab1f7f044f6659aa2fe2de558f99e2d3aa5793`
-- Patched version: `12.8.28-sq-mici.1`
-- Patched raw system SHA-256: `14ff858e40e4a2df0883f8029ae649ea069d302e5ceef59e483230c87b7e2361`
-- Compressed archive SHA-256: `930cc40d81ec8963b537f35672a0477deef5fc34286a71fc7e88536fa77e743d`
-- Compressed archive size: `1181703916` bytes
+- Patched version: `12.8.28-sq-mici.2`
+- Patched raw system SHA-256: `83af277f7ffe1f91b3c6cfbd7cd9b61439c9117062f2c2ebbd7191c4dc453b91`
+- Compressed archive SHA-256: `a4ad37c8d1b33a5fa24b9140d5ee7745a0c81b5d4bf62a9cc032e374e246092c`
+- Compressed archive size: `929760684` bytes
 
 ## Image changes
 
@@ -25,8 +25,9 @@ content changes exist:
 
 The generator exports `DISABLE_COLOR_CORRECTION=1` only when the physical
 device-tree model is exactly `comma mici`. The calibration service is gated by
-that manager environment, applies `/usr/comma/screen_calibration.py` before
-Weston, and uses the panel calibration already shipped by Dom's image.
+that manager environment and starts in parallel with Weston, so it adds no
+ordering dependency to the boot path. It uses the panel calibration already
+shipped by Dom's image.
 
 Dom's original Weston unit, kernel, firmware, hardware services, setup images,
 and all openpilot driving and lateral-control files are unchanged.

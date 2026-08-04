@@ -67,9 +67,9 @@
   },
   {
     "name": "system",
-    "url": "https://github.com/squilliam2/openpilot/releases/download/agnos-sq-mici-12.8.28.1/system-14ff858e40e4a2df0883f8029ae649ea069d302e5ceef59e483230c87b7e2361.img.xz",
-    "hash": "14ff858e40e4a2df0883f8029ae649ea069d302e5ceef59e483230c87b7e2361",
-    "hash_raw": "14ff858e40e4a2df0883f8029ae649ea069d302e5ceef59e483230c87b7e2361",
+    "url": "https://github.com/squilliam2/openpilot/releases/download/agnos-sq-mici-12.8.28.2/system-83af277f7ffe1f91b3c6cfbd7cd9b61439c9117062f2c2ebbd7191c4dc453b91.img.xz",
+    "hash": "83af277f7ffe1f91b3c6cfbd7cd9b61439c9117062f2c2ebbd7191c4dc453b91",
+    "hash_raw": "83af277f7ffe1f91b3c6cfbd7cd9b61439c9117062f2c2ebbd7191c4dc453b91",
     "size": 5368709120,
     "sparse": false,
     "full_check": false,

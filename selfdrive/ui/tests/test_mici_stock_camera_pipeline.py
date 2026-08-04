@@ -37,8 +37,8 @@ def test_mici_gets_a_patched_dom_image_while_other_devices_keep_the_original():
 
   assert "dropbox.com" in default_system["url"]
   assert default_system["hash_raw"] == "4c01245932068aedfceb41cb1aab1f7f044f6659aa2fe2de558f99e2d3aa5793"
-  assert "agnos-sq-mici-12.8.28.1" in mici_system["url"]
-  assert mici_system["hash"] == "14ff858e40e4a2df0883f8029ae649ea069d302e5ceef59e483230c87b7e2361"
+  assert "agnos-sq-mici-12.8.28.2" in mici_system["url"]
+  assert mici_system["hash"] == "83af277f7ffe1f91b3c6cfbd7cd9b61439c9117062f2c2ebbd7191c4dc453b91"
   assert mici_system["hash_raw"] == mici_system["hash"]
   assert mici_system["size"] == 5368709120
   assert not mici_system["sparse"]
@@ -57,7 +57,7 @@ def test_agnos_target_is_strictly_selected_by_physical_device_type():
   assert launch_env.rindex('SP_DEVICE_TYPE=""') > launch_env.index("starpilot/system/environment_variables")
   assert 'export AGNOS_VERSION="12.8.28"' in launch_env
   assert 'if [ "$SP_DEVICE_TYPE" = "mici" ]' in launch_env
-  assert 'export SP_AGNOS_TARGET_VERSION="12.8.28-sq-mici.1"' in launch_env
+  assert 'export SP_AGNOS_TARGET_VERSION="12.8.28-sq-mici.2"' in launch_env
   assert 'export SP_AGNOS_MANIFEST="system/hardware/tici/agnos-mici.json"' in launch_env
   assert 'export SP_AGNOS_TARGET_VERSION="$AGNOS_VERSION"' in launch_env
   assert 'export SP_AGNOS_MANIFEST="system/hardware/tici/agnos.json"' in launch_env

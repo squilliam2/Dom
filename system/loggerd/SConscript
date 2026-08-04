@@ -17,6 +17,11 @@ else:
   # visionipc ion/cl buffers reference OpenCL symbols at final link.
   libs += ['OpenCL']
 
+if arch == "larch64":
+  # Stock AGNOS uses comma's statically linked FFmpeg build, whose hardware
+  # context support is backed by the stock VA-API/DRM libraries.
+  libs += ['va', 'va-drm', 'drm']
+
 logger_lib = env.Library('logger', src)
 libs.insert(0, logger_lib)
 

@@ -47,4 +47,27 @@ def test_camerad_transport_adapter_preserves_stock_image_layout():
   assert "2900" not in common
   assert "init_cl(device_id, context)" in common
   assert 'VisionIpcServer v("camerad", device_id, ctx)' in qcom
-  assert not (ROOT / "prebuilt").exists()
+
+
+def test_stock_agnos_runtime_is_prebuilt_without_legacy_dom_dependencies():
+  assert (ROOT / "prebuilt").exists()
+
+  binaries = (
+    "system/camerad/camerad",
+    "system/loggerd/loggerd",
+    "system/loggerd/encoderd",
+    "system/loggerd/bootlog",
+  )
+  forbidden_dependencies = (
+    b"libavformat.so.58",
+    b"libavcodec.so.58",
+    b"libavutil.so.56",
+    b"libcapnp-1.0.2.so",
+    b"libkj-1.0.2.so",
+    b"libOmxCore.so",
+  )
+
+  for relative_path in binaries:
+    contents = (ROOT / relative_path).read_bytes()
+    assert contents.startswith(b"\x7fELF")
+    assert not any(dependency in contents for dependency in forbidden_dependencies)

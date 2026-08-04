@@ -95,6 +95,10 @@ def test_no_stock_agnos_runtime_split_remains():
   assert 'NativeProcess("camerad", "system/camerad", ["./camerad"]' in process_config
   assert "runtime_executable" not in process_config
 
+  galaxy = (ROOT / "starpilot/system/the_galaxy/the_galaxy.py").read_text()
+  assert "hardware.tici.device_config" not in galaxy
+  assert '_AGNOS_MANIFEST_PATH = "system/hardware/tici/agnos.json"' in galaxy
+
 
 def test_mici_uses_stock_direct_framebuffer_presentation():
   application = (ROOT / "system/ui/lib/application.py").read_text()

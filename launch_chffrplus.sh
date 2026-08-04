@@ -38,7 +38,8 @@ function wait_for_mici_weston {
   for ((tick = 0; tick < 200; tick++)); do
     if sudo /usr/bin/systemctl is-active --quiet weston.service \
         && sudo /usr/bin/systemctl is-active --quiet weston-ready.service \
-        && [ -e /var/tmp/weston/wayland-0 ]; then
+        && [ -e /var/tmp/weston/wayland-0 ] \
+        && /usr/bin/ss -xlH | /usr/bin/grep -Fq /var/tmp/weston/wayland-0; then
       return 0
     fi
     /bin/sleep 0.1
@@ -71,7 +72,9 @@ function disable_mici_weston_color_correction {
   local legacy_renderer="/usr/lib/arm-linux-gnueabihf/weston/gl-renderer.so"
   [ -f "$legacy_renderer" ] || return 0
   /usr/bin/grep -aq 'DISABLE_COLOR_CORRECTION' "$legacy_renderer" || return 0
-  mici_weston_has_color_correction_disabled && return 0
+  if [ -f "$MICI_WESTON_COLOR_DROPIN" ] && mici_weston_has_color_correction_disabled; then
+    return 0
+  fi
 
   if ! sudo /bin/mkdir -p "$MICI_WESTON_COLOR_DROPIN_DIR"; then
     echo "Mici Weston color correction could not be disabled; continuing with the existing display state"

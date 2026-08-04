@@ -95,11 +95,13 @@ def test_legacy_weston_color_correction_is_disabled_only_on_mici():
   assert "systemctl is-active --quiet weston-ready.service || return 0" in correction_function
   assert "/usr/lib/arm-linux-gnueabihf/weston/gl-renderer.so" in correction_function
   assert "grep -aq 'DISABLE_COLOR_CORRECTION'" in correction_function
+  assert '[ -f "$MICI_WESTON_COLOR_DROPIN" ] && mici_weston_has_color_correction_disabled' in correction_function
   assert 'Environment="DISABLE_COLOR_CORRECTION=1"' in correction_function
   assert "/run/systemd/system/weston.service.d" in launcher
   assert "systemctl restart weston.service" in correction_function
   assert "systemctl restart weston-ready.service" in correction_function
   assert "mici_weston_has_color_correction_disabled" in correction_function
+  assert "/usr/bin/ss -xlH" in launcher
   assert "/data/misc/display/color_cal/color_cal" in correction_function
   assert "/persist/comma/color_cal" not in launcher
   assert "/etc/systemd/system" not in launcher

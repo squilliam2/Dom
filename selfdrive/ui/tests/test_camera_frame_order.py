@@ -35,6 +35,7 @@ def test_mici_uses_shared_camera_view():
 
 def test_mici_uses_unfiltered_bt601_texture_shader(monkeypatch):
   view = mici_cameraview.CameraView.__new__(mici_cameraview.CameraView)
+  view._closed = True
   view._use_egl = False
   loaded = []
   shader = SimpleNamespace(id=1)

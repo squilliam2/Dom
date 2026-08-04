@@ -48,6 +48,13 @@ def test_mici_uses_stock_direct_framebuffer_presentation():
   assert 'rl.set_target_fps(0 if OFFSCREEN or vblank_control else fps)' in application
 
 
+def test_mici_does_not_launch_the_legacy_qt_ui():
+  process_config = (ROOT / "system/manager/process_config.py").read_text()
+
+  assert 'if device_type in ("tici", "tizi"):' in process_config
+  assert 'procs.append(PythonProcess("ui", "selfdrive.ui.ui", always_run' in process_config
+
+
 def test_camerad_transport_adapter_preserves_stock_image_layout():
   common = (ROOT / "system/camerad/cameras/camera_common.cc").read_text()
   qcom = (ROOT / "system/camerad/cameras/camera_qcom2.cc").read_text()

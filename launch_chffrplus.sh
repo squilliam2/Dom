@@ -53,6 +53,22 @@ function agnos_init {
 
   # Check if AGNOS update is required
   AGNOS_CURRENT_VERSION="$(< /VERSION)"
+
+  # StarPilot previously generated a persistent Weston display calibration.
+  # Remove it once before moving to stock AGNOS so the stock display profile is
+  # used instead of carrying custom color correction across the OS migration.
+  STOCK_CAMERA_MIGRATION_MARKER="/cache/starpilot/stock_camera_pipeline_18_4"
+  if [ ! -f "$STOCK_CAMERA_MIGRATION_MARKER" ]; then
+    sudo rm -f /data/misc/display/color_cal/color_cal /data/misc/display/color_cal/source.sha256
+    sudo mkdir -p "$(dirname "$STOCK_CAMERA_MIGRATION_MARKER")"
+    sudo touch "$STOCK_CAMERA_MIGRATION_MARKER"
+    sudo chmod 666 "$STOCK_CAMERA_MIGRATION_MARKER"
+
+    if [ "$AGNOS_CURRENT_VERSION" = "$AGNOS_VERSION" ] && systemctl is-active --quiet weston.service; then
+      sudo systemctl restart weston.service
+    fi
+  fi
+
   AGNOS_UPDATE_REQUIRED=1
   for accepted_version in $AGNOS_ACCEPTED_VERSIONS; do
     if [ "$AGNOS_CURRENT_VERSION" = "$accepted_version" ]; then

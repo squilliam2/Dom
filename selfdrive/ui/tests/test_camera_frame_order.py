@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -25,35 +26,20 @@ def _camera_view():
   return view
 
 
-def test_mici_uses_shared_camera_view():
-  assert issubclass(mici_cameraview.CameraView, big_cameraview.CameraView)
-  assert mici_cameraview.CameraView._force_texture_copy
-  assert not mici_cameraview.CameraView._use_upstream_engaged_color
-  assert not big_cameraview.CameraView._force_texture_copy
-  assert not big_cameraview.CameraView._use_upstream_engaged_color
+def test_mici_uses_its_stock_camera_implementation():
+  assert not issubclass(mici_cameraview.CameraView, big_cameraview.CameraView)
+  assert not hasattr(mici_cameraview, "MICI_FORCE_TEXTURE_CAMERA")
+  assert hasattr(mici_cameraview.CameraView, "_render_egl")
+  assert hasattr(mici_cameraview.CameraView, "_render_textures")
 
 
-def test_mici_uses_unfiltered_bt601_texture_shader(monkeypatch):
-  view = mici_cameraview.CameraView.__new__(mici_cameraview.CameraView)
-  view._closed = True
-  view._use_egl = False
-  loaded = []
-  shader = SimpleNamespace(id=1)
-  monkeypatch.setattr(big_cameraview.rl, "load_shader_from_memory",
-                      lambda vertex, fragment: loaded.append((vertex, fragment)) or shader)
-  monkeypatch.setattr(big_cameraview.rl, "get_shader_location", lambda *_args: -1)
-
-  view._load_frame_shader()
-
-  assert loaded == [(big_cameraview.VERTEX_SHADER, big_cameraview.FRAME_FRAGMENT_SHADER_YUV)]
-  fragment = loaded[0][1]
-  assert "vec2 uv = texture(texture1, fragTexCoord).ra - 0.5" in fragment
-  assert "1.402*uv.y" in fragment
-  assert "1.772*uv.x" in fragment
-  road_color_path = fragment.split("if (enhance_driver == 1)", 1)[0]
-  assert "gray" not in road_color_path
-  assert "clamp(" not in road_color_path
-  assert "pow(" not in road_color_path
+def test_mici_uses_stock_bt601_color_treatment():
+  source = inspect.getsource(mici_cameraview)
+  assert "uniform samplerExternalOES texture0" in source
+  assert "1.402*uv.y" in source
+  assert "1.772*uv.x" in source
+  assert "mix(vec3(gray), color.rgb, 0.2)" in source
+  assert "mix(vec3(gray), rgb, 0.2)" in source
 
 
 def test_pending_switch_is_cancelled_when_requested_stream_is_current():

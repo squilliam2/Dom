@@ -62,7 +62,7 @@ function agnos_init {
     sudo rm -f /data/misc/display/color_cal/color_cal /data/misc/display/color_cal/source.sha256
     sudo mkdir -p "$(dirname "$STOCK_CAMERA_MIGRATION_MARKER")"
     sudo touch "$STOCK_CAMERA_MIGRATION_MARKER"
-    sudo chmod 666 "$STOCK_CAMERA_MIGRATION_MARKER"
+    sudo chmod 644 "$STOCK_CAMERA_MIGRATION_MARKER"
 
     if [ "$AGNOS_CURRENT_VERSION" = "$AGNOS_VERSION" ] && systemctl is-active --quiet weston.service; then
       sudo systemctl restart weston.service

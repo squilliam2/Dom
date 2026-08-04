@@ -10,19 +10,16 @@ ROOT = Path(__file__).parents[3]
 STOCK_MICI_FILES = {
   "selfdrive/ui/mici/onroad/cameraview.py": "4ca438be9e2cd2c6ed27fc26424622c75a3b9398f4bd55ff77b52e0823a3d9e4",
   "system/ui/lib/egl.py": "586de0f96d508848d289ed8c7cca556ac289738e7878fec6fac302137081d09c",
-  "system/camerad/camerad": "9d4b36abd39b09594dec0e97f07caf045ae8a87fa3c52d4070a3cb38a6d040c8",
-  "system/camerad/cameras/spectra.cc": "a59d0ab1450221003a617ebe4be7efa4dfdf108330ab666c026195f47a3cae04",
   "system/camerad/cameras/bps_blobs.h": "d8a2d426c7578d59b30b527b47192583db55aa5a6bef36c0b51ffc979dd53364",
-  "system/camerad/cameras/camera_qcom2.cc": "573c45e4799bf816e31aa60945cf5175d38dd0fb34f532f1697c8dcec0eacb29",
+  "system/camerad/sensors/os04c10.cc": "8a3463b7c2c38492a0d9fc648c5444b91882cb7294b2523c0eda476d6a4b5ef6",
+  "system/camerad/sensors/ox03c10.cc": "205f915afc2422358c1cbc26d69b98da0b4ee0571c3fc79595dc4acee8231877",
   "system/hardware/tici/agnos.json": "c6977d057f66f5b05553a337fc7580f81e9492f44418c9a781460f3c172f3b84",
 }
 
 
 @pytest.mark.parametrize(("relative_path", "expected_hash"), STOCK_MICI_FILES.items())
 def test_mici_camera_runtime_matches_stock_openpilot(relative_path: str, expected_hash: str):
-  contents = (ROOT / relative_path).read_bytes()
-  if relative_path != "system/camerad/camerad":
-    contents = contents.replace(b"\r\n", b"\n")
+  contents = (ROOT / relative_path).read_bytes().replace(b"\r\n", b"\n")
   assert hashlib.sha256(contents).hexdigest() == expected_hash
 
 
@@ -40,3 +37,14 @@ def test_custom_display_calibration_is_removed_during_migration():
   launcher = (ROOT / "launch_chffrplus.sh").read_text()
   assert "/data/misc/display/color_cal/color_cal" in launcher
   assert "/cache/starpilot/stock_camera_pipeline_18_4" in launcher
+
+
+def test_camerad_transport_adapter_preserves_stock_image_layout():
+  common = (ROOT / "system/camerad/cameras/camera_common.cc").read_text()
+  qcom = (ROOT / "system/camerad/cameras/camera_qcom2.cc").read_text()
+
+  assert "cam->yuv_size" in common
+  assert "2900" not in common
+  assert "init_cl(device_id, context)" in common
+  assert 'VisionIpcServer v("camerad", device_id, ctx)' in qcom
+  assert not (ROOT / "prebuilt").exists()

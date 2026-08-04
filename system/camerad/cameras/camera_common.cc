@@ -7,7 +7,8 @@
 #include "system/camerad/cameras/spectra.h"
 
 
-void CameraBuf::init(SpectraCamera *cam, VisionIpcServer * v, int frame_cnt, VisionStreamType type) {
+void CameraBuf::init(cl_device_id device_id, cl_context context, SpectraCamera *cam, VisionIpcServer *v,
+                     int frame_cnt, VisionStreamType type) {
   vipc_server = v;
   stream_type = type;
   frame_buf_count = frame_cnt;
@@ -21,6 +22,7 @@ void CameraBuf::init(SpectraCamera *cam, VisionIpcServer * v, int frame_cnt, Vis
     const int raw_frame_size = (sensor->frame_height + sensor->extra_height) * sensor->frame_stride;
     for (int i = 0; i < frame_buf_count; i++) {
       camera_bufs_raw[i].allocate(raw_frame_size);
+      camera_bufs_raw[i].init_cl(device_id, context);
     }
     LOGD("allocated %d buffers", frame_buf_count);
   }

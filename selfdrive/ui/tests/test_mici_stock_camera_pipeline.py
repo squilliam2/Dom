@@ -29,86 +29,64 @@ def test_mici_keeps_dom_egl_recovery_implementation():
   assert "def finish_gl" in egl
 
 
-def test_dom_custom_agnos_remains_active_for_every_device():
-  assert not (ROOT / "system/hardware/tici/agnos-mici.json").exists()
+def test_mici_gets_a_patched_dom_image_while_other_devices_keep_the_original():
+  default_manifest = json.loads((ROOT / "system/hardware/tici/agnos.json").read_text())
+  mici_manifest = json.loads((ROOT / "system/hardware/tici/agnos-mici.json").read_text())
+  default_system = next(partition for partition in default_manifest if partition["name"] == "system")
+  mici_system = next(partition for partition in mici_manifest if partition["name"] == "system")
 
-  manifest = json.loads((ROOT / "system/hardware/tici/agnos.json").read_text())
-  system_partition = next(partition for partition in manifest if partition["name"] == "system")
-  assert "dropbox.com" in system_partition["url"]
+  assert "dropbox.com" in default_system["url"]
+  assert default_system["hash_raw"] == "4c01245932068aedfceb41cb1aab1f7f044f6659aa2fe2de558f99e2d3aa5793"
+  assert "agnos-sq-mici-12.8.28.1" in mici_system["url"]
+  assert mici_system["hash"] == "14ff858e40e4a2df0883f8029ae649ea069d302e5ceef59e483230c87b7e2361"
+  assert mici_system["hash_raw"] == mici_system["hash"]
+  assert mici_system["size"] == 5368709120
+  assert not mici_system["sparse"]
 
-  launch_env = (ROOT / "launch_env.sh").read_text()
-  assert 'export AGNOS_VERSION="' in launch_env
-  assert "agnos-mici.json" not in launch_env
+  default_by_name = {partition["name"]: partition for partition in default_manifest}
+  mici_by_name = {partition["name"]: partition for partition in mici_manifest}
+  assert default_by_name.keys() == mici_by_name.keys()
+  assert all(default_by_name[name] == mici_by_name[name] for name in default_by_name if name != "system")
 
 
-def test_screen_calibration_is_strictly_mici_only():
+def test_agnos_target_is_strictly_selected_by_physical_device_type():
   launch_env = (ROOT / "launch_env.sh").read_text()
   assert 'SP_DEVICE_TYPE=""' in launch_env
   assert 'SP_DEVICE_TYPE="${SP_DEVICE_TYPE##*comma }"' in launch_env
   assert 'if [ -z "$SP_DEVICE_TYPE" ]' not in launch_env
   assert launch_env.rindex('SP_DEVICE_TYPE=""') > launch_env.index("starpilot/system/environment_variables")
+  assert 'export AGNOS_VERSION="12.8.28"' in launch_env
+  assert 'if [ "$SP_DEVICE_TYPE" = "mici" ]' in launch_env
+  assert 'export SP_AGNOS_TARGET_VERSION="12.8.28-sq-mici.1"' in launch_env
+  assert 'export SP_AGNOS_MANIFEST="system/hardware/tici/agnos-mici.json"' in launch_env
+  assert 'export SP_AGNOS_TARGET_VERSION="$AGNOS_VERSION"' in launch_env
+  assert 'export SP_AGNOS_MANIFEST="system/hardware/tici/agnos.json"' in launch_env
 
+
+def test_camera_fix_adds_no_runtime_weston_restart_or_panel_calibration():
   launcher = (ROOT / "launch_chffrplus.sh").read_text()
-  function_start = launcher.index("function apply_mici_screen_calibration")
-  function_end = launcher.index("\n}\n", function_start)
-  calibration_function = launcher[function_start:function_end]
-
-  assert '[ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0' in calibration_function
-  assert 'local calibration_script="/usr/comma/screen_calibration.py"' in calibration_function
-  assert "/persist/comma/dwo_gamma_curves" in calibration_function
-  assert "/sys/kernel/debug/dsi_dwo_video_display/mipi_command" in calibration_function
-  assert 'sudo /usr/bin/timeout --signal=TERM --kill-after=1s 10s "$calibration_script"' in calibration_function
-  assert 'touch "$MICI_SCREEN_CALIBRATION_MARKER"' in calibration_function
-  assert "/usr/bin/systemd-run" not in calibration_function
-  assert "sleep " not in calibration_function
-  assert "rm -f /persist/comma/dwo_gamma_curves" not in launcher
-  assert launcher.count("apply_mici_screen_calibration") == 2
-  update_block = launcher.index('if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]')
-  assert launcher.index("apply_mici_screen_calibration", function_end) > update_block
+  assert "disable_mici_weston_color_correction" not in launcher
+  assert "apply_mici_screen_calibration" not in launcher
+  assert "systemctl restart --no-block weston.service" not in launcher
+  assert "/run/systemd/system/weston.service.d" not in launcher
+  assert "SP_AGNOS_ACCEPTED_VERSIONS" in launcher
+  assert 'MANIFEST="$DIR/$SP_AGNOS_MANIFEST"' in launcher
 
 
-def test_legacy_weston_color_correction_is_disabled_only_on_mici():
-  launcher = (ROOT / "launch_chffrplus.sh").read_text()
-  function_start = launcher.index("function disable_mici_weston_color_correction")
-  function_end = launcher.index("\n}\n", function_start)
-  correction_function = launcher[function_start:function_end]
+def test_background_updater_and_galaxy_use_the_selected_manifest():
+  updated = (ROOT / "system/updated/updated.py").read_text()
+  assert "SP_AGNOS_TARGET_VERSION" in updated
+  assert "SP_AGNOS_MANIFEST" in updated
+  assert '"system/hardware/tici/agnos-mici.json"' in updated
+  assert "manifest_relative_path" in updated
 
-  assert '[ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0' in correction_function
-  assert "/usr/lib/arm-linux-gnueabihf/weston/gl-renderer.so" in correction_function
-  assert "grep -aq 'DISABLE_COLOR_CORRECTION'" in correction_function
-  assert "if ! wait_for_mici_weston" in correction_function
-  assert '[ -f "$MICI_WESTON_COLOR_DROPIN" ] && mici_weston_has_color_correction_disabled' in correction_function
-  assert 'Environment="DISABLE_COLOR_CORRECTION=1"' in correction_function
-  assert "/run/systemd/system/weston.service.d" in launcher
-  assert "restart_mici_weston" in correction_function
-  assert "systemctl restart --no-block weston.service" in launcher
-  assert "systemctl restart --no-block weston-ready.service" in launcher
-  assert "mici_weston_has_color_correction_disabled" in correction_function
-  assert "/usr/bin/ss -xlH" in launcher
-  assert "/data/misc/display/color_cal" not in launcher
-  assert "/persist/comma/color_cal" not in launcher
-  assert "/etc/systemd/system" not in launcher
+  galaxy = (ROOT / "starpilot/system/the_galaxy/the_galaxy.py").read_text()
+  assert '_AGNOS_MICI_MANIFEST_PATH = "system/hardware/tici/agnos-mici.json"' in galaxy
+  assert 'os.getenv("SP_AGNOS_MANIFEST", _AGNOS_DEFAULT_MANIFEST_PATH)' in galaxy
+  assert "_AGNOS_ALLOWED_MANIFEST_PATHS" in galaxy
 
 
-def test_weston_color_change_rolls_back_and_precedes_panel_calibration():
-  launcher = (ROOT / "launch_chffrplus.sh").read_text()
-  rollback_start = launcher.index("function restore_mici_weston_color_correction")
-  rollback_end = launcher.index("\n}\n", rollback_start)
-  rollback_function = launcher[rollback_start:rollback_end]
-
-  assert 'rm -f "$MICI_WESTON_COLOR_DROPIN"' in rollback_function
-  assert "systemctl daemon-reload" in rollback_function
-  assert "restart_mici_weston" in rollback_function
-  assert "wait_for_mici_weston" in rollback_function
-
-  call_start = launcher.index('if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]')
-  disable_call = launcher.index("disable_mici_weston_color_correction", call_start)
-  calibration_call = launcher.index("apply_mici_screen_calibration", call_start)
-  assert disable_call < calibration_call
-  assert "if disable_mici_weston_color_correction; then\n      apply_mici_screen_calibration\n    fi" in launcher
-
-
-def test_no_stock_agnos_runtime_split_remains():
+def test_dom_runtime_processes_remain_unchanged_by_the_agnos_split():
   forbidden_paths = (
     "system/camerad/camerad_mici",
     "system/loggerd/loggerd_mici",
@@ -127,7 +105,7 @@ def test_no_stock_agnos_runtime_split_remains():
 
   galaxy = (ROOT / "starpilot/system/the_galaxy/the_galaxy.py").read_text()
   assert "hardware.tici.device_config" not in galaxy
-  assert '_AGNOS_MANIFEST_PATH = "system/hardware/tici/agnos.json"' in galaxy
+  assert '_AGNOS_DEFAULT_MANIFEST_PATH = "system/hardware/tici/agnos.json"' in galaxy
 
 
 def test_mici_uses_stock_direct_rendering_with_dom_frame_limiter():

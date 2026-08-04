@@ -42,3 +42,15 @@ if [ -r /sys/firmware/devicetree/base/model ]; then
   SP_DEVICE_TYPE="${SP_DEVICE_TYPE##*comma }"
 fi
 export SP_DEVICE_TYPE
+
+# Keep AGNOS_VERSION stable for older updaters. New launch/update code uses
+# these physically selected targets so only comma four receives the Mici image.
+if [ "$SP_DEVICE_TYPE" = "mici" ]; then
+  export SP_AGNOS_TARGET_VERSION="12.8.28-sq-mici.1"
+  export SP_AGNOS_ACCEPTED_VERSIONS="$SP_AGNOS_TARGET_VERSION"
+  export SP_AGNOS_MANIFEST="system/hardware/tici/agnos-mici.json"
+else
+  export SP_AGNOS_TARGET_VERSION="$AGNOS_VERSION"
+  export SP_AGNOS_ACCEPTED_VERSIONS="$AGNOS_ACCEPTED_VERSIONS"
+  export SP_AGNOS_MANIFEST="system/hardware/tici/agnos.json"
+fi

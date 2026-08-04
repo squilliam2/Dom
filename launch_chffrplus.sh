@@ -20,133 +20,6 @@ function sp_launch_timing {
   SP_LAUNCH_LAST_SECONDS=$now
 }
 
-MICI_WESTON_COLOR_DROPIN_DIR="/run/systemd/system/weston.service.d"
-MICI_WESTON_COLOR_DROPIN="$MICI_WESTON_COLOR_DROPIN_DIR/starpilot-mici-color.conf"
-MICI_SCREEN_CALIBRATION_MARKER="/run/starpilot-mici-screen-calibration.done"
-
-function mici_weston_has_color_correction_disabled {
-  local main_pid
-  main_pid="$(sudo /usr/bin/systemctl show --property=MainPID --value weston.service 2>/dev/null || true)"
-  [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || return 1
-
-  sudo /bin/cat "/proc/$main_pid/environ" 2>/dev/null \
-    | /usr/bin/tr '\000' '\n' \
-    | /usr/bin/grep -qx 'DISABLE_COLOR_CORRECTION=1'
-}
-
-function wait_for_mici_weston {
-  local tick
-  for ((tick = 0; tick < 200; tick++)); do
-    if sudo /usr/bin/systemctl is-active --quiet weston.service \
-        && sudo /usr/bin/systemctl is-active --quiet weston-ready.service \
-        && [ -e /var/tmp/weston/wayland-0 ] \
-        && /usr/bin/ss -xlH | /usr/bin/grep -Fq /var/tmp/weston/wayland-0; then
-      return 0
-    fi
-    /bin/sleep 0.1
-  done
-  return 1
-}
-
-function restart_mici_weston {
-  sudo /usr/bin/systemctl restart --no-block weston.service || return 1
-  # weston-ready is PartOf=weston.service in Dom's AGNOS image. Queue it
-  # explicitly as a fallback, but let the readiness loop enforce our timeout.
-  sudo /usr/bin/systemctl restart --no-block weston-ready.service >/dev/null 2>&1 || true
-}
-
-function restore_mici_weston_color_correction {
-  sudo /bin/rm -f "$MICI_WESTON_COLOR_DROPIN"
-  sudo /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || true
-
-  if restart_mici_weston \
-      && wait_for_mici_weston; then
-    sp_boot_timing_line "Mici Weston restored after color-pipeline rollback"
-  else
-    echo "Mici Weston color-pipeline rollback could not confirm display readiness"
-  fi
-}
-
-function disable_mici_weston_color_correction {
-  [ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0
-
-  local weston_load_state
-  weston_load_state="$(sudo /usr/bin/systemctl show --property=LoadState --value weston.service 2>/dev/null || true)"
-  [ "$weston_load_state" = "loaded" ] || return 1
-
-  local legacy_renderer="/usr/lib/arm-linux-gnueabihf/weston/gl-renderer.so"
-  [ -f "$legacy_renderer" ] || return 1
-  /usr/bin/grep -aq 'DISABLE_COLOR_CORRECTION' "$legacy_renderer" || return 1
-
-  # comma.service and Weston start in parallel on Dom's AGNOS image. Wait for
-  # the real Wayland listener so an early manager launch cannot skip the fix.
-  if ! wait_for_mici_weston; then
-    echo "Mici Weston was not ready for the stock color pipeline; continuing with the existing display state"
-    return 1
-  fi
-  if [ -f "$MICI_WESTON_COLOR_DROPIN" ] && mici_weston_has_color_correction_disabled; then
-    return 0
-  fi
-
-  if ! sudo /bin/mkdir -p "$MICI_WESTON_COLOR_DROPIN_DIR"; then
-    echo "Mici Weston color correction could not be disabled; continuing with the existing display state"
-    return 1
-  fi
-  if ! printf '%s\n' '[Service]' 'Environment="DISABLE_COLOR_CORRECTION=1"' \
-      | sudo /usr/bin/tee "$MICI_WESTON_COLOR_DROPIN" >/dev/null; then
-    echo "Mici Weston color correction could not be disabled; continuing with the existing display state"
-    sudo /bin/rm -f "$MICI_WESTON_COLOR_DROPIN"
-    return 1
-  fi
-  if ! sudo /usr/bin/systemctl daemon-reload; then
-    echo "Mici Weston color correction could not be disabled; continuing with the existing display state"
-    sudo /bin/rm -f "$MICI_WESTON_COLOR_DROPIN"
-    sudo /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || true
-    return 1
-  fi
-
-  if restart_mici_weston \
-      && wait_for_mici_weston \
-      && mici_weston_has_color_correction_disabled; then
-    sp_boot_timing_line "Mici Weston legacy color correction disabled"
-    return 0
-  fi
-
-  echo "Mici Weston did not restart with stock color behavior; rolling back"
-  restore_mici_weston_color_correction
-  return 1
-}
-
-function apply_mici_screen_calibration {
-  [ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0
-
-  local calibration_script="/usr/comma/screen_calibration.py"
-  local gamma_curves="/persist/comma/dwo_gamma_curves"
-  local calibration_interface="/sys/kernel/debug/dsi_dwo_video_display/mipi_command"
-
-  [ -e "$MICI_SCREEN_CALIBRATION_MARKER" ] && return 0
-  if [ ! -f "$calibration_script" ]; then
-    echo "Mici screen calibration skipped: custom AGNOS calibration utility not found"
-    return 0
-  fi
-  [ -f "$gamma_curves" ] || return 0
-
-  if ! sudo /usr/bin/test -e "$calibration_interface"; then
-    echo "Mici screen calibration skipped: panel command interface not found"
-    return 0
-  fi
-
-  # Stock Mici applies the persisted, per-panel gamma before its renderer. Dom's
-  # image ships the same panel-calibration mechanism but does not start it.
-  # Run it synchronously so manager cannot draw a frame before calibration ends.
-  if sudo /usr/bin/timeout --signal=TERM --kill-after=1s 10s "$calibration_script"; then
-    sudo /usr/bin/touch "$MICI_SCREEN_CALIBRATION_MARKER" || true
-    sp_boot_timing_line "Mici screen calibration applied"
-  else
-    echo "Mici screen calibration failed or timed out; continuing with the existing display state"
-  fi
-}
-
 function agnos_init {
   sp_launch_timing "agnos_init_start"
 
@@ -181,7 +54,7 @@ function agnos_init {
   # Check if AGNOS update is required
   AGNOS_CURRENT_VERSION="$(< /VERSION)"
   AGNOS_UPDATE_REQUIRED=1
-  for accepted_version in $AGNOS_ACCEPTED_VERSIONS; do
+  for accepted_version in $SP_AGNOS_ACCEPTED_VERSIONS; do
     if [ "$AGNOS_CURRENT_VERSION" = "$accepted_version" ]; then
       AGNOS_UPDATE_REQUIRED=0
       break
@@ -190,17 +63,11 @@ function agnos_init {
 
   if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]; then
     AGNOS_PY="$DIR/system/hardware/tici/agnos.py"
-    MANIFEST="$DIR/system/hardware/tici/agnos.json"
+    MANIFEST="$DIR/$SP_AGNOS_MANIFEST"
     if $AGNOS_PY --verify $MANIFEST; then
       sudo reboot
     fi
     $DIR/system/hardware/tici/updater $AGNOS_PY $MANIFEST
-  else
-    # Dom uses a legacy Weston color stage that stock Mici does not. Disable it
-    # before applying the same panel calibration used by stock comma 4 AGNOS.
-    if disable_mici_weston_color_correction; then
-      apply_mici_screen_calibration
-    fi
   fi
 
   sp_launch_timing "agnos_init_done"

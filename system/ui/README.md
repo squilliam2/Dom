@@ -8,9 +8,10 @@ Quick start:
 * set `STRICT_MODE=1` to kill the app if it drops too much below 60fps
 * set `SCALE=1.5` to scale the entire UI by 1.5x
 * set `BURN_IN=1` to get a burn-in heatmap version of the UI
-* burn-in prevention shifts the final UI by 2 pixels every 3 minutes on device; set `BURN_IN_PREVENTION=0` to disable it
-  or tune it with `BURN_IN_SHIFT_PIXELS` and `BURN_IN_SHIFT_INTERVAL` (seconds); near-white pixels are also softly capped
-  at 95% luminance and can be tuned or disabled with `WHITE_LUMINANCE_CAP` (set it to `1.0` to disable)
+* burn-in prevention shifts the final UI by 2 pixels every 3 minutes on big-screen devices; it defaults off on comma 4
+  so Mici uses stock openpilot's direct framebuffer path. Set `BURN_IN_PREVENTION=1` to opt in, tune it with
+  `BURN_IN_SHIFT_PIXELS` and `BURN_IN_SHIFT_INTERVAL` (seconds), or change the near-white cap with
+  `WHITE_LUMINANCE_CAP` (set it to `1.0` to disable the cap)
 * set `GRID=50` to show a 50-pixel alignment grid overlay
 * set `MAGIC_DEBUG=1` to show every dropped frames (only on device)
 * set `RECORD=1` to record the screen, output defaults to `output.mp4` but can be set with `RECORD_OUTPUT`

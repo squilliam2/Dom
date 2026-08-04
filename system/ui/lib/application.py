@@ -38,8 +38,8 @@ TOUCH_HISTORY_TIMEOUT = 3.0  # Seconds before touch points fade out
 BIG_UI = os.getenv("BIG", "0") == "1"
 MACOS = platform.system() == "Darwin"
 ENABLE_VSYNC = os.getenv("ENABLE_VSYNC", "0") == "1"
-MICI_FORCE_RENDER_TEXTURE = os.getenv("MICI_FORCE_RENDER_TEXTURE", "1" if DEVICE_TYPE == "mici" else "0") == "1"
-BURN_IN_PREVENTION = os.getenv("BURN_IN_PREVENTION", "0" if PC else "1") == "1"
+MICI_FORCE_RENDER_TEXTURE = os.getenv("MICI_FORCE_RENDER_TEXTURE", "0") == "1"
+BURN_IN_PREVENTION = os.getenv("BURN_IN_PREVENTION", "0" if PC or DEVICE_TYPE == "mici" else "1") == "1"
 BURN_IN_SHIFT_INTERVAL = max(1.0, float(os.getenv("BURN_IN_SHIFT_INTERVAL", "180")))
 BURN_IN_SHIFT_PIXELS = max(0, int(os.getenv("BURN_IN_SHIFT_PIXELS", "2")))
 WHITE_LUMINANCE_CAP = min(1.0, max(0.0, float(os.getenv("WHITE_LUMINANCE_CAP", "0.95" if BURN_IN_PREVENTION else "1.0"))))
@@ -657,8 +657,10 @@ class GuiApplication:
         self._ffmpeg_thread = threading.Thread(target=self._ffmpeg_writer_thread, daemon=True)
         self._ffmpeg_thread.start()
 
-      # OFFSCREEN disables FPS limiting for fast offline rendering (e.g. clips)
-      rl.set_target_fps(0 if OFFSCREEN else fps)
+      # The comma 4 display runs slightly faster than 60 FPS. Match stock
+      # openpilot and let vblank dictate the presentation rate.
+      vblank_control = DEVICE_TYPE == "mici"
+      rl.set_target_fps(0 if OFFSCREEN or vblank_control else fps)
 
       self._full_target_fps = fps
       self._target_fps = fps

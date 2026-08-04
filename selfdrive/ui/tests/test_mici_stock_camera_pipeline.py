@@ -39,6 +39,15 @@ def test_custom_display_calibration_is_removed_during_migration():
   assert "/cache/starpilot/stock_camera_pipeline_18_4" in launcher
 
 
+def test_mici_uses_stock_direct_framebuffer_presentation():
+  application = (ROOT / "system/ui/lib/application.py").read_text()
+
+  assert 'MICI_FORCE_RENDER_TEXTURE = os.getenv("MICI_FORCE_RENDER_TEXTURE", "0") == "1"' in application
+  assert '"0" if PC or DEVICE_TYPE == "mici" else "1"' in application
+  assert 'vblank_control = DEVICE_TYPE == "mici"' in application
+  assert 'rl.set_target_fps(0 if OFFSCREEN or vblank_control else fps)' in application
+
+
 def test_camerad_transport_adapter_preserves_stock_image_layout():
   common = (ROOT / "system/camerad/cameras/camera_common.cc").read_text()
   qcom = (ROOT / "system/camerad/cameras/camera_qcom2.cc").read_text()

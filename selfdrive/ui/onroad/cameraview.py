@@ -139,6 +139,7 @@ FRAME_FRAGMENT_SHADER_YUV_MICI = VERSION + """
 
 
 class CameraView(Widget):
+  _force_texture_copy = False
   _use_upstream_engaged_color = False
 
   def __init__(self, name: str, stream_type: VisionStreamType):
@@ -156,9 +157,10 @@ class CameraView(Widget):
 
     self._texture_needs_update = True
     self.last_connection_attempt: float = 0.0
-    self._use_egl = TICI and not MICI_FORCE_TEXTURE_CAMERA and init_egl()
-    if TICI and MICI_FORCE_TEXTURE_CAMERA:
-      cloudlog.warning("CameraView EGL disabled by MICI_FORCE_TEXTURE_CAMERA, using texture rendering")
+    force_texture_copy = MICI_FORCE_TEXTURE_CAMERA or self._force_texture_copy
+    self._use_egl = TICI and not force_texture_copy and init_egl()
+    if TICI and force_texture_copy:
+      cloudlog.warning("CameraView EGL disabled, using explicit NV12 texture rendering")
     elif TICI and not self._use_egl:
       cloudlog.error("CameraView EGL init failed, falling back to texture rendering")
 

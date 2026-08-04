@@ -1,4 +1,3 @@
-import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -26,20 +25,44 @@ def _camera_view():
   return view
 
 
-def test_mici_uses_its_stock_camera_implementation():
-  assert not issubclass(mici_cameraview.CameraView, big_cameraview.CameraView)
-  assert not hasattr(mici_cameraview, "MICI_FORCE_TEXTURE_CAMERA")
-  assert hasattr(mici_cameraview.CameraView, "_render_egl")
-  assert hasattr(mici_cameraview.CameraView, "_render_textures")
+def test_mici_uses_shared_camera_view():
+  assert issubclass(mici_cameraview.CameraView, big_cameraview.CameraView)
+  assert mici_cameraview.CameraView._use_upstream_engaged_color
+  assert not big_cameraview.CameraView._use_upstream_engaged_color
 
 
-def test_mici_uses_stock_bt601_color_treatment():
-  source = inspect.getsource(mici_cameraview)
-  assert "uniform samplerExternalOES texture0" in source
-  assert "1.402*uv.y" in source
-  assert "1.772*uv.x" in source
-  assert "mix(vec3(gray), color.rgb, 0.2)" in source
-  assert "mix(vec3(gray), rgb, 0.2)" in source
+def test_mici_uses_stock_engagement_color_treatment():
+  for shader in (big_cameraview.FRAME_FRAGMENT_SHADER_EXTERNAL_MICI,
+                 big_cameraview.FRAME_FRAGMENT_SHADER_YUV_MICI):
+    assert "uniform int engaged" in shader
+    assert "if (engaged == 1)" in shader
+    assert "*= 0.85" in shader
+
+  assert "mix(vec3(gray), color.rgb, 0.2)" in big_cameraview.FRAME_FRAGMENT_SHADER_EXTERNAL_MICI
+  assert "mix(vec3(gray), rgb, 0.2)" in big_cameraview.FRAME_FRAGMENT_SHADER_YUV_MICI
+
+
+def test_mici_engagement_color_tracks_aol_and_controls_state(monkeypatch):
+  view = _camera_view()
+  view.shader = object()
+  view._engaged_loc = 7
+  view._engaged_val = [1]
+  view._enhance_driver_loc = -1
+  view._enhance_driver_val = [0]
+  values = []
+  monkeypatch.setattr(big_cameraview.rl, "set_shader_value",
+                      lambda _shader, location, value, _type: values.append((location, value[0])))
+
+  monkeypatch.setattr(big_cameraview.ui_state, "status", big_cameraview.UIStatus.DISENGAGED)
+  monkeypatch.setattr(big_cameraview.ui_state, "always_on_lateral_active", False)
+  view._update_shader_state()
+  monkeypatch.setattr(big_cameraview.ui_state, "always_on_lateral_active", True)
+  view._update_shader_state()
+  monkeypatch.setattr(big_cameraview.ui_state, "always_on_lateral_active", False)
+  monkeypatch.setattr(big_cameraview.ui_state, "status", big_cameraview.UIStatus.ENGAGED)
+  view._update_shader_state()
+
+  assert values == [(7, 0), (7, 1), (7, 1)]
 
 
 def test_pending_switch_is_cancelled_when_requested_stream_is_current():

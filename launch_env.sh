@@ -20,12 +20,6 @@ fi
 # headroom for this until ui is moved to the CPU.
 export QCOM_PRIORITY=12
 
-if [ -z "$SP_DEVICE_TYPE" ] && [ -r /sys/firmware/devicetree/base/model ]; then
-  SP_DEVICE_TYPE="$(tr -d '\000' < /sys/firmware/devicetree/base/model)"
-  SP_DEVICE_TYPE="${SP_DEVICE_TYPE##*comma }"
-fi
-export SP_DEVICE_TYPE
-
 if [ -z "$AGNOS_VERSION" ]; then
   export AGNOS_VERSION="12.8.28"
 fi
@@ -40,3 +34,11 @@ export STAGING_ROOT="/data/safe_staging"
 if [ -x /data/openpilot/starpilot/system/environment_variables ]; then
   eval "$(/data/openpilot/starpilot/system/environment_variables)"
 fi
+
+# Hardware identity must not be overridable by persisted or inherited settings.
+SP_DEVICE_TYPE=""
+if [ -r /sys/firmware/devicetree/base/model ]; then
+  SP_DEVICE_TYPE="$(tr -d '\000' < /sys/firmware/devicetree/base/model)"
+  SP_DEVICE_TYPE="${SP_DEVICE_TYPE##*comma }"
+fi
+export SP_DEVICE_TYPE

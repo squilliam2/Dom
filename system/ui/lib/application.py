@@ -657,8 +657,7 @@ class GuiApplication:
         self._ffmpeg_thread = threading.Thread(target=self._ffmpeg_writer_thread, daemon=True)
         self._ffmpeg_thread.start()
 
-      # Dom's custom AGNOS presents through Weston. Unlike stock's direct DRM
-      # raylib backend, that path does not explicitly wait for display vblank.
+      # OFFSCREEN disables FPS limiting for fast offline rendering (e.g. clips)
       rl.set_target_fps(0 if OFFSCREEN else fps)
 
       self._full_target_fps = fps

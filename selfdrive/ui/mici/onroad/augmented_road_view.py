@@ -3,7 +3,7 @@ import numpy as np
 import pyray as rl
 from cereal import messaging, car, log
 from opendbc.car import structs
-from msgq.visionipc import VisionIpcClient, VisionStreamType
+from msgq.visionipc import VisionStreamType
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.mici.onroad import SIDE_PANEL_WIDTH
@@ -580,21 +580,6 @@ class AugmentedRoadView(CameraView):
   @staticmethod
   def _controls_ready() -> bool:
     return ui_state.sm.recv_frame["selfdriveState"] >= ui_state.started_frame
-
-  def _refresh_available_streams(self) -> None:
-    streams = VisionIpcClient.available_streams(self._name, block=False)
-    if streams:
-      self.available_streams = list(streams)
-
-  def _cancel_pending_switch(self) -> None:
-    self._target_client = None
-    self._target_stream_type = None
-    self._switching = False
-
-  def switch_stream(self, stream_type: VisionStreamType) -> None:
-    if self._switching and self._target_stream_type != stream_type:
-      self._cancel_pending_switch()
-    super().switch_stream(stream_type)
 
   def _update_reverse_driver_camera_state(self) -> bool:
     should_force_driver = ui_state.started and ui_state.params.get_bool("DriverCamera") and self._is_in_reverse()

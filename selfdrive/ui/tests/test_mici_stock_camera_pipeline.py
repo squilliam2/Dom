@@ -66,6 +66,9 @@ def test_stock_agnos_runtime_is_prebuilt_without_legacy_dom_dependencies():
     "system/loggerd/loggerd",
     "system/loggerd/encoderd",
     "system/loggerd/bootlog",
+    "selfdrive/pandad/pandad",
+    "selfdrive/pandad/pandad_api_impl.so",
+    "selfdrive/modeld/models/commonmodel_pyx.so",
   )
   forbidden_dependencies = (
     b"libavformat.so.58",

@@ -71,9 +71,17 @@ def test_screen_calibration_is_strictly_mici_only():
   assert '[ "${SP_DEVICE_TYPE:-}" = "mici" ] || return 0' in calibration_function
   assert 'local calibration_script="/usr/comma/screen_calibration.py"' in calibration_function
   assert "/persist/comma/dwo_gamma_curves" in calibration_function
-  assert "/sys/kernel/debug/dsi_dwo_video_display/mipi_command" in calibration_function
+  assert 'local stock_calibration_unit="screen_calibration.service"' in calibration_function
+  assert "/usr/bin/systemd-run" in calibration_function
+  assert "--service-type=oneshot" in calibration_function
+  assert "--remain-after-exit" in calibration_function
+  assert "--property=After=multi-user.target" in calibration_function
+  assert "--no-block" in calibration_function
+  assert "sleep " not in calibration_function
   assert "rm -f /persist/comma/dwo_gamma_curves" not in launcher
   assert launcher.count("apply_mici_screen_calibration") == 2
+  update_block = launcher.index('if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]')
+  assert launcher.index("apply_mici_screen_calibration", function_end) > update_block
 
 
 @pytest.mark.parametrize(("relative_path", "expected_hash"), DOM_RUNTIME_BINARIES.items())
@@ -103,9 +111,9 @@ def test_no_stock_agnos_runtime_split_remains():
   assert '_AGNOS_MANIFEST_PATH = "system/hardware/tici/agnos.json"' in galaxy
 
 
-def test_mici_uses_stock_direct_framebuffer_presentation():
+def test_mici_uses_stock_direct_rendering_with_dom_frame_limiter():
   application = (ROOT / "system/ui/lib/application.py").read_text()
   assert 'MICI_FORCE_RENDER_TEXTURE = os.getenv("MICI_FORCE_RENDER_TEXTURE", "0") == "1"' in application
   assert '"0" if PC or DEVICE_TYPE == "mici" else "1"' in application
-  assert 'vblank_control = DEVICE_TYPE == "mici"' in application
-  assert 'rl.set_target_fps(0 if OFFSCREEN or vblank_control else fps)' in application
+  assert 'rl.set_target_fps(0 if OFFSCREEN else fps)' in application
+  assert 'vblank_control = DEVICE_TYPE == "mici"' not in application

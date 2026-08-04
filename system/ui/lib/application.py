@@ -657,10 +657,9 @@ class GuiApplication:
         self._ffmpeg_thread = threading.Thread(target=self._ffmpeg_writer_thread, daemon=True)
         self._ffmpeg_thread.start()
 
-      # The comma 4 display runs slightly faster than 60 FPS. Match stock
-      # openpilot and let vblank dictate the presentation rate.
-      vblank_control = DEVICE_TYPE == "mici"
-      rl.set_target_fps(0 if OFFSCREEN or vblank_control else fps)
+      # Dom's custom AGNOS presents through Weston. Unlike stock's direct DRM
+      # raylib backend, that path does not explicitly wait for display vblank.
+      rl.set_target_fps(0 if OFFSCREEN else fps)
 
       self._full_target_fps = fps
       self._target_fps = fps

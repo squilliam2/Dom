@@ -25,30 +25,34 @@ function apply_mici_screen_calibration {
 
   local calibration_script="/usr/comma/screen_calibration.py"
   local gamma_curves="/persist/comma/dwo_gamma_curves"
-  local command_file="/sys/kernel/debug/dsi_dwo_video_display/mipi_command"
-  local boot_marker="/tmp/starpilot_mici_screen_calibrated"
+  local stock_calibration_unit="screen_calibration.service"
+  local calibration_unit="starpilot-mici-screen-calibration.service"
 
-  [ -f "$boot_marker" ] && return 0
   if [ ! -f "$calibration_script" ]; then
     echo "Mici screen calibration skipped: custom AGNOS calibration utility not found"
     return 0
   fi
   [ -f "$gamma_curves" ] || return 0
 
-  for _ in $(seq 1 50); do
-    [ -e "$command_file" ] && break
-    sleep 0.1
-  done
+  # Match stock AGNOS: run once as root, after multi-user.target. Keeping the
+  # transient unit active also prevents manager restarts from applying it twice.
+  local unit_load_state
+  unit_load_state="$(sudo /usr/bin/systemctl show --property=LoadState --value "$stock_calibration_unit" 2>/dev/null || true)"
+  [ "$unit_load_state" = "loaded" ] && return 0
 
-  if [ ! -e "$command_file" ]; then
-    echo "Mici screen calibration skipped: MIPI command interface not found"
-    return 0
-  fi
+  unit_load_state="$(sudo /usr/bin/systemctl show --property=LoadState --value "$calibration_unit" 2>/dev/null || true)"
+  [ "$unit_load_state" = "loaded" ] && return 0
 
-  if sudo /usr/bin/python3 "$calibration_script"; then
-    touch "$boot_marker"
+  if sudo /usr/bin/systemd-run --quiet --no-block \
+      --unit="$calibration_unit" \
+      --service-type=oneshot \
+      --remain-after-exit \
+      --property=After=multi-user.target \
+      --description="Set comma 4 screen calibration" \
+      "$calibration_script"; then
+    sp_boot_timing_line "Mici screen calibration queued after multi-user.target"
   else
-    echo "Mici screen calibration failed; continuing with the existing display state"
+    echo "Mici screen calibration could not be queued; continuing with the existing display state"
   fi
 }
 
@@ -83,10 +87,6 @@ function agnos_init {
   # StarPilot variables
   sudo chmod 0777 /cache
 
-  # Dom's custom AGNOS contains the panel calibration utility but does not call
-  # it during boot. Apply the stock comma 4 calibration without replacing AGNOS.
-  apply_mici_screen_calibration
-
   # Check if AGNOS update is required
   AGNOS_CURRENT_VERSION="$(< /VERSION)"
   AGNOS_UPDATE_REQUIRED=1
@@ -104,6 +104,10 @@ function agnos_init {
       sudo reboot
     fi
     $DIR/system/hardware/tici/updater $AGNOS_PY $MANIFEST
+  else
+    # Dom's custom AGNOS contains the panel calibration utility but omits the
+    # stock service that invokes it. Queue an equivalent Mici-only service.
+    apply_mici_screen_calibration
   fi
 
   sp_launch_timing "agnos_init_done"

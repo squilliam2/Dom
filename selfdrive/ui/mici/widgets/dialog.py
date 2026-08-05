@@ -260,8 +260,7 @@ class BigDialogOptionButton(Widget):
       font_size=self.FONT_SIZE,
       text_color=rl.Color(255, 255, 255, int(255 * 0.58)),
       font_weight=FontWeight.DISPLAY_REGULAR,
-      max_width=max(1, width - self.HORIZONTAL_PADDING * 2),
-      alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
+      text_padding=self.HORIZONTAL_PADDING,
       alignment_vertical=rl.GuiTextAlignmentVertical.TEXT_ALIGN_MIDDLE,
       scroll=True,
     )

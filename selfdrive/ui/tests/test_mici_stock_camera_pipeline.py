@@ -146,6 +146,8 @@ def test_mici_option_dialog_matches_stock_text_scale_and_never_overlaps_side_but
   assert "self._content_width = int(gui_app.width -" in dialog
   assert "BigDialogOptionButton(option, self._content_width)" in dialog
   assert "self._scroller.render(rl.Rectangle(self._rect.x, self._rect.y, self._content_width" in dialog
+  assert "self._pending_default_scroll = self._default_option" in dialog
+  assert "positions_are_laid_out" in dialog
 
 
 def test_mici_alert_text_keeps_stock_two_line_layout():

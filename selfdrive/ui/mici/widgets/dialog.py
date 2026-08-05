@@ -301,6 +301,7 @@ class BigMultiOptionDialog(NavWidget):
     self._default_option: str | None = default
     self._selected_option: str = self._default_option or (options[0] if options else "")
     self._last_selected_option: str = self._selected_option
+    self._pending_default_scroll: str | None = None
     self._can_click = True
 
     self._scroller = self._child(Scroller(horizontal=False, pad=100, spacing=0, snap_items=True,
@@ -320,8 +321,9 @@ class BigMultiOptionDialog(NavWidget):
 
   def show_event(self):
     super().show_event()
-    if self._default_option is not None:
-      self._on_option_selected(self._default_option)
+    # Item positions are not valid until the scroller completes its first
+    # layout. Defer centering so the requested default is not treated as row 0.
+    self._pending_default_scroll = self._default_option
 
   def get_selected_option(self) -> str:
     return self._selected_option
@@ -374,6 +376,15 @@ class BigMultiOptionDialog(NavWidget):
     super()._update_state()
     if not self.is_dismissing:
       self._nav_bar.set_alpha(1.0)
+
+    if self._pending_default_scroll is not None:
+      item_positions = [btn.rect.y for btn in self._scroll_inner.items]
+      positions_are_laid_out = len(item_positions) <= 1 or max(item_positions) - min(item_positions) > 1.0
+      if positions_are_laid_out:
+        default_option = self._pending_default_scroll
+        self._pending_default_scroll = None
+        self._on_option_selected(default_option)
+      return
 
     center_y = self._rect.y + self._rect.height / 2
     closest_btn = (None, float("inf"))

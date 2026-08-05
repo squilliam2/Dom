@@ -29,6 +29,54 @@ def test_behavior_version_does_not_control_artifact_layout():
   assert manager._required_files("example", "split") == []
 
 
+def test_installed_model_check_uses_manifest_format_and_size(tmp_path, monkeypatch):
+  class FakeParams:
+    values = {
+      "AvailableModels": "example",
+      "AvailableModelNames": "Example",
+      "AvailableModelSeries": "Test",
+      "ModelVersions": "v1",
+      "AvailableModelArtifactFormats": UNIFIED_ARTIFACT_FORMAT,
+    }
+
+    def get(self, key):
+      return self.values.get(key)
+
+  monkeypatch.setattr(model_manager, "MODELS_PATH", tmp_path)
+  manager = object.__new__(ModelManager)
+  manager.params = FakeParams()
+  manager.available_models = []
+  manager.model_versions = []
+  manager.model_series = []
+  manager.available_model_names = []
+  manager.artifact_formats = []
+
+  metadata = {
+    "example": {
+      "artifact_format": UNIFIED_ARTIFACT_FORMAT,
+      "artifact_size": 4,
+    },
+  }
+  (tmp_path / model_manager.ARTIFACT_METADATA_CACHE).write_text(json.dumps(metadata))
+  artifact = tmp_path / "example_driving_tinygrad.pkl"
+
+  assert not manager.is_model_downloaded("example")
+  artifact.touch()
+  assert not manager.is_model_downloaded("example")
+  artifact.write_text(
+    "version https://git-lfs.github.com/spec/v1\n"
+    f"oid sha256:{'0' * 64}\n"
+    "size 4\n",
+  )
+  assert not manager.is_model_downloaded("example")
+  artifact.write_bytes(b"bad")
+  assert not manager.is_model_downloaded("example")
+  artifact.write_bytes(b"good")
+  assert manager.is_model_downloaded("example")
+  assert manager.installed_model_keys() == {"example"}
+  assert manager.is_model_downloaded(model_manager.DEFAULT_MODEL_KEY)
+
+
 def test_external_gpu_requirement_is_cached_from_manifest(tmp_path, monkeypatch):
   monkeypatch.setattr(model_manager, "MODELS_PATH", tmp_path)
   manager = object.__new__(ModelManager)

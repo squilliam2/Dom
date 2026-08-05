@@ -246,17 +246,22 @@ class BigConfirmationCircleButton(BigCircleButton):
 class BigDialogOptionButton(Widget):
   HEIGHT = 64
   SELECTED_HEIGHT = 74
+  FONT_SIZE = 40
+  SELECTED_FONT_SIZE = 48
+  HORIZONTAL_PADDING = 18
 
-  def __init__(self, option: str):
+  def __init__(self, option: str, width: int):
     super().__init__()
     self.option = option
-    self.set_rect(rl.Rectangle(0, 0, int(gui_app.width / 2 + 220), self.HEIGHT))
+    self.set_rect(rl.Rectangle(0, 0, width, self.HEIGHT))
     self._selected = False
     self._label = UnifiedLabel(
       option,
-      font_size=70,
+      font_size=self.FONT_SIZE,
       text_color=rl.Color(255, 255, 255, int(255 * 0.58)),
       font_weight=FontWeight.DISPLAY_REGULAR,
+      max_width=max(1, width - self.HORIZONTAL_PADDING * 2),
+      alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
       alignment_vertical=rl.GuiTextAlignmentVertical.TEXT_ALIGN_MIDDLE,
       scroll=True,
     )
@@ -271,11 +276,11 @@ class BigDialogOptionButton(Widget):
 
   def _render(self, _):
     if self._selected:
-      self._label.set_font_size(self.SELECTED_HEIGHT)
+      self._label.set_font_size(self.SELECTED_FONT_SIZE)
       self._label.set_color(rl.Color(255, 255, 255, int(255 * 0.9)))
       self._label.set_font_weight(FontWeight.DISPLAY)
     else:
-      self._label.set_font_size(self.HEIGHT)
+      self._label.set_font_size(self.FONT_SIZE)
       self._label.set_color(rl.Color(255, 255, 255, int(255 * 0.58)))
       self._label.set_font_weight(FontWeight.DISPLAY_REGULAR)
 
@@ -303,6 +308,7 @@ class BigMultiOptionDialog(NavWidget):
     self._scroll_inner = self._scroller._scroller
 
     self._right_btn = self._child(SideButton(right_btn or "check")) if right_btn is not None else None
+    self._content_width = int(gui_app.width - (self._right_btn.rect.width if self._right_btn is not None else 0))
     if self._right_btn is not None:
       self._right_btn.set_click_callback(self._confirm_selection)
       self._scroller.set_enabled(lambda: self.enabled and not self.is_dismissing and not self._right_btn.is_pressed)
@@ -310,7 +316,7 @@ class BigMultiOptionDialog(NavWidget):
       self._scroller.set_enabled(lambda: self.enabled and not self.is_dismissing)
 
     for option in options:
-      self._scroll_inner.add_widget(BigDialogOptionButton(option))
+      self._scroll_inner.add_widget(BigDialogOptionButton(option, self._content_width))
 
   def show_event(self):
     super().show_event()
@@ -389,4 +395,4 @@ class BigMultiOptionDialog(NavWidget):
     if self._right_btn is not None:
       self._right_btn.set_position(self._rect.x + self._rect.width - self._right_btn.rect.width, self._rect.y)
       self._right_btn.render()
-    self._scroller.render(self._rect)
+    self._scroller.render(rl.Rectangle(self._rect.x, self._rect.y, self._content_width, self._rect.height))

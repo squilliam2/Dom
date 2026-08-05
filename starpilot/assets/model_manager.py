@@ -13,6 +13,7 @@ from openpilot.starpilot.assets.download_functions import (
   get_repository_url,
   handle_error,
   handle_request_error,
+  is_git_lfs_pointer,
   verify_download,
 )
 from openpilot.starpilot.common.model_versions import (
@@ -324,28 +325,66 @@ class ModelManager:
       print(f"Failed to load artifact metadata cache: {error}")
       return {}
 
-  def _is_model_downloaded(self, model_key: str, artifact_format: str) -> bool:
-    if is_builtin_model_key(model_key):
+  def _is_model_downloaded_with_metadata(self, model_key: str, artifact_format: str,
+                                         metadata_map: dict[str, dict]) -> bool:
+    canonical_key = self._canonical_model_key(model_key)
+    if is_builtin_model_key(canonical_key):
       return True
 
-    required_files = self._required_files(model_key, artifact_format)
+    required_files = self._required_files(canonical_key, artifact_format)
     if not required_files:
       return False
-    metadata = self._load_artifact_metadata_map().get(self._canonical_model_key(model_key), {})
+    metadata_entry = metadata_map.get(canonical_key, {})
+    metadata = metadata_entry if isinstance(metadata_entry, dict) else {}
     for filename in required_files:
       path = MODELS_PATH / filename
       if not path.is_file():
         return False
-      expected_size = int(metadata.get("artifact_size") or 0)
+      if path.stat().st_size == 0 or is_git_lfs_pointer(path):
+        return False
+      try:
+        expected_size = int(metadata.get("artifact_size") or 0)
+      except (TypeError, ValueError):
+        return False
       if expected_size and path.stat().st_size != expected_size:
         return False
     return True
 
+  def is_model_downloaded(self, model_key: str, artifact_format: str | None = None) -> bool:
+    canonical_key = self._canonical_model_key(model_key)
+    metadata_map = self._load_artifact_metadata_map()
+    metadata_entry = metadata_map.get(canonical_key, {})
+    metadata = metadata_entry if isinstance(metadata_entry, dict) else {}
+    if artifact_format is None:
+      self._load_catalog_from_params()
+      artifact_format = next((
+        self.artifact_formats[index]
+        for index, available_key in enumerate(self.available_models)
+        if self._canonical_model_key(available_key) == canonical_key and index < len(self.artifact_formats)
+      ), "")
+      artifact_format = artifact_format or str(metadata.get("artifact_format") or "")
+    return self._is_model_downloaded_with_metadata(canonical_key, artifact_format, metadata_map)
+
+  def installed_model_keys(self) -> set[str]:
+    self._load_catalog_from_params()
+    artifact_format_map = self._model_artifact_format_map()
+    metadata_map = self._load_artifact_metadata_map()
+    installed: set[str] = set()
+    for model_key in self.available_models:
+      canonical_key = self._canonical_model_key(model_key)
+      artifact_format = artifact_format_map.get(model_key) or artifact_format_map.get(canonical_key) or ""
+      if self._is_model_downloaded_with_metadata(canonical_key, artifact_format, metadata_map):
+        installed.update((model_key, canonical_key))
+    return installed
+
+  def _is_model_downloaded(self, model_key: str, artifact_format: str) -> bool:
+    return self.is_model_downloaded(model_key, artifact_format)
+
   def _installed_model_choices(self) -> list[tuple[str, str, str]]:
     self._load_catalog_from_params()
     version_map = self._model_version_map()
-    artifact_format_map = self._model_artifact_format_map()
     blacklisted_keys = self._blacklisted_model_keys()
+    installed_keys = self.installed_model_keys()
     choices: list[tuple[str, str, str]] = []
     seen_keys: set[str] = set()
 
@@ -361,8 +400,7 @@ class ModelManager:
       if not model_version and is_builtin_model_key(canonical_key):
         model_version = self._default_param_text("ModelVersion") or self._default_param_text("DrivingModelVersion") or "v11"
 
-      artifact_format = artifact_format_map.get(model_key) or artifact_format_map.get(canonical_key) or ""
-      if not self._is_model_downloaded(model_key, artifact_format):
+      if model_key not in installed_keys and canonical_key not in installed_keys:
         continue
 
       model_name = self.available_model_names[index] if index < len(self.available_model_names) else canonical_key

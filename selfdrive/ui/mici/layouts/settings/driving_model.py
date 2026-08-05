@@ -5,14 +5,11 @@ import threading
 import time
 from dataclasses import dataclass
 from collections.abc import Callable
-from pathlib import Path
 
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigDialogBase, BigMultiOptionDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.hardware import PC
-from openpilot.system.hardware.hw import Paths
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.label import gui_label
@@ -20,7 +17,6 @@ import pyray as rl
 
 CANCEL_DOWNLOAD_PARAM = "CancelModelDownload"
 DOWNLOAD_PROGRESS_PARAM = "ModelDownloadProgress"
-MODELS_PATH = Path(Paths.comma_home()) / "starpilot" / "data" / "models" if PC else Path("/data/models")
 MANIFEST_STALE_SECONDS = 60 * 60
 _PROGRESS_HOLD_SECONDS = 2.5
 _DOWNLOAD_DIALOG_CLOSE_SECONDS = 1.0
@@ -375,7 +371,8 @@ class DrivingModelBigButton(BigButton):
       self._show_message("Model list unavailable", message, return_to_manager=True)
       return
 
-    installed = [entry for entry in entries if self._is_model_installed(entry.key, entry.version)]
+    installed_keys = self._get_model_manager().installed_model_keys()
+    installed = [entry for entry in entries if entry.key in installed_keys]
     if not installed:
       self._show_message("No downloaded models", "Download a model first.", return_to_manager=True)
       return
@@ -396,7 +393,8 @@ class DrivingModelBigButton(BigButton):
       self._show_message("Model list unavailable", message, return_to_manager=True)
       return
 
-    missing = [entry for entry in entries if not self._is_model_installed(entry.key, entry.version)]
+    installed_keys = self._get_model_manager().installed_model_keys()
+    missing = [entry for entry in entries if entry.key not in installed_keys]
     if not missing:
       self._show_message("All models downloaded", "No additional models are available.", return_to_manager=True)
       return
@@ -415,7 +413,8 @@ class DrivingModelBigButton(BigButton):
       self._show_message("Model list unavailable", "Refresh manifest and try again.", return_to_manager=True)
       return
 
-    missing_exists = any(not self._is_model_installed(entry.key, entry.version) for entry in entries)
+    installed_keys = self._get_model_manager().installed_model_keys()
+    missing_exists = any(entry.key not in installed_keys for entry in entries)
     if not missing_exists:
       self._show_message("All models downloaded", "No additional models are available.", return_to_manager=True)
       return
@@ -688,38 +687,10 @@ class DrivingModelBigButton(BigButton):
     return "default"
 
   def _is_model_installed(self, key: str, version: str) -> bool:
+    del version
     if not key:
       return False
-
-    if self._is_builtin_default_model(key):
-      return True
-
-    required_files = self._required_files_for_version(key, version)
-    if not required_files:
-      return False
-
-    return all((MODELS_PATH / filename).is_file() for filename in required_files)
-
-  def _is_builtin_default_model(self, key: str) -> bool:
-    default_key = self._params.get_default_value("DrivingModel") or self._params.get_default_value("Model")
-    if isinstance(default_key, bytes):
-      default_key = default_key.decode("utf-8", errors="ignore")
-    default_key = str(default_key or "").strip()
-    if not default_key:
-      default_key = "sc"
-
-    # Manifest can expose legacy IDs like "sc2" while default remains "sc".
-    if key == default_key:
-      return True
-    if default_key.endswith("2") and key == default_key[:-1]:
-      return True
-    if not default_key.endswith("2") and key == f"{default_key}2":
-      return True
-    return False
-
-  def _required_files_for_version(self, key: str, version: str) -> list[str]:
-    del version
-    return [f"{key}_driving_tinygrad.pkl"]
+    return self._get_model_manager().is_model_downloaded(key)
 
   @staticmethod
   def _is_terminal_progress(progress: str) -> bool:

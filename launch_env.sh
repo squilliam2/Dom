@@ -49,6 +49,13 @@ if [ "$SP_DEVICE_TYPE" = "mici" ]; then
   export SP_AGNOS_TARGET_VERSION="18.5-sq-mici.2"
   export SP_AGNOS_ACCEPTED_VERSIONS="$SP_AGNOS_TARGET_VERSION"
   export SP_AGNOS_MANIFEST="system/hardware/tici/agnos-mici.json"
+
+  # Match comma's native Mici presentation path. StarPilot's forced render
+  # texture and global luminance pass alter both camera and UI pixels after
+  # they have already been rendered. They are not used by stock openpilot.
+  export MICI_FORCE_RENDER_TEXTURE=0
+  export BURN_IN_PREVENTION=0
+  export WHITE_LUMINANCE_CAP=1.0
 else
   export SP_AGNOS_TARGET_VERSION="$AGNOS_VERSION"
   export SP_AGNOS_ACCEPTED_VERSIONS="$AGNOS_ACCEPTED_VERSIONS"

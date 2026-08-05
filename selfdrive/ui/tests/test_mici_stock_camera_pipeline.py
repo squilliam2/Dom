@@ -82,6 +82,20 @@ def test_agnos_target_is_strictly_selected_by_physical_device_type():
   assert 'export SP_AGNOS_MANIFEST="system/hardware/tici/agnos.json"' in launch_env
 
 
+def test_stock_presentation_path_is_selected_only_for_mici():
+  launch_env = (ROOT / "launch_env.sh").read_text()
+  device_block = launch_env.split('if [ "$SP_DEVICE_TYPE" = "mici" ]; then', 1)[1]
+  mici_block, other_devices = device_block.split("\nelse\n", 1)
+  other_devices = other_devices.split("\nfi", 1)[0]
+
+  assert "export MICI_FORCE_RENDER_TEXTURE=0" in mici_block
+  assert "export BURN_IN_PREVENTION=0" in mici_block
+  assert "export WHITE_LUMINANCE_CAP=1.0" in mici_block
+  assert "MICI_FORCE_RENDER_TEXTURE" not in other_devices
+  assert "BURN_IN_PREVENTION" not in other_devices
+  assert "WHITE_LUMINANCE_CAP" not in other_devices
+
+
 def test_no_custom_color_or_panel_calibration_is_layered_on_top():
   launcher = (ROOT / "launch_chffrplus.sh").read_text()
   repository_text = "\n".join(
@@ -121,3 +135,30 @@ def test_other_devices_keep_dom_camera_and_agnos_paths():
   assert "def _accept_frame" in shared
   assert 'MICI_FORCE_RENDER_TEXTURE = os.getenv("MICI_FORCE_RENDER_TEXTURE", "1" if DEVICE_TYPE == "mici" else "0") == "1"' in application
   assert not (ROOT / "system/ui/lib/egl_mici.py").exists()
+
+
+def test_mici_option_dialog_matches_stock_text_scale_and_never_overlaps_side_button():
+  dialog = (ROOT / "selfdrive/ui/mici/widgets/dialog.py").read_text()
+
+  assert "FONT_SIZE = 40" in dialog
+  assert "SELECTED_FONT_SIZE = 48" in dialog
+  assert "font_size=70" not in dialog
+  assert "self._content_width = int(gui_app.width -" in dialog
+  assert "BigDialogOptionButton(option, self._content_width)" in dialog
+  assert "self._scroller.render(rl.Rectangle(self._rect.x, self._rect.y, self._content_width" in dialog
+
+
+def test_mici_alert_text_keeps_stock_two_line_layout():
+  renderer = (ROOT / "selfdrive/ui/mici/onroad/alert_renderer.py").read_text()
+
+  assert "can_draw_second_line" not in renderer
+  assert renderer.index("if len(alert_text2) > 24:") < renderer.index("elif len(alert_text2) > 18:")
+
+
+def test_mici_model_picker_delegates_download_validation_to_model_manager():
+  driving_model = (ROOT / "selfdrive/ui/mici/layouts/settings/driving_model.py").read_text()
+
+  assert "return self._get_model_manager().is_model_downloaded(key)" in driving_model
+  assert driving_model.count("self._get_model_manager().installed_model_keys()") == 3
+  assert "MODELS_PATH" not in driving_model
+  assert '_driving_tinygrad.pkl"]' not in driving_model

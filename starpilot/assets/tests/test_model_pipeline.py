@@ -74,6 +74,13 @@ def test_installed_model_check_uses_manifest_format_and_size(tmp_path, monkeypat
   artifact.write_bytes(b"good")
   assert manager.is_model_downloaded("example")
   assert manager.installed_model_keys() == {"example"}
+
+  pointer_check = model_manager.is_git_lfs_pointer
+  monkeypatch.setattr(model_manager, "is_git_lfs_pointer", lambda _path: (_ for _ in ()).throw(OSError("file changed")))
+  assert not manager.is_model_downloaded("example")
+  monkeypatch.setattr(model_manager, "is_git_lfs_pointer", pointer_check)
+
+  monkeypatch.setattr(manager, "_load_artifact_metadata_map", lambda: (_ for _ in ()).throw(AssertionError("not needed")))
   assert manager.is_model_downloaded(model_manager.DEFAULT_MODEL_KEY)
 
 

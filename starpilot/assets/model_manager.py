@@ -338,20 +338,26 @@ class ModelManager:
     metadata = metadata_entry if isinstance(metadata_entry, dict) else {}
     for filename in required_files:
       path = MODELS_PATH / filename
-      if not path.is_file():
-        return False
-      if path.stat().st_size == 0 or is_git_lfs_pointer(path):
+      try:
+        if not path.is_file():
+          return False
+        actual_size = path.stat().st_size
+        if actual_size == 0 or is_git_lfs_pointer(path):
+          return False
+      except OSError:
         return False
       try:
         expected_size = int(metadata.get("artifact_size") or 0)
       except (TypeError, ValueError):
         return False
-      if expected_size and path.stat().st_size != expected_size:
+      if expected_size and actual_size != expected_size:
         return False
     return True
 
   def is_model_downloaded(self, model_key: str, artifact_format: str | None = None) -> bool:
     canonical_key = self._canonical_model_key(model_key)
+    if is_builtin_model_key(canonical_key):
+      return True
     metadata_map = self._load_artifact_metadata_map()
     metadata_entry = metadata_map.get(canonical_key, {})
     metadata = metadata_entry if isinstance(metadata_entry, dict) else {}

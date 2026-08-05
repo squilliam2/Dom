@@ -25,10 +25,10 @@ def _camera_view():
   return view
 
 
-def test_mici_uses_shared_camera_view():
-  assert issubclass(mici_cameraview.CameraView, big_cameraview.CameraView)
-  assert mici_cameraview.CameraView._use_upstream_engaged_color
-  assert not big_cameraview.CameraView._use_upstream_engaged_color
+def test_mici_uses_its_stock_camera_view():
+  assert not issubclass(mici_cameraview.CameraView, big_cameraview.CameraView)
+  assert "uniform int engaged" in mici_cameraview.FRAME_FRAGMENT_SHADER
+  assert hasattr(mici_cameraview.CameraView, "_render_egl")
 
 
 def test_pending_switch_is_cancelled_when_requested_stream_is_current():

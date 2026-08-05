@@ -54,7 +54,7 @@ function agnos_init {
   # Check if AGNOS update is required
   AGNOS_CURRENT_VERSION="$(< /VERSION)"
   AGNOS_UPDATE_REQUIRED=1
-  for accepted_version in $AGNOS_ACCEPTED_VERSIONS; do
+  for accepted_version in $SP_AGNOS_ACCEPTED_VERSIONS; do
     if [ "$AGNOS_CURRENT_VERSION" = "$accepted_version" ]; then
       AGNOS_UPDATE_REQUIRED=0
       break
@@ -63,7 +63,7 @@ function agnos_init {
 
   if [ "$AGNOS_UPDATE_REQUIRED" = "1" ]; then
     AGNOS_PY="$DIR/system/hardware/tici/agnos.py"
-    MANIFEST="$DIR/system/hardware/tici/agnos.json"
+    MANIFEST="$DIR/$SP_AGNOS_MANIFEST"
     if $AGNOS_PY --verify $MANIFEST; then
       sudo reboot
     fi

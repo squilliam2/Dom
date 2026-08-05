@@ -821,9 +821,14 @@ _FAST_UPDATE_REBOOT_NOTICE_SECONDS = 6.0
 _FAST_UPDATE_FETCH_TIMEOUT_S = 60
 _FAST_BRANCH_SWITCH_FETCH_TIMEOUT_S = 60
 _FAST_ROLLBACK_FETCH_TIMEOUT_S = 60
-_AGNOS_MANIFEST_PATH = "system/hardware/tici/agnos.json"
+_AGNOS_DEFAULT_MANIFEST_PATH = "system/hardware/tici/agnos.json"
+_AGNOS_MICI_MANIFEST_PATH = "system/hardware/tici/agnos-mici.json"
+_AGNOS_ALLOWED_MANIFEST_PATHS = {_AGNOS_DEFAULT_MANIFEST_PATH, _AGNOS_MICI_MANIFEST_PATH}
+_AGNOS_MANIFEST_PATH = os.getenv("SP_AGNOS_MANIFEST", _AGNOS_DEFAULT_MANIFEST_PATH)
+if _AGNOS_MANIFEST_PATH not in _AGNOS_ALLOWED_MANIFEST_PATHS:
+  _AGNOS_MANIFEST_PATH = _AGNOS_DEFAULT_MANIFEST_PATH
 _AGNOS_REMOTE_MANIFEST_TIMEOUT_S = 8
-_AGNOS_UPDATE_ESTIMATED_DOWNLOAD_MB = 900
+_AGNOS_UPDATE_ESTIMATED_DOWNLOAD_MB = 852 if _AGNOS_MANIFEST_PATH == _AGNOS_MICI_MANIFEST_PATH else 900
 _GIT_PROGRESS_PERCENT_RE = re.compile(r'([A-Za-z][A-Za-z /_-]+):\s*([0-9]{1,3})%')
 _GIT_SUBMODULE_SECTION_RE = re.compile(r'^\s*\[submodule\s+"[^"]+"\]\s*$', re.MULTILINE)
 _ROLLBACK_REF = "refs/starpilot/rollback"
@@ -1420,7 +1425,7 @@ def _base_agnos_update_status(target_branch="", local_commit="", remote_commit="
     "warnings": [
       "This AGNOS firmware update will take much longer than a normal software update.",
       "You must be able to physically access the device to press the on-device update button.",
-      "It downloads about 900 MB of data, so Wi-Fi is recommended.",
+      f"It downloads about {_AGNOS_UPDATE_ESTIMATED_DOWNLOAD_MB} MB of data, so Wi-Fi is recommended.",
     ],
     "source": "",
     "error": "",

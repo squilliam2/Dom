@@ -247,8 +247,12 @@ def handle_agnos_update() -> None:
   from openpilot.system.hardware.tici.agnos import flash_agnos_update, get_target_slot_number
 
   cur_version = HARDWARE.get_os_version()
-  updated_version = run(["bash", "-c", r"unset AGNOS_VERSION && source launch_env.sh && \
-                          echo -n $AGNOS_VERSION"], OVERLAY_MERGED).strip()
+  updated_version = run(["bash", "-c", r"unset AGNOS_VERSION SP_AGNOS_TARGET_VERSION && source launch_env.sh && \
+                          echo -n ${SP_AGNOS_TARGET_VERSION:-$AGNOS_VERSION}"], OVERLAY_MERGED).strip()
+  manifest_relative_path = run(["bash", "-c", r"unset SP_AGNOS_MANIFEST && source launch_env.sh && \
+                                 echo -n ${SP_AGNOS_MANIFEST:-system/hardware/tici/agnos.json}"], OVERLAY_MERGED).strip()
+  if manifest_relative_path not in {"system/hardware/tici/agnos.json", "system/hardware/tici/agnos-mici.json"}:
+    raise RuntimeError(f"Invalid AGNOS manifest selection: {manifest_relative_path}")
 
   cloudlog.info(f"AGNOS version check: {cur_version} vs {updated_version}")
   if cur_version == updated_version:
@@ -260,7 +264,7 @@ def handle_agnos_update() -> None:
   cloudlog.info(f"Beginning background installation for AGNOS {updated_version}")
   set_offroad_alert("Offroad_NeosUpdate", True)
 
-  manifest_path = os.path.join(OVERLAY_MERGED, "system/hardware/tici/agnos.json")
+  manifest_path = os.path.join(OVERLAY_MERGED, manifest_relative_path)
   target_slot_number = get_target_slot_number()
   flash_agnos_update(manifest_path, target_slot_number, cloudlog)
   set_offroad_alert("Offroad_NeosUpdate", False)

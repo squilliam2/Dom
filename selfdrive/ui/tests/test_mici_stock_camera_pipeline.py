@@ -143,6 +143,7 @@ def test_mici_option_dialog_matches_stock_text_scale_and_never_overlaps_side_but
   assert "FONT_SIZE = 40" in dialog
   assert "SELECTED_FONT_SIZE = 48" in dialog
   assert "font_size=70" not in dialog
+  assert "text_padding=self.HORIZONTAL_PADDING" in dialog
   assert "self._content_width = int(gui_app.width -" in dialog
   assert "BigDialogOptionButton(option, self._content_width)" in dialog
   assert "self._scroller.render(rl.Rectangle(self._rect.x, self._rect.y, self._content_width" in dialog

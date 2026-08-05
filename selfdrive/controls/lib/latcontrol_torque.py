@@ -39,7 +39,8 @@ LP_FILTER_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.22
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
-VERSION = 3
+VERSION = 2
+SONATA_ANGLE_FEEDBACK_VERSION = 3
 DEBUG_TORQUE_TUNE = False
 FF_SCALE_BLEND_LAT_ACCEL = 0.05
 DEADZONE_BOOST_LAT_ACCEL = 0.15
@@ -185,7 +186,7 @@ class LatControlTorque(LatControl):
   def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, curvature_limited, lat_delay, calibrated_pose,
              model_data, starpilot_toggles, applied_torque=math.nan):
     pid_log = log.ControlsState.LateralTorqueState.new_message()
-    pid_log.version = VERSION
+    pid_log.version = SONATA_ANGLE_FEEDBACK_VERSION if self.hyundai_torque_angle_feedback is not None else VERSION
     flm_profile_active = bool(getattr(starpilot_toggles, "flm_trial_applied", False) and
                               getattr(starpilot_toggles, "flm_active_profile_id", ""))
     set_flm_runtime_overrides(getattr(starpilot_toggles, "flm_active_overrides", None) if flm_profile_active else None)
@@ -498,8 +499,8 @@ class LatControlTorque(LatControl):
         output_torque *= civic_bosch_modified_a_center_taper
       if self.hyundai_torque_angle_feedback is not None:
         self.hyundai_torque_angle_feedback.remember_requested_torque(output_torque)
+        pid_log.errorRate = float(relative_lateral_accel_rate)
       pid_log.active = True
-      pid_log.errorRate = float(relative_lateral_accel_rate)
       pid_log.p = float(self.pid.p)
       pid_log.i = float(self.pid.i)
       pid_log.d = float(self.pid.d)
